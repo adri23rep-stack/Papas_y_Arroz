@@ -67,7 +67,7 @@ int main(int argc,char** argv){
            std::filesystem::exists(setup,ec)){
             STARTUPINFOW startup{};startup.cb=sizeof(startup);
             PROCESS_INFORMATION process{};
-            std::wstring command=L"\\\""+setup.wstring()+L"\\\"";
+            std::wstring command=L"XuperSetup.exe";
             if(CreateProcessW(setup.c_str(),command.data(),nullptr,nullptr,FALSE,0,
                               nullptr,directory.c_str(),&startup,&process)){
                 WaitForSingleObject(process.hProcess,INFINITE);
