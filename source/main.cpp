@@ -18,6 +18,8 @@
 #include <windows.h>
 #include <filesystem>
 #include "remote_server.hpp"
+#include "cinematic_home.hpp"
+#include "cinematic_layout.hpp"
 #endif
 #ifdef __SWITCH__
 #include <switch.h>
@@ -107,13 +109,66 @@ int main(int argc,char** argv){
     std::atomic<bool> cancel_task{false};std::atomic<size_t> task_done{0},task_total{0};
     std::shared_ptr<xs::ServiceSession> session;
     std::vector<std::pair<xs::Catalog,size_t>> history;
-    auto home=[&]{xs::Catalog c;c.title="Inicio";
+#ifdef _WIN32
+    xs::CinematicHomeContent home_data;
+    bool home_prepared=false;
+#endif
+    auto home=[&]{
+#ifdef _WIN32
+        xs::remember_last_channel(home_data,saved.recent);
+        return xs::make_cinematic_home(home_data,root_catalog.entries,view.home_last_index);
+#else
+        xs::Catalog c;c.title="Inicio";
         xs::Entry tv;tv.title="TV en vivo";tv.kind=xs::EntryKind::LiveSection;c.entries.push_back(tv);
         for(const char* type:{"1","0"}){auto i=std::find_if(root_catalog.entries.begin(),root_catalog.entries.end(),[&](const xs::Entry& e){return e.kind==xs::EntryKind::Section&&e.program_type==type;});if(i!=root_catalog.entries.end())c.entries.push_back(*i);}
         xs::Entry resume;resume.title="Continuar viendo";resume.kind=xs::EntryKind::Resume;c.entries.push_back(resume);
         xs::Entry fav;fav.title="Favoritos";fav.kind=xs::EntryKind::Favorites;c.entries.push_back(fav);
         xs::Entry donate;donate.title="Apoyar el desarrollo";donate.kind=xs::EntryKind::Donation;c.entries.push_back(donate);return c;
+#endif
     };
+#ifdef _WIN32
+    auto prepare_home=[&]{
+        if(!session||root_catalog.entries.empty()||home_prepared)return;
+        home_prepared=true;
+        const auto live_category=std::find_if(root_catalog.entries.begin(),root_catalog.entries.end(),
+                    [](const xs::Entry& e){return e.kind==xs::EntryKind::Category;});
+        if(live_category!=root_catalog.entries.end()){
+            auto result=xs::service_channels(session,live_category->column_id);
+            if(result.ok)for(const auto& e:result.catalog.entries)
+                if(e.kind==xs::EntryKind::Channel){
+                    home_data.channels.push_back(e);
+                    if(home_data.channels.size()>=7)break;
+                }
+        }
+        auto fetch_titles=[&](const char* type,std::vector<xs::Entry>& target){
+            const auto section=std::find_if(root_catalog.entries.begin(),root_catalog.entries.end(),
+                [&](const xs::Entry& e){return e.kind==xs::EntryKind::Section&&e.program_type==type;});
+            if(section==root_catalog.entries.end())return;
+            auto categories=xs::service_browse(session,*section);
+            if(!categories.ok)return;
+            // Obtain actual cover artwork, not screenshots or made-up posters.
+            // Probe at most two categories; unavailable ones are skipped.
+            int visited=0;
+            for(const auto& category:categories.catalog.entries){
+                if(target.size()>=4||visited>=2||cancel_task.load())break;
+                if(category.kind==xs::EntryKind::Asset){
+                    target.push_back(category);continue;
+                }
+                if(category.kind!=xs::EntryKind::VodCategory)continue;
+                ++visited;
+                auto page=xs::service_browse(session,category);
+                if(!page.ok)continue;
+                for(const auto& e:page.catalog.entries){
+                    if(e.kind!=xs::EntryKind::Asset||e.program_type!=type)continue;
+                    target.push_back(e);
+                    if(target.size()>=4)break;
+                }
+            }
+        };
+        if(!cancel_task.load())fetch_titles("1",home_data.movies);
+        if(!cancel_task.load())fetch_titles("0",home_data.series);
+    };
+#endif
     auto load=[&](auto task,const std::string& message,bool splash=false){
         cancel_task=false;task_done=0;task_total=0;std::atomic<bool> complete{false};
         const auto started=SDL_GetTicks();if(splash)view.splash(message);
@@ -150,7 +205,12 @@ int main(int argc,char** argv){
             if(event.type==SDL_MOUSEBUTTONDOWN||event.type==SDL_FINGERDOWN){
                 const int x=event.type==SDL_FINGERDOWN?int(event.tfinger.x*1280):event.button.x,y=event.type==SDL_FINGERDOWN?int(event.tfinger.y*720):event.button.y;
                 if(donating){back=true;continue;}const int hit=view.hit(catalog,selected,x,y);
-                if(hit==-8)toggle_favorite=true;else if(hit==-9)play=true;else if(hit<=-2)nav_action=-hit-2;else if(hit>=0){selected=static_cast<size_t>(hit);view.nav_focus=-1;play=true;}
+                if(hit==-8)toggle_favorite=true;
+                else if(hit==-9)play=true;
+                else if(hit==-10){view.toggle_fullscreen();redraw=true;}
+                else if(hit==-11){view.show_details=!view.show_details;redraw=true;}
+                else if(hit<=-2)nav_action=-hit-2;
+                else if(hit>=0){selected=static_cast<size_t>(hit);view.nav_focus=-1;view.show_details=false;play=true;}
             }
             if(event.type==SDL_KEYDOWN){
                 switch(event.key.keysym.sym){
@@ -221,15 +281,37 @@ int main(int argc,char** argv){
             if(session&&root_catalog.entries.empty()){
                 xs::BrowseResult result;load([&]{result=xs::service_root(session);},"Reintentando carga del catalogo...");status=result.status;if(result.ok)root_catalog=std::move(result.catalog);
             }
-            if(session){catalog=home();if(!root_catalog.entries.empty())status="Elige que quieres ver. X: buscar en todo el catalogo.";else status+=" Pulsa Y para reintentar el catalogo.";}else if(catalog.entries.empty()){catalog.title="Sin conexion";status+=" Pulsa Y para reintentar.";}
+#ifdef _WIN32
+            if(session&&!root_catalog.entries.empty()&&!home_prepared){
+                load([&]{prepare_home();},"Preparando portadas de TV, películas y series...");
+            }
+#endif
+            if(session){catalog=home();if(!root_catalog.entries.empty())status="Explora TV, películas y series. X: buscar.";else status+=" Pulsa Y para reintentar el catálogo.";}else if(catalog.entries.empty()){catalog.title="Sin conexion";status+=" Pulsa Y para reintentar.";}
             else{catalog.title="Lista local";status+=" Lista M3U local disponible; L para recargar; Y para reintentar.";}
             selected=0;history.clear();view.active_nav=0;view.nav_focus=-1;redraw=true;
         }
         if(nav_action>0){
+            view.show_details=false;
             if(nav_action==5){donating=true;redraw=true;continue;}
             if(nav_action==4){history.emplace_back(catalog,selected);catalog={};catalog.title="Favoritos";catalog.entries=saved.favorites;selected=0;view.active_nav=4;view.nav_focus=-1;redraw=true;}
             else if(session){
-                if(nav_action==1){history.emplace_back(catalog,selected);catalog={};catalog.title="TV en vivo";for(const auto& e:root_catalog.entries)if(e.kind==xs::EntryKind::Category)catalog.entries.push_back(e);selected=0;}
+                if(nav_action==1){
+                    history.emplace_back(catalog,selected);
+                    catalog={};catalog.title="TV en vivo";
+#ifdef _WIN32
+                    xs::remember_last_channel(home_data,saved.recent);
+                    if(home_data.has_last)catalog.entries.push_back(home_data.last_channel);
+                    for(const auto& e:home_data.channels)
+                        if(!home_data.has_last||e.channel_code!=home_data.last_channel.channel_code)
+                            catalog.entries.push_back(e);
+#endif
+                    for(const auto& e:root_catalog.entries)if(e.kind==xs::EntryKind::Category)catalog.entries.push_back(e);
+                    selected=0;
+#ifdef _WIN32
+                    // TV opens the actual last-watched channel, not a random category.
+                    if(home_data.has_last)play=true;
+#endif
+                }
                 else{const std::string type=nav_action==2?"1":"0";const auto i=std::find_if(root_catalog.entries.begin(),root_catalog.entries.end(),[&](const xs::Entry& e){return e.kind==xs::EntryKind::Section&&e.program_type==type;});
                     if(i!=root_catalog.entries.end()){xs::BrowseResult result;load([&]{result=xs::service_browse(session,*i);},"Cargando categorias...");status=result.status;if(result.ok){history.emplace_back(catalog,selected);catalog=std::move(result.catalog);catalog.title=i->title;selected=0;}}
                     else status="Esta seccion no esta disponible en el servicio.";
@@ -261,7 +343,7 @@ int main(int argc,char** argv){
         }
         if(back&&!history.empty()) {
             catalog=std::move(history.back().first);selected=history.back().second;history.pop_back();
-            status="Elige un titulo o canal.";if(history.empty())view.active_nav=0;redraw=true;
+            status="Elige un titulo o canal.";if(history.empty())view.active_nav=0;view.show_details=false;redraw=true;
         }
         if(!catalog.entries.empty()){
             const size_t cols=view.columns(catalog),page=view.page_size(catalog);
@@ -270,6 +352,7 @@ int main(int argc,char** argv){
             if(left){if(selected>0)--selected;redraw=true;}if(right){selected=std::min(selected+1,catalog.entries.size()-1);redraw=true;}
             if(next){selected=std::min(selected+page,catalog.entries.size()-1);redraw=true;}
             if(previous){selected=selected>=page?selected-page:0;redraw=true;}
+            if(up||down||left||right||next||previous)view.show_details=false;
             if(play){
                 const xs::Entry entry=catalog.entries[selected];
                 if(entry.kind==xs::EntryKind::Donation){donating=true;redraw=true;continue;}
@@ -351,7 +434,7 @@ int main(int argc,char** argv){
 #ifdef _WIN32
                             if(outcome.requested_navigation>=0)pending_remote_navigation=outcome.requested_navigation;
 #endif
-                            if(status.empty()&&(outcome.position>3||outcome.ended)&&!saved.remember(current))xs::trace("catalog:recent_save_failed");
+                            if(status.empty()&&(current.kind==xs::EntryKind::Channel||outcome.position>3||outcome.ended)&&!saved.remember(current))xs::trace("catalog:recent_save_failed");
                             if(status.empty()&&!playback_history.save(current.kind==xs::EntryKind::Episode?current.content_id:"",outcome.position,outcome.speed,outcome.volume,outcome.auto_next,outcome.ended))xs::trace((std::string("play:history_save_failed stage=")+playback_history.last_error).c_str());
                             if(outcome.ended&&auto_next&&!current.series_id.empty()&&static_cast<size_t>(options.item+1)<queue.size())outcome.next_item=options.item+1;
                             if(outcome.next_variant>=0){variant=outcome.next_variant;start=outcome.position;keep_paused=outcome.paused;continue_playback=true;}
