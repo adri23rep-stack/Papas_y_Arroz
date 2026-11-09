@@ -56,7 +56,7 @@ BrowseResult service_search_remote(const std::shared_ptr<ServiceSession>&,const 
     return {};
 }
 }
-#define REQUIRE(condition) do{if(!(condition)){std::fprintf(stderr,"FAILED at %d: %s\n",__LINE__,#condition);return 1;}}while(0)
+#define REQUIRE(condition) do{std::fprintf(stderr,"Checking %d: %s\\n",__LINE__,#condition);std::fflush(stderr);if(!(condition)){std::fprintf(stderr,"FAILED at %d: %s\\n",__LINE__,#condition);return 1;}}while(0)
 int main(){
     REQUIRE(SDL_Init(SDL_INIT_EVENTS)==0);
     auto& server=xs::RemoteServer::shared();
