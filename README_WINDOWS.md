@@ -2,6 +2,30 @@
 
 Adaptación experimental para Windows de **Xuper TV by JonaRuacho 0.14.1**. El código original pertenece a su autor y conserva la licencia MIT. Esta rama es de pruebas, **sin release**.
 
+## Primer inicio: cargar el catálogo desde tu APK
+
+**No necesitas introducir una cuenta en la interfaz.** La aplicación intenta
+registrar esta instalación y obtener una sesión automáticamente, si el
+servidor permite el acceso.
+
+1. Extrae todo el paquete Windows, incluidas las DLL, `cacert.pem` y `XuperSetup.exe`.
+2. Abre `XuperTVDesktop.exe` por primera vez. Se abrirá una ventana para
+   seleccionar tu propio APK compatible (por ejemplo, Xuper 4.34.4).
+3. El asistente analiza el APK **en tu PC y sin conectarse al servicio**;
+   genera `service.json` al lado del EXE. El APK nunca se sube a GitHub.
+4. Al cerrar la ventana, Xuper TV intentará activar la instalación y
+   cargar canales, películas y series desde el servicio.
+5. Si el servidor rechaza la solicitud (región, versión o permisos), se
+   mostrará el error y permanecerá disponible el catálogo de prueba.
+
+Si cambias de APK, abre `XuperSetup.exe` otra vez para actualizar la
+configuración, conservando tu identidad local. **No borres** `service.json`
+ni `device_state.json` durante actualizaciones y **no los publiques**.
+
+Este procedimiento es una prueba de compatibilidad, no garantiza acceso al
+catálogo ni evita restricciones regionales o derechos de reproducción. Una
+APK obtenida de terceros no puede verificarse como oficial solo por el nombre.
+
 ## Ejecutar en la PC conectada a la TV por HDMI
 
 1. Abre la pestaña **Actions** y selecciona la compilación de **Xuper TV Desktop | Windows preview**.
@@ -9,7 +33,7 @@ Adaptación experimental para Windows de **Xuper TV by JonaRuacho 0.14.1**. El c
 3. Extrae **todo** el ZIP. No separes el EXE de sus DLL ni de los recursos.
 4. Abre `XuperTVDesktop.exe` en Windows. Conecta tu pantalla/televisor por HDMI.
 5. Pulsa **F10** para moverlo al siguiente monitor o **F11** para cambiar a pantalla completa.
-6. Sin servicio configurado, puedes navegar por el catálogo de demostración y abrir el video de prueba.
+6. Si cancelas el primer inicio o el servicio no acepta la conexión, puedes usar el catálogo de demostración y el video de prueba.
 
 ## Teclas
 
