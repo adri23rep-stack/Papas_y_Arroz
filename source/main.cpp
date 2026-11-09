@@ -305,6 +305,29 @@ int main(int argc,char** argv){
                             }
                             if(queue[i]==selected)options.item=static_cast<int>(i);
                         }
+                        if(current.kind==xs::EntryKind::Channel&&session){
+                            // Copy only the eligible channels; an asynchronous
+                            // preview must not hold references to the mutable
+                            // navigation catalogue or require another account.
+                            std::vector<xs::Entry> preview_entries;
+                            preview_entries.reserve(queue.size());
+                            for(size_t channel_idx:queue)preview_entries.push_back(catalog.entries[channel_idx]);
+                            options.preview_resolve=
+                                [session,preview_entries=std::move(preview_entries)](
+                                    size_t i,std::string& video,
+                                    std::vector<std::pair<std::string,std::string>>& preview_headers,
+                                    std::string& err)->bool {
+                                    if(i>=preview_entries.size()||
+                                       preview_entries[i].kind!=xs::EntryKind::Channel){
+                                        err="Canal no disponible.";return false;
+                                    }
+                                    auto source_result=xs::service_source(session,preview_entries[i],0);
+                                    if(!source_result.ok){err=source_result.status;return false;}
+                                    video=std::move(source_result.source);
+                                    preview_headers=std::move(source_result.headers);
+                                    return !video.empty();
+                                };
+                        }
                         if(!source.empty()){
                             xs::PlaybackOutcome outcome;status=xs::play(source,view.renderer,headers,options,&outcome);xs::trace("main:video_returned");
                             speed=outcome.speed;volume=outcome.volume;auto_next=outcome.auto_next;
