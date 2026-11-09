@@ -143,7 +143,7 @@ void View::draw(const Catalog& c,size_t selected,const std::string& status,bool 
     SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
     SDL_RenderPresent(renderer);
     return;
-#endif
+#else
 
     poll_images();background();rect({0,0,240,720},{13,20,32,255});rect({239,0,1,720},{32,43,61,255});brand(24,30);
     for(int i=0;i<6;++i){const int y=150+i*64;const bool focus=nav_focus==i;rect({16,y,207,50},focus?accent:active_nav==i?SDL_Color{29,51,58,255}:SDL_Color{13,20,32,255});
@@ -180,6 +180,7 @@ void View::draw(const Catalog& c,size_t selected,const std::string& status,bool 
     if(!c.entries.empty()&&c.entries[selected].kind==EntryKind::Channel){rect({1080,103,145,26},panel);text(1090,105,favorite?"Quitar favorito":"+ Favorito",accent,140,small,24);}
     else if(!c.entries.empty())text(1130,108,std::to_string(selected+1)+" / "+std::to_string(c.entries.size()),muted,120,small,24);
     SDL_RenderPresent(renderer);
+#endif
 }
 int View::hit(const Catalog& c,size_t selected,int x,int y)const{
 #ifdef _WIN32
@@ -194,7 +195,7 @@ int View::hit(const Catalog& c,size_t selected,int x,int y)const{
     if((x-27)%(w+gap)>=w||(y-top)%119>=h)return -1;
     const size_t page=10,idx=(selected/page)*page+row*5+col;
     return idx<c.entries.size()?static_cast<int>(idx):-1;
-#endif
+#else
 
     if(!c.entries.empty()&&c.entries[selected].kind==EntryKind::Channel&&x>=1080&&x<=1225&&y>=103&&y<=129)return -8;
     if(x>=16&&x<=223&&y>=150&&y<534){const int row=(y-150)/64;if((y-150)%64<50)return -2-row;}
@@ -202,6 +203,7 @@ int View::hit(const Catalog& c,size_t selected,int x,int y)const{
     if(x<278||y<top||y>=630)return -1;
     const int col=(x-278)/(w+14),row=(y-top)/(h+14);if(col>=cols||(x-278)%(w+14)>=w||(y-top)%(h+14)>=h)return -1;
     const size_t i=(selected/count)*count+row*cols+col;return i<c.entries.size()&&i<(selected/count)*count+count?static_cast<int>(i):-1;
+#endif
 }
 void View::donation(){
     background();brand(76,52);text(76,170,"Apoya el desarrollo",white,720,large);text(76,252,"Tu aportacion ayuda a seguir mejorando\nXuperSwitch by Jona Ruacho.",muted,680,heading,100);
