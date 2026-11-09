@@ -5,9 +5,19 @@ The APK and extracted configuration never leave the user's PC and must never
 be included in a public release, an issue, or a GitHub Actions artifact.
 """
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
+
+# PyInstaller --windowed sets stdout and stderr to None on Windows.
+# Androguard/Loguru may write to these streams during import, before the UI
+# is shown. Give them valid, local, non-network output streams instead.
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
@@ -103,4 +113,8 @@ def main():
 
 
 if __name__ == "__main__":
+    # CI can launch the real frozen, windowless EXE to catch import crashes
+    # without opening the APK selection dialogue.
+    if len(sys.argv) == 2 and sys.argv[1] == "--self-test-imports":
+        raise SystemExit(0)
     raise SystemExit(main())
