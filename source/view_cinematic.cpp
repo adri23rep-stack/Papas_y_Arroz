@@ -65,8 +65,10 @@ void View::draw_cinematic(const Catalog& c,size_t selected,const std::string& st
         if(active||focus)rect({x,13,134,42},focus?pink:SDL_Color{85,24,56,255});
         text(x+12,23,navigation[i],(active||focus)?white:subtle,119,small,30);
     }
-    rect({1092,13,168,43},{42,34,60,255});
-    text(1100,24,"⛶ Pantalla completa",white,153,small,28);
+    rect({1081,13,88,43},{49,36,64,255});
+    text(1087,24,"⌕ Buscar",white,80,small,28);
+    rect({1175,13,85,43},{42,34,60,255});
+    text(1180,24,"⛶ Full",white,80,small,28);
 
     const int hero_y=79,hero_height=home?213:303;
     rect({19,hero_y,1242,hero_height},navy);
@@ -204,7 +206,8 @@ int View::hit_cinematic(const Catalog& c,size_t selected,int x,int y)const{
         const int column=(x-224)/143;
         if((x-224)%143<134)return -2-column;
     }
-    if(y>=13&&y<=56&&x>=1092&&x<1260)return -10;
+    if(y>=13&&y<=56&&x>=1081&&x<1170)return -12;
+    if(y>=13&&y<=56&&x>=1175&&x<1260)return -10;
     const bool home=is_home(c);
     const int hero_bottom=home?292:382;
     const int y_button=hero_bottom-45;
