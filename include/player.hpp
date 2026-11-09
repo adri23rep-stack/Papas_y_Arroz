@@ -18,6 +18,11 @@ struct PlaybackOptions {
     std::vector<std::string> variants,items;
     // Only populated for live TV. Item indices match the existing queue.
     std::vector<LiveChannelTile> channels;
+    // Optional on-demand source resolver for a muted live video preview.
+    // Never resolves arbitrary URLs; caller delegates to existing service_source.
+    std::function<bool(size_t,std::string&,
+                       std::vector<std::pair<std::string,std::string>>&,
+                       std::string&)> preview_resolve;
     std::vector<std::string> subtitles;
     std::function<bool(size_t,std::string&,std::string&)> subtitle_loader;
     int variant=0,item=0;
