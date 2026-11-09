@@ -37,7 +37,8 @@ void View::brand(int x,int y,bool big){
     text(x+n+12,y-3,"Xuper TV Desktop",white,380,big?large:font);
 #else
     text(x+n+12,y-3,"XuperSwitch",white,380,big?large:font);
-#endiftext(x+n+14,y+(big?54:28),"by Jona Ruacho",accent,400,small);
+#endif
+    text(x+n+14,y+(big?54:28),"by Jona Ruacho",accent,400,small);
 }
 void View::splash(const std::string& status){
     background();brand(405,218,true);text(405,330,"Tu entretenimiento, en un solo lugar.",muted,650,font);
