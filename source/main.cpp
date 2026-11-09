@@ -57,8 +57,24 @@ int main(int argc,char** argv){
     wchar_t executable[32768]{};
     const DWORD n=GetModuleFileNameW(nullptr,executable,32768);
     if(n>0&&n<32768){
+        const auto directory=std::filesystem::path(executable).parent_path();
         std::error_code ec;
-        std::filesystem::current_path(std::filesystem::path(executable).parent_path(),ec);
+        std::filesystem::current_path(directory,ec);
+        // First launch: let the user select a locally owned APK. The importer
+        // never uploads or bundles the APK, and the config stays beside the exe.
+        const auto setup=directory/"XuperSetup.exe";
+        if(!std::filesystem::exists(directory/"service.json",ec) &&
+           std::filesystem::exists(setup,ec)){
+            STARTUPINFOW startup{};startup.cb=sizeof(startup);
+            PROCESS_INFORMATION process{};
+            std::wstring command=L"\\\""+setup.wstring()+L"\\\"";
+            if(CreateProcessW(setup.c_str(),command.data(),nullptr,nullptr,FALSE,0,
+                              nullptr,directory.c_str(),&startup,&process)){
+                WaitForSingleObject(process.hProcess,INFINITE);
+                CloseHandle(process.hThread);
+                CloseHandle(process.hProcess);
+            }
+        }
     }
 #endif
     xs::trace_reset();xs::trace("main:begin");
