@@ -4,7 +4,11 @@
 #include "donation_qr.hpp"
 #include <algorithm>
 namespace xs {
+#ifdef _WIN32
+static constexpr SDL_Color white{246,247,251,255},muted{170,171,189,255},accent{239,58,82,255},panel{25,30,44,255},gold{255,207,113,255};
+#else
 static constexpr SDL_Color white{238,242,250,255},muted{150,163,185,255},accent{83,225,199,255},panel{24,32,49,255},gold{255,207,113,255};
+#endif
 static const char* nav[]={"Inicio","TV en vivo","Peliculas","Series","Favoritos","Apoyar"};
 static const char* label(EntryKind kind,const std::string& type){switch(kind){case EntryKind::Channel:return "EN VIVO";case EntryKind::Asset:return type=="0"?"SERIE":"PELICULA";case EntryKind::Episode:return "REPRODUCIR";case EntryKind::VodPage:case EntryKind::SearchPage:return "SIGUIENTE PAGINA";case EntryKind::Category:case EntryKind::VodCategory:return "CATEGORIA";default:return "EXPLORAR";}}
 bool View::open(std::string& error){
@@ -52,17 +56,95 @@ void View::splash(const std::string& status){
     SDL_RenderPresent(renderer);
 }
 int View::columns(const Catalog& c)const{
+#ifdef _WIN32
+    (void)c;return 5;
+#else
     if(!c.entries.empty()&&c.entries[0].kind==EntryKind::Asset)return 5;
     if(!c.entries.empty()&&c.entries[0].kind==EntryKind::Channel)return 4;
     return 3;
+#endif
 }
-int View::page_size(const Catalog& c)const{const int col=columns(c);return col*(col==4?3:2);}
+int View::page_size(const Catalog& c)const{
+#ifdef _WIN32
+    (void)c;return 10;
+#else
+    const int col=columns(c);return col*(col==4?3:2);
+#endif
+}
 static bool detail(const Catalog& c){return !c.entries.empty()&&c.entries[0].kind==EntryKind::Episode;}
 bool View::image(const std::string& url,const std::string& key,SDL_Rect bounds){
     auto* t=images?images->get(url,key):nullptr;if(!t)return false;int w=0,h=0;SDL_QueryTexture(t,nullptr,nullptr,&w,&h);if(!w||!h)return false;
     const double scale=std::min(static_cast<double>(bounds.w)/w,static_cast<double>(bounds.h)/h);SDL_Rect dst{bounds.x+(bounds.w-int(w*scale))/2,bounds.y+(bounds.h-int(h*scale))/2,int(w*scale),int(h*scale)};SDL_RenderCopy(renderer,t,nullptr,&dst);return true;
 }
 void View::draw(const Catalog& c,size_t selected,const std::string& status,bool full_memory){
+#ifdef _WIN32
+    // Cinematic TV layout. Keep all hit zones and keyboard selection in sync.
+    poll_images();background();
+    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
+    rect({0,0,1280,77},{8,11,19,255});
+    rect({0,77,1280,2},{159,31,53,255});
+    rect({25,21,45,43},{225,39,62,255});
+    text(36,17,"X",{255,255,255,255},45,heading,44);
+    text(81,26,"Xuper TV",{246,247,252,255},235,heading,38);
+    for(int i=0;i<6;++i){
+        const int x=341+i*152;
+        const bool focused=nav_focus==i,active=active_nav==i;
+        if(focused||active)rect({x,17,143,45},focused?SDL_Color{214,38,65,255}:SDL_Color{55,25,37,255});
+        text(x+10,29,nav[i],focused?white:active?SDL_Color{255,194,204,255}:muted,130,small,27);
+    }
+    const bool has=!c.entries.empty();
+    const Entry* chosen=has?&c.entries[std::min(selected,c.entries.size()-1)]:nullptr;
+    rect({20,93,1240,283},{23,26,37,255});
+    rect({20,93,5,283},{222,41,68,255});
+    // Artwork stays on the right and never obscures navigation or synopsis.
+    if(chosen&&!chosen->artwork_cache.empty()){
+        rect({844,103,400,261},{27,32,46,255});
+        image(chosen->artwork,chosen->artwork_cache,{849,108,390,250});
+    }else if(!c.artwork_cache.empty()){
+        image(c.artwork,c.artwork_cache,{849,108,390,250});
+    }else{
+        rect({861,117,367,226},{46,31,48,255});
+        text(958,199,"XUPER TV",{200,78,92,255},250,heading,70);
+    }
+    text(53,114,c.title.empty()?"DESTACADO":c.title,{242,83,103,255},690,small,30);
+    text(52,153,chosen?chosen->title:"Tu entretenimiento, en un solo lugar",white,750,large,115);
+    const bool is_channel=chosen&&chosen->kind==EntryKind::Channel;
+    const bool is_vod=chosen&&(chosen->kind==EntryKind::Asset||chosen->kind==EntryKind::Episode);
+    text(54,264,is_channel?"● EN VIVO":is_vod?"CINE  /  SERIES":"EXPLORAR",is_channel?SDL_Color{255,84,104,255}:muted,730,small,24);
+    if(chosen&&!chosen->description.empty())
+        text(54,287,chosen->description,muted,740,small,51);
+    else if(!c.description.empty())text(54,287,c.description,muted,740,small,51);
+    else text(54,288,has?"Selecciona y descubre canales, películas y series.":"Conecta el catálogo para empezar.",muted,740,small,36);
+    // Entire CTA is a functional 'play/open selected' hit zone.
+    rect({52,334,178,36},{224,42,64,255});
+    text(77,341,(chosen&&(chosen->kind==EntryKind::Channel||chosen->kind==EntryKind::Episode))?"▶ Ver canal":"▶ Abrir ahora",white,158,small,29);
+    text(255,340,has?std::to_string(selected+1)+" / "+std::to_string(c.entries.size()):"Sin contenidos",muted,230,small,28);
+    text(27,390,has?("EXPLORAR  ·  "+std::to_string(c.entries.size())+" opciones"):"CATÁLOGO",white,920,font,28);
+    const int cols=5,w=236,h=103,gap=11,top=428;
+    const size_t page_size=10,begin=has?(selected/page_size)*page_size:0;
+    for(size_t i=begin;has&&i<c.entries.size()&&i<begin+page_size;++i){
+        const Entry& e=c.entries[i];const int index=static_cast<int>(i-begin);
+        const int x=27+(index%cols)*(w+gap),y=top+(index/cols)*119;
+        const bool focused=i==selected&&nav_focus<0;
+        rect({x-2,y-2,w+4,h+4},focused?SDL_Color{241,70,95,255}:SDL_Color{35,41,56,255});
+        rect({x,y,w,h},focused?SDL_Color{47,32,43,255}:SDL_Color{29,33,45,255});
+        if(!e.artwork_cache.empty())image(e.artwork,e.artwork_cache,{x+w-104,y+5,98,h-10});
+        else rect({x+w-88,y+10,75,h-20},{40,46,65,255});
+        const std::string type=label(e.kind,e.program_type);
+        text(x+10,y+11,type,{242,93,112,255},w-125,small,25);
+        text(x+10,y+43,e.title,white,w-116,small,56);
+        if(focused)rect({x+4,y+h-6,w-8,3},{239,65,90,255});
+        if(e.kind==EntryKind::Channel&&favorite&&focused)
+            text(x+w-33,y+5,"★",{252,120,134,255},29,font,30);
+    }
+    if(!has)text(36,465,c.title=="Favoritos"?"Aún no tienes canales favoritos.":"Sin contenido. Revisa el estado de conexión.",muted,980,font,80);
+    rect({20,679,1240,1},{48,52,65,255});
+    text(26,686,status,muted,1225,small,27);
+    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
+    SDL_RenderPresent(renderer);
+    return;
+#endif
+
     poll_images();background();rect({0,0,240,720},{13,20,32,255});rect({239,0,1,720},{32,43,61,255});brand(24,30);
     for(int i=0;i<6;++i){const int y=150+i*64;const bool focus=nav_focus==i;rect({16,y,207,50},focus?accent:active_nav==i?SDL_Color{29,51,58,255}:SDL_Color{13,20,32,255});
         text(32,y+11,nav[i],focus?SDL_Color{10,22,30,255}:active_nav==i?accent:muted,180,font,32);}
@@ -100,6 +182,20 @@ void View::draw(const Catalog& c,size_t selected,const std::string& status,bool 
     SDL_RenderPresent(renderer);
 }
 int View::hit(const Catalog& c,size_t selected,int x,int y)const{
+#ifdef _WIN32
+    if(y>=17&&y<=63&&x>=341&&x<341+6*152){
+        const int col=(x-341)/152;
+        if((x-341)%152<143)return -2-col;
+    }
+    if(x>=52&&x<=230&&y>=334&&y<=370&&!c.entries.empty())return -9;
+    const int w=236,gap=11,h=103,top=428;
+    if(x<27||x>=27+5*(w+gap)||y<top||y>=top+2*119)return -1;
+    const int col=(x-27)/(w+gap),row=(y-top)/119;
+    if((x-27)%(w+gap)>=w||(y-top)%119>=h)return -1;
+    const size_t page=10,idx=(selected/page)*page+row*5+col;
+    return idx<c.entries.size()?static_cast<int>(idx):-1;
+#endif
+
     if(!c.entries.empty()&&c.entries[selected].kind==EntryKind::Channel&&x>=1080&&x<=1225&&y>=103&&y<=129)return -8;
     if(x>=16&&x<=223&&y>=150&&y<534){const int row=(y-150)/64;if((y-150)%64<50)return -2-row;}
     const int cols=columns(c),count=page_size(c),w=(946-14*(cols-1))/cols,top=detail(c)?273:132,h=detail(c)?160:cols==5?235:cols==4?148:222;
