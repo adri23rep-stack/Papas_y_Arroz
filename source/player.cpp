@@ -1,7 +1,12 @@
 #include "player.hpp"
 #include "channel_rail.hpp"
+#if defined(_WIN32)
+#include "live_preview.hpp"
+#endif
 #include "artwork.hpp"
 #include <memory>
+#include <thread>
+#include <utility>
 #include "display_tools.hpp"
 #include "catalog.hpp"
 #include "trace.hpp"
@@ -120,6 +125,22 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
     Uint32 strip_until=SDL_GetTicks()+6000;
     std::unique_ptr<Artwork> rail_artwork;
     if(live_channels)rail_artwork=std::make_unique<Artwork>(renderer);
+#ifdef _WIN32
+    // Source resolution can take network time. A background worker owns a
+    // *copy* of its callback and shared result; it cannot outlive stack refs.
+    struct PreviewWork {
+        explicit PreviewWork(size_t i):index(i){}
+        size_t index;
+        std::string url,error;
+        std::vector<std::pair<std::string,std::string>> headers;
+        bool ok=false;
+        std::atomic<bool> done{false};
+    };
+    std::shared_ptr<PreviewWork> preview_work;
+    LivePreview miniature(renderer);
+    int opened_preview=-1;
+    std::string preview_error;
+#endif
     auto show_channels=[&](){
         if(live_channels){strip_visible=true;strip_until=SDL_GetTicks()+6500;}
     };
@@ -347,6 +368,42 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
         }
         const Uint32 now=SDL_GetTicks();paused=flag("pause");
         if(strip_visible&&now>strip_until&&!rail.pressed())strip_visible=false;
+#ifdef _WIN32
+        const int held_channel=strip_visible?rail.preview(now):-1;
+        if(held_channel<0||held_channel==options.item){
+            if(opened_preview>=0){miniature.close();opened_preview=-1;}
+        }else if(options.preview_resolve){
+            if(opened_preview!=held_channel){
+                if(preview_work&&preview_work->done.load(std::memory_order_acquire) &&
+                   static_cast<int>(preview_work->index)!=held_channel){
+                    preview_work.reset();
+                }
+                if(!preview_work){
+                    auto work=std::make_shared<PreviewWork>(static_cast<size_t>(held_channel));
+                    preview_work=work;
+                    auto resolver=options.preview_resolve;
+                    std::thread([work,resolver]{
+                        try{
+                            work->ok=resolver(work->index,work->url,work->headers,work->error);
+                        }catch(...){work->error="No se pudo consultar vista previa.";work->ok=false;}
+                        work->done.store(true,std::memory_order_release);
+                    }).detach();
+                }
+                if(preview_work->done.load(std::memory_order_acquire)&&
+                   static_cast<int>(preview_work->index)==held_channel){
+                    opened_preview=held_channel;
+                    if(opened_preview>=0)miniature.close();
+                    preview_error.clear();
+                    if(preview_work->ok){
+                        if(!miniature.open(preview_work->url,preview_work->headers,preview_error)&&preview_error.empty())
+                            preview_error="No se pudo abrir la señal de prueba.";
+                    }else preview_error=preview_work->error.empty()?
+                        "No se pudo obtener la señal.":preview_work->error;
+                }
+            }
+            if(opened_preview==held_channel)miniature.poll();
+        }
+#endif
         const bool image_changed=rail_artwork&&rail_artwork->poll();
         if(fresh||image_changed||now-last_draw>=100){last_draw=now;SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);SDL_RenderCopy(renderer,texture,nullptr,nullptr);
             if(options.font&&(menu||paused||now<visible_until)&&(!strip_visible||menu)){
@@ -411,15 +468,35 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
                     SDL_Rect popup{735,274,517,229};SDL_RenderFillRect(renderer,&popup);
                     SDL_SetRenderDrawColor(renderer,231,56,84,255);
                     SDL_Rect edge{735,274,517,3};SDL_RenderFillRect(renderer,&edge);
-                    draw_text(754,290,"VISTA RÁPIDA   ·   TV EN VIVO",{252,107,128,255},477);
-                    draw_text(754,332,item.title,{255,255,255,255},440);
-                    draw_text(754,384,item.description.empty()?
-                        "Señal en vivo. Selecciona el canal para reproducirlo.":
-                        item.description,{208,211,224,255},450);
-                    draw_text(754,462,"Suelta para volver  ·  Clic para cambiar",
-                              {185,188,204,255},460);
-                    // A lightweight card/metadata preview: do not silently
-                    // initiate an extra authenticated video session on hold.
+                    draw_text(753,290,"VISTA PREVIA   ·   CANAL EN VIVO",{252,107,128,255},480);
+                    SDL_Rect screen{917,320,317,179};
+                    SDL_SetRenderDrawColor(renderer,17,22,33,255);
+                    SDL_RenderFillRect(renderer,&screen);
+                    bool video=false;
+#ifdef _WIN32
+                    if(opened_preview==held&&!miniature.failed())
+                        video=miniature.draw(screen);
+#endif
+                    if(!video){
+                        if(rail_artwork&&!item.artwork_cache.empty()){
+                            if(SDL_Texture* art=rail_artwork->get(item.artwork,item.artwork_cache))
+                                SDL_RenderCopy(renderer,art,nullptr,&screen);
+                        }
+                        SDL_SetRenderDrawColor(renderer,8,11,19,170);
+                        SDL_Rect hint{917,452,317,47};SDL_RenderFillRect(renderer,&hint);
+#ifdef _WIN32
+                        const std::string message=opened_preview==held?
+                            (preview_error.empty()?"Cargando señal...":preview_error):
+                            (held==options.item?"Canal en reproducción":"Preparando vista previa...");
+#else
+                        const std::string message="Vista rápida del canal";
+#endif
+                        draw_text(925,459,message,{248,250,253,255},297);
+                    }
+                    draw_text(753,337,item.title,{255,255,255,255},154);
+                    draw_text(753,392,item.description.empty()?"Canal en vivo":item.description,
+                              {200,204,217,255},154);
+                    draw_text(753,470,"Suelta para cerrar",{186,190,202,255},154);
                 }
                 SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
             }
