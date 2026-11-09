@@ -39,7 +39,14 @@ static bool search_keyboard(xs::View& view,const xs::Catalog& catalog,size_t sel
     value=buffer;return !value.empty();
 #else
     value.clear();SDL_StartTextInput();bool accepted=false,running=true;
-    while(running){view.draw(catalog,selected,"Buscar: "+value+" | Enter: buscar; Esc: cancelar",full_memory);
+    while(running){
+#ifdef _WIN32
+        // Drain typed text on the SDL UI thread, preserving compatibility with
+        // the original iPhone keyboard feature without a cross-thread event.
+        const std::string remote_text=xs::RemoteServer::shared().take_text();
+        if(value.size()+remote_text.size()<=240)value+=remote_text;
+#endif
+        view.draw(catalog,selected,"Buscar: "+value+" | Enter: buscar; Esc: cancelar",full_memory);
         SDL_Event event;while(SDL_PollEvent(&event)){
             if(event.type==SDL_QUIT)running=false;
             if(event.type==SDL_TEXTINPUT&&value.size()+std::strlen(event.text.text)<=240)value+=event.text.text;
