@@ -26,10 +26,14 @@ anterior. No copies esos archivos de estado a la carpeta nueva. Conserva
 una copia de la carpeta vieja, sin publicarla en GitHub, por si luego
 necesitas restaurar sus datos.
 
-La plantilla del proyecto Switch se creó para una versión de la app y
-**puede no coincidir con la versión 4.34.4 de tu APK**. Cargar el catálogo
-no está garantizado; no debemos mezclar claves o identificadores de
-versiones distintas ni eludir restricciones de acceso.
+La plantilla de Switch se contrastó con el APK 4.34.4 proporcionado
+para pruebas: el identificador interno del servicio, la versión 43404 y
+los parámetros básicos de conexión coinciden. El paquete Android declara
+otro nombre de paquete (`com.xuper.netxxus`), que es distinto del ID de
+servicio interno (`com.android.msandroid`). No significa que el servidor
+acepte la conexión: el registro y la disponibilidad de contenidos se
+comprueban únicamente cuando responde el servicio, sin eludir
+restricciones regionales, controles de acceso o licencias.
 
 ## Ejecutar en la PC conectada a la TV por HDMI
 
