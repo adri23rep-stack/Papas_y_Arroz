@@ -1,0 +1,117 @@
+name: Xuper TV Desktop | Windows preview
+
+on:
+  push:
+    branches: [windows-desktop-preview]
+    paths:
+      - '.github/workflows/bootstrap-windows.yml'
+      - 'patches/**'
+      - 'source/**'
+      - 'include/**'
+      - 'CMakeLists.txt'
+      - 'catalog.m3u'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import-source:
+    name: Import original sources and apply Windows changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          ref: windows-desktop-preview
+      - name: Import pinned MIT-licensed upstream and apply preview patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f source/main.cpp ]]; then
+            echo "Windows source already exists; leaving it unchanged."
+            exit 0
+          fi
+          git init -q "$RUNNER_TEMP/xuper-upstream"
+          git -C "$RUNNER_TEMP/xuper-upstream" remote add origin https://github.com/jonaruacho/Xuper-TV-by-JonaRuacho.git
+          git -C "$RUNNER_TEMP/xuper-upstream" fetch --depth=1 origin 438c378706c1355d2f306d2d62508bdc53559cd3
+          git -C "$RUNNER_TEMP/xuper-upstream" checkout --detach FETCH_HEAD
+          rsync -a --exclude='.git' --exclude='.github/workflows/' "$RUNNER_TEMP/xuper-upstream/" "$GITHUB_WORKSPACE/"
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          import zlib
+          src = Path('patches/windows-port-core.zlib.b64').read_text().strip()
+          Path('/tmp/windows-port.patch').write_bytes(zlib.decompress(base64.b64decode(src)))
+          PY
+          git apply --check /tmp/windows-port.patch
+          git apply /tmp/windows-port.patch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Import JonaRuacho source and apply Windows desktop preview"
+          git push origin HEAD:windows-desktop-preview
+  windows-build:
+    name: Build portable Windows executable
+    needs: import-source
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: windows-desktop-preview
+      - name: MSYS2 UCRT64 dependencies
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-SDL2
+            mingw-w64-ucrt-x86_64-SDL2_ttf
+            mingw-w64-ucrt-x86_64-mpv
+            mingw-w64-ucrt-x86_64-curl
+            mingw-w64-ucrt-x86_64-mbedtls
+            mingw-w64-ucrt-x86_64-libpng
+            mingw-w64-ucrt-x86_64-libjpeg-turbo
+            mingw-w64-ucrt-x86_64-libwebp
+            mingw-w64-ucrt-x86_64-ntldd
+      - name: Configure, compile and run tests
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          cmake -S . -B build/windows -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/windows --parallel 2
+          ctest --test-dir build/windows --output-on-failure
+      - name: Package Windows EXE and DLLs
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/Xuper-TV-Desktop/licenses
+          cp build/windows/XuperTVDesktop.exe dist/Xuper-TV-Desktop/
+          cp packaging/runtime/switch/xuperswitch/{font.ttf,cacert.pem,test.mp4} dist/Xuper-TV-Desktop/
+          cp catalog.m3u dist/Xuper-TV-Desktop/
+          cp LICENSE LICENSE.nlohmann-json COPYRIGHT.mpv DEPENDENCIAS.md dist/Xuper-TV-Desktop/
+          cp -r licenses/. dist/Xuper-TV-Desktop/licenses/
+          ntldd -R build/windows/XuperTVDesktop.exe > build/windows/dependencies.txt
+          while IFS= read -r dll; do
+            [[ -z "$dll" ]] && continue
+            path=$(find /ucrt64/bin -maxdepth 1 -iname "$dll" -print -quit)
+            [[ -n "$path" ]] && cp -n "$path" dist/Xuper-TV-Desktop/ || true
+          done < <(sed -nE 's/^[[:space:]]*([^[:space:]]+\.dll)[[:space:]]+=>.*/\1/ip' build/windows/dependencies.txt | sort -fu)
+          if grep -qi 'not found' build/windows/dependencies.txt; then
+            echo 'Some DLL dependencies are missing:'
+            cat build/windows/dependencies.txt
+            exit 1
+          fi
+          ls -lh dist/Xuper-TV-Desktop/XuperTVDesktop.exe
+      - name: Upload test build (not a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Xuper-TV-Desktop-Windows-preview
+          path: dist/Xuper-TV-Desktop/
+          if-no-files-found: error
