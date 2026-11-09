@@ -1,0 +1,68 @@
+cmake_minimum_required(VERSION 3.20)
+project(XuperTVDesktop VERSION 0.1.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+find_package(PkgConfig REQUIRED)
+find_package(SDL2 REQUIRED CONFIG COMPONENTS SDL2 SDL2main)
+pkg_check_modules(SDL2_TTF REQUIRED IMPORTED_TARGET SDL2_ttf)
+pkg_check_modules(MPV REQUIRED IMPORTED_TARGET mpv)
+pkg_check_modules(CURL REQUIRED IMPORTED_TARGET libcurl)
+pkg_check_modules(WEBP REQUIRED IMPORTED_TARGET libwebp)
+find_package(PNG REQUIRED)
+find_package(JPEG REQUIRED)
+find_library(MBEDCRYPTO_LIBRARY NAMES mbedcrypto REQUIRED)
+
+# WIN32 requests the GUI subsystem. Link SDL2main before SDL2, per SDL2 docs.
+if(WIN32)
+  add_executable(XuperTVDesktop WIN32)
+else()
+  add_executable(XuperTVDesktop)
+endif()
+
+target_sources(XuperTVDesktop PRIVATE
+  source/main.cpp
+  source/catalog.cpp
+  source/player.cpp
+  source/view.cpp
+  source/trace.cpp
+  source/codec.cpp
+  source/ranger_codec.cpp
+  source/service.cpp
+  source/artwork.cpp
+)
+target_include_directories(XuperTVDesktop PRIVATE include include/vendor)
+target_link_libraries(XuperTVDesktop PRIVATE
+  $<$<TARGET_EXISTS:SDL2::SDL2main>:SDL2::SDL2main>
+  SDL2::SDL2
+  PkgConfig::SDL2_TTF
+  PkgConfig::MPV
+  PkgConfig::CURL
+  PkgConfig::WEBP
+  PNG::PNG
+  JPEG::JPEG
+  ${MBEDCRYPTO_LIBRARY}
+)
+if(MSVC)
+  target_compile_options(XuperTVDesktop PRIVATE /W3)
+else()
+  target_compile_options(XuperTVDesktop PRIVATE -Wall -Wextra)
+endif()
+
+include(CTest)
+if(BUILD_TESTING)
+  add_executable(catalog_test source/catalog.cpp tests/catalog_test.cpp)
+  target_include_directories(catalog_test PRIVATE include)
+  add_test(NAME catalog_test COMMAND catalog_test)
+  add_executable(playback_state_test tests/playback_state_test.cpp)
+  target_include_directories(playback_state_test PRIVATE include)
+  add_test(NAME playback_state_test COMMAND playback_state_test)
+  add_executable(playback_error_test tests/playback_error_test.cpp)
+  target_include_directories(playback_error_test PRIVATE include)
+  add_test(NAME playback_error_test COMMAND playback_error_test)
+  add_executable(saved_catalog_test source/catalog.cpp tests/saved_catalog_test.cpp)
+  target_include_directories(saved_catalog_test PRIVATE include)
+  add_test(NAME saved_catalog_test COMMAND saved_catalog_test)
+endif()
