@@ -62,7 +62,8 @@ target_sources(XuperTVDesktop PRIVATE
 )
 # Muted secondary decoder is a Windows-only experimental UI feature.
 if(WIN32)
-  target_sources(XuperTVDesktop PRIVATE source/live_preview.cpp)
+  target_sources(XuperTVDesktop PRIVATE source/live_preview.cpp source/remote_server.cpp)
+  target_link_libraries(XuperTVDesktop PRIVATE ws2_32 bcrypt)
 endif()
 target_include_directories(XuperTVDesktop PRIVATE include include/vendor)
 target_link_libraries(XuperTVDesktop PRIVATE
