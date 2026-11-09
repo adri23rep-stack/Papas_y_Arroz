@@ -1,3 +1,8 @@
+#ifdef _WIN32
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
+#endif
 #include "remote_server.hpp"
 #ifdef _WIN32
 // Windows desktop only. The Switch homebrew build does not link this file.
