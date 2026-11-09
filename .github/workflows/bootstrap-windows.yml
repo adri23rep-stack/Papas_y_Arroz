@@ -125,7 +125,7 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check -r tools/requirements.txt "loguru>=0.7" "pyinstaller==6.16.0"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pyinstaller --noconfirm --clean --onefile --console --name XuperSetup --paths tools tools/windows_apk_setup.py
+          pyinstaller --noconfirm --clean --onefile --console --collect-data androguard --name XuperSetup --paths tools tools/windows_apk_setup.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           # Launch the actual frozen GUI app in a no-dialog self-test mode.
           # This verifies Androguard imports when Windows has no stdout/stderr.
