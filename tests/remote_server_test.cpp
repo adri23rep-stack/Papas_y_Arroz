@@ -89,9 +89,7 @@ int main(){
     while(SDL_PollEvent(&e))if(e.type==SDL_MOUSEMOTION&&e.motion.x==682&&e.motion.y==339)saw_move=true;
     REQUIRE(saw_move);
     REQUIRE(okay(post("/input",R"({"action":"text","text":"hola"})",token)));
-    bool saw_text=false;
-    while(SDL_PollEvent(&e))if(e.type==SDL_TEXTINPUT&&std::strcmp(e.text.text,"hola")==0)saw_text=true;
-    REQUIRE(saw_text);
+    REQUIRE(server.take_text()=="hola");
     REQUIRE(okay(post("/input",R"({"action":"tv"})",token)));
     bool saw_tv=false;
     while(SDL_PollEvent(&e))if(e.type==SDL_KEYDOWN&&e.key.keysym.sym==SDLK_F5)saw_tv=true;
