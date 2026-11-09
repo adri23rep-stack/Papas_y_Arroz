@@ -125,7 +125,7 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check -r tools/requirements.txt "loguru>=0.7" "pyinstaller==6.16.0"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pyinstaller --noconfirm --clean --onefile --windowed --name XuperSetup --paths tools --collect-all androguard tools/windows_apk_setup.py
+          pyinstaller --noconfirm --clean --onefile --windowed --name XuperSetup --paths tools tools/windows_apk_setup.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Copy-Item -Path dist/XuperSetup.exe -Destination dist/Xuper-TV-Desktop/XuperSetup.exe -Force
           if (-not (Test-Path dist/Xuper-TV-Desktop/XuperSetup.exe)) { throw "Setup EXE missing" }
