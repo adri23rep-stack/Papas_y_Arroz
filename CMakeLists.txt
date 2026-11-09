@@ -92,11 +92,14 @@ if(BUILD_TESTING)
   add_executable(saved_catalog_test source/catalog.cpp tests/saved_catalog_test.cpp)
   target_include_directories(saved_catalog_test PRIVATE include include/vendor)
   add_test(NAME saved_catalog_test COMMAND saved_catalog_test)
+  add_executable(channel_rail_test tests/channel_rail_test.cpp)
+  target_include_directories(channel_rail_test PRIVATE include)
+  add_test(NAME channel_rail_test COMMAND channel_rail_test)
 
   # Test cases use assert() for both checks and setup/side effects.
   # Release adds -DNDEBUG, which otherwise skips their setup and crashes
   # when fixtures are renamed before being created.
-  foreach(_test_target IN ITEMS catalog_test playback_state_test playback_error_test saved_catalog_test)
+  foreach(_test_target IN ITEMS catalog_test playback_state_test playback_error_test saved_catalog_test channel_rail_test)
     if(MSVC)
       target_compile_options(${_test_target} PRIVATE /UNDEBUG)
     else()
