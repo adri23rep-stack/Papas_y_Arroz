@@ -139,7 +139,7 @@ int main(int argc,char** argv){
             if(event.type==SDL_MOUSEBUTTONDOWN||event.type==SDL_FINGERDOWN){
                 const int x=event.type==SDL_FINGERDOWN?int(event.tfinger.x*1280):event.button.x,y=event.type==SDL_FINGERDOWN?int(event.tfinger.y*720):event.button.y;
                 if(donating){back=true;continue;}const int hit=view.hit(catalog,selected,x,y);
-                if(hit==-8)toggle_favorite=true;else if(hit<=-2)nav_action=-hit-2;else if(hit>=0){selected=static_cast<size_t>(hit);view.nav_focus=-1;play=true;}
+                if(hit==-8)toggle_favorite=true;else if(hit==-9)play=true;else if(hit<=-2)nav_action=-hit-2;else if(hit>=0){selected=static_cast<size_t>(hit);view.nav_focus=-1;play=true;}
             }
             if(event.type==SDL_KEYDOWN){
                 switch(event.key.keysym.sym){
@@ -175,8 +175,16 @@ int main(int argc,char** argv){
 #endif
         if(donating){if(back||play||login){donating=false;redraw=true;}SDL_Delay(10);continue;}
         if(view.nav_focus>=0){
+#ifdef _WIN32
+            // Top navigation bar: left/right cycles tabs, down returns to cards.
+            if(left||up){view.nav_focus=(view.nav_focus+5)%6;redraw=true;}
+            if(right){view.nav_focus=(view.nav_focus+1)%6;redraw=true;}
+            if(down||back){view.nav_focus=-1;redraw=true;back=false;}
+#else
             if(up){view.nav_focus=(view.nav_focus+5)%6;redraw=true;}if(down){view.nav_focus=(view.nav_focus+1)%6;redraw=true;}
-            if(right||back){view.nav_focus=-1;redraw=true;back=false;}if(play){nav_action=view.nav_focus;play=false;}
+            if(right||back){view.nav_focus=-1;redraw=true;back=false;}
+#endif
+            if(play){nav_action=view.nav_focus;play=false;}
             up=down=left=right=false;
         }else if(left&&selected%static_cast<size_t>(view.columns(catalog))==0){view.nav_focus=view.active_nav;left=false;redraw=true;}
         if(nav_action==0)login=true;
@@ -285,7 +293,18 @@ int main(int argc,char** argv){
                                 return i<subtitles.size()&&xs::service_subtitle(session,subtitles[i],data,error);
                             };
                         }
-                        for(size_t i=0;i<queue.size();++i){options.items.push_back(catalog.entries[queue[i]].title);if(queue[i]==selected)options.item=static_cast<int>(i);}
+                        for(size_t i=0;i<queue.size();++i){
+                            const auto& item=catalog.entries[queue[i]];
+                            options.items.push_back(item.title);
+                            if(current.kind==xs::EntryKind::Channel){
+                                xs::LiveChannelTile tile;
+                                tile.title=item.title;tile.artwork=item.artwork;
+                                tile.artwork_cache=item.artwork_cache;
+                                tile.description=item.description;
+                                options.channels.push_back(std::move(tile));
+                            }
+                            if(queue[i]==selected)options.item=static_cast<int>(i);
+                        }
                         if(!source.empty()){
                             xs::PlaybackOutcome outcome;status=xs::play(source,view.renderer,headers,options,&outcome);xs::trace("main:video_returned");
                             speed=outcome.speed;volume=outcome.volume;auto_next=outcome.auto_next;
