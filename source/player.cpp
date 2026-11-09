@@ -1,4 +1,7 @@
 #include "player.hpp"
+#include "channel_rail.hpp"
+#include "artwork.hpp"
+#include <memory>
 #include "display_tools.hpp"
 #include "catalog.hpp"
 #include "trace.hpp"
@@ -110,6 +113,16 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
     const std::vector<std::string> ratios{"Original","16:9","4:3","Rellenar"};
     PlaybackOutcome result;bool auto_next=options.auto_next;std::string notice,media_hint;
     Uint32 visible_until=SDL_GetTicks()+5000,last_draw=0;
+    const bool live_channels=options.channels.size()>1&&options.channels.size()==options.items.size();
+    ChannelRail rail(live_channels?options.channels.size():0,
+                     live_channels?static_cast<size_t>(std::max(0,options.item)):0);
+    bool strip_visible=live_channels;
+    Uint32 strip_until=SDL_GetTicks()+6000;
+    std::unique_ptr<Artwork> rail_artwork;
+    if(live_channels)rail_artwork=std::make_unique<Artwork>(renderer);
+    auto show_channels=[&](){
+        if(live_channels){strip_visible=true;strip_until=SDL_GetTicks()+6500;}
+    };
     auto property=[&](const char* name){double value=0;mpv_get_property(mpv,name,MPV_FORMAT_DOUBLE,&value);return value;};
     auto flag=[&](const char* name){int value=0;mpv_get_property(mpv,name,MPV_FORMAT_FLAG,&value);return value!=0;};
     auto set_number=[&](const char* name,double value){if(mpv_set_property(mpv,name,MPV_FORMAT_DOUBLE,&value)<0)notice="Esta opcion no esta disponible en este video.";};
@@ -185,7 +198,39 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
         int horizontal=0,vertical=0,jump=0,item_delta=0;SDL_Event event;
         while(SDL_PollEvent(&event)){
             if(event.type==SDL_QUIT)running=false;
+            if(live_channels&&!menu){
+                if(event.type==SDL_MOUSEMOTION){
+                    if(rail.pressed())rail.motion(event.motion.x);
+                    if(event.motion.y>515)show_channels();
+                }
+                if(event.type==SDL_MOUSEWHEEL){
+                    if(!strip_visible)show_channels();
+                    else rail.wheel(event.wheel.y);
+                    show_channels();
+                }
+                if(event.type==SDL_MOUSEBUTTONDOWN&&event.button.button==SDL_BUTTON_LEFT){
+                    if(strip_visible&&rail.contains(event.button.x,event.button.y))
+                        rail.press(event.button.x,event.button.y,SDL_GetTicks());
+                    else if(!strip_visible)show_channels();
+                    else{strip_visible=false;rail=ChannelRail(options.channels.size(),rail.focus());}
+                }
+                if(event.type==SDL_MOUSEBUTTONUP&&event.button.button==SDL_BUTTON_LEFT&&rail.pressed()){
+                    const int chosen=rail.release(event.button.x,event.button.y,SDL_GetTicks());
+                    if(chosen>=0&&chosen!=options.item)request_item(chosen);
+                    show_channels();
+                }
+            }
             if(event.type==SDL_KEYDOWN&&!event.key.repeat){
+                if(live_channels&&!menu){
+                    const auto key=event.key.keysym.sym;
+                    if(key==SDLK_DOWN&&!strip_visible){show_channels();continue;}
+                    if(strip_visible){
+                        if(key==SDLK_LEFT){rail.move_focus(-1);show_channels();continue;}
+                        if(key==SDLK_RIGHT){rail.move_focus(1);show_channels();continue;}
+                        if(key==SDLK_RETURN){if(static_cast<int>(rail.focus())!=options.item)request_item(static_cast<int>(rail.focus()));continue;}
+                        if(key==SDLK_ESCAPE||key==SDLK_UP){strip_visible=false;continue;}
+                    }
+                }
                 if(event.key.keysym.sym==SDLK_F10){
                     xs::move_to_next_display(SDL_RenderGetWindow(renderer));
                     continue;
@@ -301,8 +346,10 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
             if(first_frame&&loaded){trace("play:first_frame");first_frame=false;}
         }
         const Uint32 now=SDL_GetTicks();paused=flag("pause");
-        if(fresh||now-last_draw>=100){last_draw=now;SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);SDL_RenderCopy(renderer,texture,nullptr,nullptr);
-            if(options.font&&(menu||paused||now<visible_until)){
+        if(strip_visible&&now>strip_until&&!rail.pressed())strip_visible=false;
+        const bool image_changed=rail_artwork&&rail_artwork->poll();
+        if(fresh||image_changed||now-last_draw>=100){last_draw=now;SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);SDL_RenderCopy(renderer,texture,nullptr,nullptr);
+            if(options.font&&(menu||paused||now<visible_until)&&(!strip_visible||menu)){
                 SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);SDL_SetRenderDrawColor(renderer,10,17,28,230);
                 SDL_Rect panel{20,menu?35:526,1240,menu?650:175};SDL_RenderFillRect(renderer,&panel);
                 const SDL_Color white{238,243,250,255},cyan{73,219,223,255},muted{180,192,209,255};
@@ -321,7 +368,62 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
                 if(duration>0){bar.w=static_cast<int>(870*std::clamp(pos/duration,0.0,1.0));SDL_SetRenderDrawColor(renderer,73,219,223,255);SDL_RenderFillRect(renderer,&bar);}
                 if(!menu&&!notice.empty())draw_text(44,660,notice,cyan);
                 SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
-            }SDL_RenderPresent(renderer);
+            }
+            if(live_channels&&strip_visible&&!menu){
+                SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
+                SDL_SetRenderDrawColor(renderer,9,10,18,239);
+                SDL_Rect shade{0,515,1280,205};SDL_RenderFillRect(renderer,&shade);
+                SDL_SetRenderDrawColor(renderer,219,47,74,255);
+                SDL_Rect line{0,514,1280,3};SDL_RenderFillRect(renderer,&line);
+                draw_text(28,524,"TV EN VIVO   ·   Desliza para explorar  |  Clic: cambiar  |  Mantener: vista rápida",
+                          {245,245,251,255},1220);
+                SDL_Rect clip{ChannelRail::x,ChannelRail::y,ChannelRail::viewport,ChannelRail::height};
+                SDL_RenderSetClipRect(renderer,&clip);
+                for(size_t i=0;i<options.channels.size();++i){
+                    const int xx=ChannelRail::x+static_cast<int>(i)*(ChannelRail::width+ChannelRail::gap)-rail.offset();
+                    if(xx+ChannelRail::width<clip.x||xx>clip.x+clip.w)continue;
+                    const auto& item=options.channels[i];
+                    const bool focused=i==rail.focus(),playing=static_cast<int>(i)==options.item;
+                    SDL_SetRenderDrawColor(renderer,focused?222:45,focused?47:49,focused?76:65,255);
+                    SDL_Rect frame{xx-2,ChannelRail::y-2,ChannelRail::width+4,ChannelRail::height+4};
+                    SDL_RenderFillRect(renderer,&frame);
+                    SDL_SetRenderDrawColor(renderer,24,28,43,255);
+                    SDL_Rect body{xx,ChannelRail::y,ChannelRail::width,ChannelRail::height};
+                    SDL_RenderFillRect(renderer,&body);
+                    if(rail_artwork&&!item.artwork_cache.empty()){
+                        if(SDL_Texture* art=rail_artwork->get(item.artwork,item.artwork_cache)){
+                            SDL_Rect thumb{xx+9,ChannelRail::y+7,ChannelRail::width-18,70};
+                            SDL_RenderCopy(renderer,art,nullptr,&thumb);
+                        }
+                    }
+                    if(playing){
+                        SDL_SetRenderDrawColor(renderer,192,30,57,250);
+                        SDL_Rect tag{xx+7,ChannelRail::y+7,101,23};SDL_RenderFillRect(renderer,&tag);
+                        draw_text(xx+13,ChannelRail::y+9,"EN VIVO",{255,255,255,255},95);
+                    }
+                    draw_text(xx+10,ChannelRail::y+84,item.title,{248,248,251,255},ChannelRail::width-20);
+                }
+                SDL_RenderSetClipRect(renderer,nullptr);
+                const int held=rail.preview(now);
+                if(held>=0&&static_cast<size_t>(held)<options.channels.size()){
+                    const auto& item=options.channels[static_cast<size_t>(held)];
+                    SDL_SetRenderDrawColor(renderer,9,12,22,249);
+                    SDL_Rect popup{735,274,517,229};SDL_RenderFillRect(renderer,&popup);
+                    SDL_SetRenderDrawColor(renderer,231,56,84,255);
+                    SDL_Rect edge{735,274,517,3};SDL_RenderFillRect(renderer,&edge);
+                    draw_text(754,290,"VISTA RÁPIDA   ·   TV EN VIVO",{252,107,128,255},477);
+                    draw_text(754,332,item.title,{255,255,255,255},440);
+                    draw_text(754,384,item.description.empty()?
+                        "Señal en vivo. Selecciona el canal para reproducirlo.":
+                        item.description,{208,211,224,255},450);
+                    draw_text(754,462,"Suelta para volver  ·  Clic para cambiar",
+                              {185,188,204,255},460);
+                    // A lightweight card/metadata preview: do not silently
+                    // initiate an extra authenticated video session on hold.
+                }
+                SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
+            }
+            SDL_RenderPresent(renderer);
         }else SDL_Delay(5);
     }
     result.auto_next=auto_next;
