@@ -96,6 +96,7 @@ jobs:
           mkdir -p dist/Xuper-TV-Desktop/licenses
           cp build/windows/XuperTVDesktop.exe dist/Xuper-TV-Desktop/
           cp packaging/runtime/switch/xuperswitch/{font.ttf,cacert.pem,test.mp4} dist/Xuper-TV-Desktop/
+          cp packaging/runtime/switch/xuperswitch/service.template.json dist/Xuper-TV-Desktop/service.template.json
           cp catalog.m3u dist/Xuper-TV-Desktop/
           cp LICENSE LICENSE.nlohmann-json COPYRIGHT.mpv DEPENDENCIAS.md dist/Xuper-TV-Desktop/
           cp -r licenses/. dist/Xuper-TV-Desktop/licenses/
@@ -116,38 +117,24 @@ jobs:
             fi
           done
           ls -lh dist/Xuper-TV-Desktop/XuperTVDesktop.exe
-      - name: Set up Python for offline APK import wizard
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Build standalone Windows APK import wizard
+      - name: Prepare bundled, installation-neutral service template
         shell: pwsh
         run: |
-          python -m pip install --disable-pip-version-check -r tools/requirements.txt "loguru>=0.7" "pyinstaller==6.16.0"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pyinstaller --noconfirm --clean --onefile --console --collect-data androguard --name XuperSetup --paths tools tools/windows_apk_setup.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          # Launch the actual frozen GUI app in a no-dialog self-test mode.
-          # This verifies Androguard imports when Windows has no stdout/stderr.
-          $exe = (Resolve-Path dist/XuperSetup.exe).Path
-          # Console mode is temporarily intentional: it exposes Python import
-          # errors rather than hiding them behind a frozen GUI traceback dialog.
-          $stdout = Join-Path $env:RUNNER_TEMP "xuper-setup-smoke-stdout.txt"
-          $stderr = Join-Path $env:RUNNER_TEMP "xuper-setup-smoke-stderr.txt"
-          $smoke = Start-Process -FilePath $exe -ArgumentList "--self-test-imports" -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-          if (-not $smoke.WaitForExit(60000)) {
-            Stop-Process -Id $smoke.Id -Force -ErrorAction SilentlyContinue
-            if (Test-Path $stderr) { Get-Content $stderr }
-            throw "Frozen setup import smoke test timed out"
+          $file = "dist/Xuper-TV-Desktop/service.template.json"
+          $config = Get-Content -Raw -Encoding UTF8 $file | ConvertFrom-Json
+          foreach ($key in @("portal_hosts", "key_base64", "password_salt", "app_id", "apk_version")) {
+            if (-not $config.$key) { throw "Incomplete public service template: $key" }
           }
-          if (Test-Path $stderr) { Get-Content $stderr }
-          if ($smoke.ExitCode -ne 0) { throw "Frozen setup import smoke test failed (exit $($smoke.ExitCode))" }
-          Write-Host "Frozen Windows setup import smoke test passed."
-          Copy-Item -Path dist/XuperSetup.exe -Destination dist/Xuper-TV-Desktop/XuperSetup.exe -Force
-          if (-not (Test-Path dist/Xuper-TV-Desktop/XuperSetup.exe)) { throw "Setup EXE missing" }
-      - name: Copy first-run instructions
-        shell: pwsh
-        run: Copy-Item README_WINDOWS.md dist/Xuper-TV-Desktop/README_WINDOWS.md
+          foreach ($key in @("installation_serial", "device_id", "userId", "userToken", "sn", "password", "username")) {
+            if ($config.PSObject.Properties.Name -contains $key) {
+              throw "Refusing to package installation identity: $key"
+            }
+          }
+          $config.ca_file = "cacert.pem"
+          $config | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $file
+          if (Test-Path "dist/Xuper-TV-Desktop/service.json") { throw "Never ship device-specific service.json" }
+          Copy-Item README_WINDOWS.md dist/Xuper-TV-Desktop/README_WINDOWS.md
+          Write-Host "Bundled service template verified. No APK import required."
       - name: Upload test build (not a release)
         uses: actions/upload-artifact@v4
         with:
