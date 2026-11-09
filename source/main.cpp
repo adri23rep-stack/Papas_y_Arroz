@@ -60,21 +60,10 @@ int main(int argc,char** argv){
         const auto directory=std::filesystem::path(executable).parent_path();
         std::error_code ec;
         std::filesystem::current_path(directory,ec);
-        // First launch: let the user select a locally owned APK. The importer
-        // never uploads or bundles the APK, and the config stays beside the exe.
-        const auto setup=directory/"XuperSetup.exe";
-        if(!std::filesystem::exists(directory/"service.json",ec) &&
-           std::filesystem::exists(setup,ec)){
-            STARTUPINFOW startup{};startup.cb=sizeof(startup);
-            PROCESS_INFORMATION process{};
-            std::wstring command=L"XuperSetup.exe";
-            if(CreateProcessW(setup.c_str(),command.data(),nullptr,nullptr,FALSE,0,
-                              nullptr,directory.c_str(),&startup,&process)){
-                WaitForSingleObject(process.hProcess,INFINITE);
-                CloseHandle(process.hThread);
-                CloseHandle(process.hProcess);
-            }
-        }
+        // A platform-neutral service.template.json is packaged with the
+        // Windows build. load_installation() generates the per-device identity
+        // at first start; no Android APK or setup executable is required.
+
     }
 #endif
     xs::trace_reset();xs::trace("main:begin");
