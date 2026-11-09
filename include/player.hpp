@@ -6,10 +6,18 @@
 #include <SDL_ttf.h>
 #include <functional>
 namespace xs {
+struct LiveChannelTile {
+    std::string title;
+    std::string artwork;
+    std::string artwork_cache;
+    std::string description;
+};
 struct PlaybackOptions {
     TTF_Font* font=nullptr;
     std::string title;
     std::vector<std::string> variants,items;
+    // Only populated for live TV. Item indices match the existing queue.
+    std::vector<LiveChannelTile> channels;
     std::vector<std::string> subtitles;
     std::function<bool(size_t,std::string&,std::string&)> subtitle_loader;
     int variant=0,item=0;
