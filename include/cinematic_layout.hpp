@@ -1,6 +1,7 @@
 #pragma once
 #include "catalog.hpp"
 #include <algorithm>
+#include <cstdlib>
 #include <cstddef>
 #include <vector>
 
@@ -60,6 +61,27 @@ inline std::vector<CinematicTile> cinematic_tiles(const Catalog& c,size_t select
         }
     }
     return result;
+}
+// Navigate HOME by the actual card positions, not an unrelated fixed grid.
+inline size_t cinematic_move(const Catalog& c,size_t selected,int last_index,int dx,int dy){
+    const auto cards=cinematic_tiles(c,selected,last_index);
+    const auto current=std::find_if(cards.begin(),cards.end(),
+        [&](const CinematicTile& t){return t.index==selected;});
+    if(current==cards.end())return selected;
+    const int cx=current->x+current->w/2,cy=current->y+current->h/2;
+    size_t closest=selected;
+    long best=0x7fffffff;
+    for(const auto& card:cards){
+        if(card.index==selected)continue;
+        const int sx=card.x+card.w/2-cx,sy=card.y+card.h/2-cy;
+        if(dx>0&&sx<=5||dx<0&&sx>=-5||dy>0&&sy<=5||dy<0&&sy>=-5)continue;
+        // Penalize moving diagonally, so arrows stay within their row/column.
+        const long forward=dx?sx*dx:sy*dy;
+        const long sideways=dx?std::abs(sy):std::abs(sx);
+        const long score=forward*4+sideways*3;
+        if(score<best){best=score;closest=card.index;}
+    }
+    return closest;
 }
 inline int cinematic_hit(const Catalog& c,size_t selected,int last_index,int x,int y){
     for(const auto& tile:cinematic_tiles(c,selected,last_index))
