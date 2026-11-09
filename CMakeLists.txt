@@ -15,6 +15,33 @@ find_package(PNG REQUIRED)
 find_package(JPEG REQUIRED)
 find_library(MBEDCRYPTO_LIBRARY NAMES mbedcrypto REQUIRED)
 
+# The MSYS2 UCRT64 pkg-config files expose POSIX paths (e.g. /ucrt64/include).
+# Native MinGW CMake needs their Windows equivalents (D:/.../ucrt64/include).
+if(WIN32 AND MINGW)
+  foreach(_pkg_target IN ITEMS PkgConfig::SDL2_TTF PkgConfig::MPV PkgConfig::CURL PkgConfig::WEBP)
+    get_target_property(_inc_dirs "${_pkg_target}" INTERFACE_INCLUDE_DIRECTORIES)
+    if(_inc_dirs)
+      set(_fixed_dirs "")
+      foreach(_inc_dir IN LISTS _inc_dirs)
+        if(_inc_dir MATCHES "^/")
+          execute_process(
+            COMMAND cygpath -m "${_inc_dir}"
+            OUTPUT_VARIABLE _win_dir
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            RESULT_VARIABLE _convert_status)
+          if(NOT _convert_status EQUAL 0)
+            message(FATAL_ERROR "Cannot convert pkg-config path: ${_inc_dir}")
+          endif()
+          list(APPEND _fixed_dirs "${_win_dir}")
+        else()
+          list(APPEND _fixed_dirs "${_inc_dir}")
+        endif()
+      endforeach()
+      set_property(TARGET "${_pkg_target}" PROPERTY INTERFACE_INCLUDE_DIRECTORIES "${_fixed_dirs}")
+    endif()
+  endforeach()
+endif()
+
 # WIN32 requests the GUI subsystem. Link SDL2main before SDL2, per SDL2 docs.
 if(WIN32)
   add_executable(XuperTVDesktop WIN32)
