@@ -397,18 +397,11 @@ void RemoteServer::handle(uintptr_t id){
           [](unsigned char c){return c<32||c==127;})){
             reply(client,400,{{"error","Invalid search text"}});return;
         }
-        // SDL_TEXTINPUT buffers are 32 bytes. Respect UTF-8 boundaries.
-        for(size_t start=0;start<value.size();){
-            size_t end=std::min(start+31,value.size());
-            while(end<value.size()&&end>start&&
-                  (static_cast<unsigned char>(value[end])&0xc0)==0x80)--end;
-            if(end==start)break;
-            SDL_Event input{};input.type=SDL_TEXTINPUT;
-            const size_t count=end-start;
-            std::memcpy(input.text.text,value.data()+start,count);
-            input.text.text[count]='\0';
-            SDL_PushEvent(&input);
-            start=end;
+        // Network thread cannot safely modify the active SDL text input
+        // session. The search screen drains this queue on the UI thread.
+        {
+            std::lock_guard<std::mutex> lock(text_mutex_);
+            if(pending_text_.size()+value.size()<=240)pending_text_+=value;
         }
     }
     active_at_=SDL_GetTicks();
