@@ -127,6 +127,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pyinstaller --noconfirm --clean --onefile --windowed --name XuperSetup --paths tools tools/windows_apk_setup.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Launch the actual frozen GUI app in a no-dialog self-test mode.
+          # This verifies Androguard imports when Windows has no stdout/stderr.
+          $exe = (Resolve-Path dist/XuperSetup.exe).Path
+          $smoke = Start-Process -FilePath $exe -ArgumentList "--self-test-imports" -PassThru -Wait
+          if ($smoke.ExitCode -ne 0) { throw "Frozen setup import smoke test failed (exit $($smoke.ExitCode))" }
+          Write-Host "Frozen Windows setup import smoke test passed."
           Copy-Item -Path dist/XuperSetup.exe -Destination dist/Xuper-TV-Desktop/XuperSetup.exe -Force
           if (-not (Test-Path dist/Xuper-TV-Desktop/XuperSetup.exe)) { throw "Setup EXE missing" }
       - name: Copy first-run instructions
