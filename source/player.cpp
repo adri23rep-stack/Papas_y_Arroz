@@ -223,6 +223,21 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
         while(SDL_PollEvent(&event)){
             if(event.type==SDL_QUIT)running=false;
 #ifdef _WIN32
+            if(event.type==SDL_MOUSEMOTION&&event.motion.y<90){
+                visible_until=SDL_GetTicks()+3500;
+            }
+            if(event.type==SDL_MOUSEBUTTONDOWN&&event.button.button==SDL_BUTTON_LEFT&&
+               event.button.x>=1083&&event.button.x<1255&&
+               event.button.y>=11&&event.button.y<64){
+                if(SDL_Window* window=SDL_RenderGetWindow(renderer)){
+                    const bool active=(SDL_GetWindowFlags(window)&SDL_WINDOW_FULLSCREEN_DESKTOP)!=0;
+                    SDL_SetWindowFullscreen(window,active?0:SDL_WINDOW_FULLSCREEN_DESKTOP);
+                    visible_until=SDL_GetTicks()+3500;
+                }
+                continue;
+            }
+#endif
+#ifdef _WIN32
             if(event.type==SDL_USEREVENT){
                 if(event.user.code==REMOTE_VOLUME){
                     const int v=std::clamp(static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1)),0,100);
@@ -522,6 +537,15 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
                 SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
             }
 #ifdef _WIN32
+            if(menu||paused||now<visible_until){
+                SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
+                SDL_SetRenderDrawColor(renderer,14,17,32,222);
+                SDL_Rect full{1083,11,171,52};
+                SDL_RenderFillRect(renderer,&full);
+                draw_text(1093,26,"⛶ Pantalla completa",
+                          {252,244,250,255},149);
+                SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
+            }
             RemoteServer::shared().draw_cursor(renderer);
 #endif
             SDL_RenderPresent(renderer);
