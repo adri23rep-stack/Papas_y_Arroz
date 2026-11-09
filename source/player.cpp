@@ -223,6 +223,14 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
         while(SDL_PollEvent(&event)){
             if(event.type==SDL_QUIT)running=false;
 #ifdef _WIN32
+            if(event.type==SDL_USEREVENT&&event.user.code==REMOTE_OPEN_CATALOG){
+                result.requested_remote_result=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
+                result.requested_remote_generation=static_cast<uint32_t>(
+                    reinterpret_cast<uintptr_t>(event.user.data2));
+                running=false;break;
+            }
+#endif
+#ifdef _WIN32
             if(event.type==SDL_MOUSEMOTION&&event.motion.y<90){
                 visible_until=SDL_GetTicks()+3500;
             }
