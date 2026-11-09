@@ -130,7 +130,11 @@ jobs:
           # Launch the actual frozen GUI app in a no-dialog self-test mode.
           # This verifies Androguard imports when Windows has no stdout/stderr.
           $exe = (Resolve-Path dist/XuperSetup.exe).Path
-          $smoke = Start-Process -FilePath $exe -ArgumentList "--self-test-imports" -PassThru -Wait
+          $smoke = Start-Process -FilePath $exe -ArgumentList "--self-test-imports" -PassThru
+          if (-not $smoke.WaitForExit(60000)) {
+            Stop-Process -Id $smoke.Id -Force -ErrorAction SilentlyContinue
+            throw "Frozen setup import smoke test timed out; check for a startup crash dialog"
+          }
           if ($smoke.ExitCode -ne 0) { throw "Frozen setup import smoke test failed (exit $($smoke.ExitCode))" }
           Write-Host "Frozen Windows setup import smoke test passed."
           Copy-Item -Path dist/XuperSetup.exe -Destination dist/Xuper-TV-Desktop/XuperSetup.exe -Force
