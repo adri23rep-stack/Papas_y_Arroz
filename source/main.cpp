@@ -105,6 +105,8 @@ int main(int argc,char** argv){
     );
     size_t selected=0;bool running=true,redraw=true,autoload=true,donating=false;
     int pending_remote_navigation=-1;
+    int pending_remote_result=-1;
+    uint32_t pending_remote_generation=0;
     xs::Catalog root_catalog;
     std::atomic<bool> cancel_task{false};std::atomic<size_t> task_done{0},task_total{0};
     std::shared_ptr<xs::ServiceSession> session;
@@ -197,6 +199,12 @@ int main(int argc,char** argv){
             if(event.type==SDL_QUIT)running=false;
             if(event.type==SDL_WINDOWEVENT)redraw=true;
 #ifdef _WIN32
+            if(event.type==SDL_USEREVENT&&event.user.code==xs::REMOTE_OPEN_CATALOG){
+                pending_remote_result=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
+                pending_remote_generation=static_cast<uint32_t>(reinterpret_cast<uintptr_t>(event.user.data2));
+            }
+#endif
+#ifdef _WIN32
             if(event.type==SDL_MOUSEMOTION)redraw=true;
             if(event.type==SDL_USEREVENT&&event.user.code==xs::REMOTE_VOLUME)
                 playback_history.volume=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
@@ -209,6 +217,7 @@ int main(int argc,char** argv){
                 else if(hit==-9)play=true;
                 else if(hit==-10){view.toggle_fullscreen();redraw=true;}
                 else if(hit==-11){view.show_details=!view.show_details;redraw=true;}
+                else if(hit==-12){search=true;redraw=true;}
                 else if(hit<=-2)nav_action=-hit-2;
                 else if(hit>=0){selected=static_cast<size_t>(hit);view.nav_focus=-1;view.show_details=false;play=true;}
             }
@@ -250,6 +259,20 @@ int main(int argc,char** argv){
         back|=(buttons&HidNpadButton_B)!=0;
         next|=(buttons&HidNpadButton_R)!=0;previous|=(buttons&HidNpadButton_L)!=0;
 #endif
+#ifdef _WIN32
+        if(pending_remote_result>=0){
+            xs::Catalog remote;
+            if(xs::RemoteServer::shared().selected_result(pending_remote_generation,
+                        static_cast<size_t>(pending_remote_result),remote)){
+                history.emplace_back(catalog,selected);
+                catalog=std::move(remote);
+                selected=static_cast<size_t>(pending_remote_result);
+                view.active_nav=-1;view.nav_focus=-1;view.show_details=false;
+                donating=false;search=false;back=false;nav_action=-1;play=true;redraw=true;
+            }else{status="El resultado del iPhone ya no está disponible.";redraw=true;}
+            pending_remote_result=-1;
+        }
+#endif
         if(donating){if(back||play||login){donating=false;redraw=true;}SDL_Delay(10);continue;}
         if(view.nav_focus>=0){
 #ifdef _WIN32
@@ -277,6 +300,9 @@ int main(int argc,char** argv){
                 );},"Cargando tu catalogo...",true);
                 xs::trace(attempt.authenticated?"bootstrap:accepted":"bootstrap:failed");
                 session=attempt.session;status=attempt.status;root_catalog=std::move(attempt.catalog);
+#ifdef _WIN32
+                xs::RemoteServer::shared().set_session(session);
+#endif
             }
             if(session&&root_catalog.entries.empty()){
                 xs::BrowseResult result;load([&]{result=xs::service_root(session);},"Reintentando carga del catalogo...");status=result.status;if(result.ok)root_catalog=std::move(result.catalog);
@@ -445,11 +471,16 @@ int main(int argc,char** argv){
                             speed=outcome.speed;volume=outcome.volume;auto_next=outcome.auto_next;
 #ifdef _WIN32
                             if(outcome.requested_navigation>=0)pending_remote_navigation=outcome.requested_navigation;
+                            if(outcome.requested_remote_result>=0){
+                                pending_remote_result=outcome.requested_remote_result;
+                                pending_remote_generation=outcome.requested_remote_generation;
+                            }
 #endif
                             if(status.empty()&&(current.kind==xs::EntryKind::Channel||outcome.position>3||outcome.ended)&&!saved.remember(current))xs::trace("catalog:recent_save_failed");
                             if(status.empty()&&!playback_history.save(current.kind==xs::EntryKind::Episode?current.content_id:"",outcome.position,outcome.speed,outcome.volume,outcome.auto_next,outcome.ended))xs::trace((std::string("play:history_save_failed stage=")+playback_history.last_error).c_str());
                             if(outcome.ended&&auto_next&&!current.series_id.empty()&&static_cast<size_t>(options.item+1)<queue.size())outcome.next_item=options.item+1;
-                            if(outcome.next_variant>=0){variant=outcome.next_variant;start=outcome.position;keep_paused=outcome.paused;continue_playback=true;}
+                            if(pending_remote_result>=0){continue_playback=false;}
+                            else if(outcome.next_variant>=0){variant=outcome.next_variant;start=outcome.position;keep_paused=outcome.paused;continue_playback=true;}
                             else if(outcome.next_item>=0&&static_cast<size_t>(outcome.next_item)<queue.size()){
                                 selected=queue[outcome.next_item];variant=0;start=0;keep_paused=false;continue_playback=true;
                             }
