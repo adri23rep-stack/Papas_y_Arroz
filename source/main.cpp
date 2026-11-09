@@ -347,11 +347,23 @@ int main(int argc,char** argv){
         }
         if(!catalog.entries.empty()){
             const size_t cols=view.columns(catalog),page=view.page_size(catalog);
-            if(up){selected=selected>=cols?selected-cols:selected;redraw=true;}
-            if(down){selected=std::min(selected+cols,catalog.entries.size()-1);redraw=true;}
-            if(left){if(selected>0)--selected;redraw=true;}if(right){selected=std::min(selected+1,catalog.entries.size()-1);redraw=true;}
-            if(next){selected=std::min(selected+page,catalog.entries.size()-1);redraw=true;}
-            if(previous){selected=selected>=page?selected-page:0;redraw=true;}
+#ifdef _WIN32
+            if(xs::is_home(catalog)){
+                if(up)selected=xs::cinematic_move(catalog,selected,view.home_last_index,0,-1);
+                if(down)selected=xs::cinematic_move(catalog,selected,view.home_last_index,0,1);
+                if(left)selected=xs::cinematic_move(catalog,selected,view.home_last_index,-1,0);
+                if(right)selected=xs::cinematic_move(catalog,selected,view.home_last_index,1,0);
+                if(next||previous)selected=xs::cinematic_move(catalog,selected,view.home_last_index,0,next?1:-1);
+                if(up||down||left||right||next||previous)redraw=true;
+            }else
+#endif
+            {
+                if(up){selected=selected>=cols?selected-cols:selected;redraw=true;}
+                if(down){selected=std::min(selected+cols,catalog.entries.size()-1);redraw=true;}
+                if(left){if(selected>0)--selected;redraw=true;}if(right){selected=std::min(selected+1,catalog.entries.size()-1);redraw=true;}
+                if(next){selected=std::min(selected+page,catalog.entries.size()-1);redraw=true;}
+                if(previous){selected=selected>=page?selected-page:0;redraw=true;}
+            }
             if(up||down||left||right||next||previous)view.show_details=false;
             if(play){
                 const xs::Entry entry=catalog.entries[selected];
