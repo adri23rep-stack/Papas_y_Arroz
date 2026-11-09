@@ -103,11 +103,16 @@ jobs:
             path=$(find /ucrt64/bin -maxdepth 1 -iname "$dll" -print -quit)
             [[ -n "$path" ]] && cp -n "$path" dist/Xuper-TV-Desktop/ || true
           done < <(sed -nE 's/^[[:space:]]*([^[:space:]]+\.dll)[[:space:]]+=>.*/\1/ip' build/windows/dependencies.txt | sort -fu)
-          if grep -qi 'not found' build/windows/dependencies.txt; then
-            echo 'Some DLL dependencies are missing:'
-            cat build/windows/dependencies.txt
-            exit 1
-          fi
+          # ntldd -R descends into Windows system DLLs, where API-set redirects
+          # and optional OS components often appear as "not found". Do not
+          # interpret these as missing bundled runtime DLLs.
+          grep -i '=> not found' build/windows/dependencies.txt > dist/Xuper-TV-Desktop/ntldd-unresolved.txt || true
+          for required in SDL2.dll SDL2_ttf.dll libmpv-2.dll libcurl-4.dll libstdc++-6.dll; do
+            if [[ ! -f "dist/Xuper-TV-Desktop/$required" ]]; then
+              echo "Required portable runtime DLL missing: $required"
+              exit 1
+            fi
+          done
           ls -lh dist/Xuper-TV-Desktop/XuperTVDesktop.exe
       - name: Upload test build (not a release)
         uses: actions/upload-artifact@v4
