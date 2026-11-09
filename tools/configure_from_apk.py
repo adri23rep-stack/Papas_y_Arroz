@@ -36,7 +36,7 @@ def decrypt(value,key):
     padded=dec.update(cipher)+dec.finalize();unpad=PKCS7(64).unpadder()
     return (unpad.update(padded)+unpad.finalize()).decode('utf-8')
 
-def configure(apk_path,output):
+def configure(apk_path,output,platform='switch'):
     apk=APK(str(apk_path));root=None;app_id=None;salt=None;aes_key=None;api_version=None
     for raw in apk.get_all_dex():
         dex=DEX(raw)
@@ -54,7 +54,13 @@ def configure(apk_path,output):
                 elif cls.get_name()=='Lk2/b;':salt=next((s for s in strings if len(s)>24),None)
                 elif cls.get_name()=='Lk2/a;':aes_key=next((s for s in strings if len(s)==16),None)
                 else:app_id=next((s for s in strings if s.startswith('com.')),None)
-    if not root or not app_id or not salt or not aes_key or not api_version:raise ValueError('Unsupported APK: expected configuration code was not found')
+    # APK obfuscation can move the hardcoded API version; use the signed
+    # manifest versionCode as a fallback. Tested against Xuper 4.34.4 (43404).
+    manifest_version=apk.get_androidversion_code()
+    if not api_version and str(manifest_version).isdigit() and 10000 <= int(manifest_version) <= 99999999:
+        api_version=int(manifest_version)
+    if not root or not app_id or not salt or not aes_key or not api_version:
+        raise ValueError('Unsupported APK: expected portal configuration was not found')
     ns='{http://schemas.android.com/apk/res/android}'
     meta=next((x.get(ns+'value') for x in apk.get_android_manifest_xml().findall('.//meta-data')
                if x.get(ns+'name')=='PORTAL_KEY'),None)
@@ -78,7 +84,7 @@ def configure(apk_path,output):
         'apk_version':str(api_version),'manifest_version':apk.get_androidversion_code(),
         'installation_serial':installation_serial,'account_type':'auto','login_type':'2',
         'password_salt':salt,'password_aes_key':aes_key,
-        'language':'es','device_id':device_id,'ca_file':'sdmc:/switch/xuperswitch/cacert.pem'}
+        'language':'es','device_id':device_id,'ca_file':'cacert.pem' if platform=='windows' else 'sdmc:/switch/xuperswitch/cacert.pem'}
     output.parent.mkdir(parents=True,exist_ok=True)
     output.write_text(json.dumps(config,indent=2)+'\n',encoding='utf-8')
     output.chmod(0o600)
@@ -87,4 +93,5 @@ def configure(apk_path,output):
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('apk',type=Path);parser.add_argument('--output',type=Path,required=True)
-    args=parser.parse_args();configure(args.apk,args.output)
+    parser.add_argument('--platform',choices=['switch','windows'],default='switch')
+    args=parser.parse_args();configure(args.apk,args.output,args.platform)
