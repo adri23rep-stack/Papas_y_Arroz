@@ -13,6 +13,7 @@
 #include <array>
 #include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
@@ -310,7 +311,7 @@ void RemoteServer::handle(uintptr_t id){
         "up","down","left","right","ok","back","home","tv","movies","series",
         "search","play_pause","menu","next","previous","volume","brightness",
         "pointer_move","pointer_down","pointer_up"};
-    const bool valid=action=="click"||action=="ping"||
+    const bool valid=action=="click"||action=="text"||action=="ping"||
         std::any_of(actions.begin(),actions.end(),[&](const char* x){return action==x;});
     if(!valid){reply(client,400,{{"error","Unsupported action"}});return;}
     if(action=="volume"||action=="brightness"){
@@ -318,8 +319,31 @@ void RemoteServer::handle(uintptr_t id){
             reply(client,400,{{"error","Value must be 0-100"}});return;
         }
     }
+    if(action=="text"){
+        const auto value_it=payload.find("text");
+        const std::string value=value_it!=payload.end()&&value_it->is_string()?
+            value_it->get<std::string>():"";
+        if(value.empty()||value.size()>160||std::any_of(value.begin(),value.end(),
+          [](unsigned char c){return c<32||c==127;})){
+            reply(client,400,{{"error","Invalid search text"}});return;
+        }
+        // SDL_TEXTINPUT buffers are 32 bytes. Respect UTF-8 boundaries.
+        for(size_t start=0;start<value.size();){
+            size_t end=std::min(start+31,value.size());
+            while(end<value.size()&&end>start&&
+                  (static_cast<unsigned char>(value[end])&0xc0)==0x80)--end;
+            if(end==start)break;
+            SDL_Event input{};input.type=SDL_TEXTINPUT;
+            const size_t count=end-start;
+            std::memcpy(input.text.text,value.data()+start,count);
+            input.text.text[count]='\0';
+            SDL_PushEvent(&input);
+            start=end;
+        }
+    }
     active_at_=SDL_GetTicks();
-    if(action!="ping")dispatch(action,number("dx",0),number("dy",0),number("value",0));
+    if(action!="ping"&&action!="text")
+        dispatch(action,number("dx",0),number("dy",0),number("value",0));
     reply(client,200,{{"ok",true}});
 }
 void RemoteServer::serve(){
