@@ -1,3 +1,6 @@
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -46,7 +49,14 @@ static std::string payload(const std::string& response){
     const size_t start=response.find("\r\n\r\n");
     return start==std::string::npos?"":response.substr(start+4);
 }
-#define REQUIRE(condition) do{if(!(condition)){std::fprintf(stderr,"FAILED at %d: %s\n",__LINE__,#condition);return 1;}}while(0)
+// Keep the LAN protocol test offline: no service credentials or network
+// catalogue calls are used in CI.
+namespace xs {
+BrowseResult service_search_remote(const std::shared_ptr<ServiceSession>&,const std::string&){
+    return {};
+}
+}
+#define REQUIRE(condition) do{std::fprintf(stderr,"Checking %d: %s\\n",__LINE__,#condition);std::fflush(stderr);if(!(condition)){std::fprintf(stderr,"FAILED at %d: %s\\n",__LINE__,#condition);return 1;}}while(0)
 int main(){
     REQUIRE(SDL_Init(SDL_INIT_EVENTS)==0);
     auto& server=xs::RemoteServer::shared();
@@ -61,6 +71,10 @@ int main(){
     REQUIRE(data.is_object()&&data.contains("token")&&data["token"].is_string());
     const std::string token=data["token"].get<std::string>();
     REQUIRE(token.size()==64);
+    REQUIRE(!okay(post("/catalog/search",R"({"query":"test"})")));
+    REQUIRE(!okay(post("/catalog/search",R"({"query":"test"})",token))); // No service session yet
+    REQUIRE(!okay(post("/catalog/open",R"({"generation":1,"index":0})",token)));
+
     REQUIRE(okay(post("/input",R"({"action":"right"})",token)));
     SDL_Event e{};bool saw_right=false;
     while(SDL_PollEvent(&e))if(e.type==SDL_KEYDOWN&&e.key.keysym.sym==SDLK_RIGHT)saw_right=true;
@@ -75,9 +89,7 @@ int main(){
     while(SDL_PollEvent(&e))if(e.type==SDL_MOUSEMOTION&&e.motion.x==682&&e.motion.y==339)saw_move=true;
     REQUIRE(saw_move);
     REQUIRE(okay(post("/input",R"({"action":"text","text":"hola"})",token)));
-    bool saw_text=false;
-    while(SDL_PollEvent(&e))if(e.type==SDL_TEXTINPUT&&std::strcmp(e.text.text,"hola")==0)saw_text=true;
-    REQUIRE(saw_text);
+    REQUIRE(server.take_text()=="hola");
     REQUIRE(okay(post("/input",R"({"action":"tv"})",token)));
     bool saw_tv=false;
     while(SDL_PollEvent(&e))if(e.type==SDL_KEYDOWN&&e.key.keysym.sym==SDLK_F5)saw_tv=true;

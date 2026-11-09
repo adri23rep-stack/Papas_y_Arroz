@@ -598,6 +598,21 @@ BrowseResult service_search_all(const std::shared_ptr<ServiceSession>& s,const s
     if(!out.catalog.warnings.empty())out.status+=" Resultados parciales: "+out.catalog.warnings.front();
     return out;
 }
+BrowseResult service_search_remote(const std::shared_ptr<ServiceSession>& session,const std::string& query){
+    BrowseResult out;
+    if(!session||query.empty()||query.size()>120){
+        out.status="Primero conecta el catálogo e introduce una búsqueda válida.";return out;
+    }
+    // A separate session instance prevents remote searches from modifying the
+    // channel cache read by the currently playing content.
+    auto isolated=std::make_shared<ServiceSession>(*session);
+    // Search a bounded portion of live categories before querying the VOD API.
+    // Avoid making an iPhone's search wait for hundreds of uncached channels.
+    constexpr size_t max_categories=6;
+    if(isolated->live_categories.size()>max_categories)
+        isolated->live_categories.resize(max_categories);
+    return service_search_all(isolated,query);
+}
 static BrowseResult vod_list(const std::shared_ptr<ServiceSession>& s,const Entry& e) {
     BrowseResult out;Json payload=identity(*s);
     payload.update({{"columnId",e.column_id},{"columnType","2"},{"pageSize",24},
