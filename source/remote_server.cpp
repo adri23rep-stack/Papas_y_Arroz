@@ -190,6 +190,7 @@ bool RemoteServer::start(){
 }
 void RemoteServer::stop(){
     if(!running_.exchange(false))return;
+    catalog_.stop();
     if(listener_!=static_cast<uintptr_t>(~uintptr_t{0})){
         shutdown(static_cast<SOCKET>(listener_),SD_BOTH);
         closesocket(static_cast<SOCKET>(listener_));
@@ -281,7 +282,12 @@ void RemoteServer::handle(uintptr_t id){
     if(!parse_request(client,request,body)){reply(client,400,{{"error","Invalid request"}});return;}
     const bool pairing=request.rfind("POST /pair HTTP/1.",0)==0;
     const bool input=request.rfind("POST /input HTTP/1.",0)==0;
-    if(!pairing&&!input){reply(client,400,{{"error","Unknown endpoint"}});return;}
+    const bool catalog_search=request.rfind("POST /catalog/search HTTP/1.",0)==0;
+    const bool catalog_results=request.rfind("POST /catalog/results HTTP/1.",0)==0;
+    const bool catalog_open=request.rfind("POST /catalog/open HTTP/1.",0)==0;
+    if(!pairing&&!input&&!catalog_search&&!catalog_results&&!catalog_open){
+        reply(client,400,{{"error","Unknown endpoint"}});return;
+    }
     Json payload=Json::parse(body,nullptr,false);
     if(!payload.is_object()){reply(client,400,{{"error","Expected JSON object"}});return;}
     if(pairing){
@@ -300,6 +306,65 @@ void RemoteServer::handle(uintptr_t id){
         reply(client,200,{{"token",secret_},{"protocol",1}});return;
     }
     if(!authorized(request,secret_)){reply(client,401,{{"error","Pairing required"}});return;}
+    if(catalog_search){
+        const auto q=payload.find("query");
+        const std::string query=q!=payload.end()&&q->is_string()?q->get<std::string>():"";
+        if(query.size()<2||query.size()>120){
+            reply(client,400,{{"error","La búsqueda debe tener entre 2 y 120 caracteres."}});return;
+        }
+        uint32_t generation=0;std::string error;
+        if(!catalog_.begin(query,generation,error)){
+            reply(client,400,{{"error",error}});return;
+        }
+        reply(client,200,{{"generation",generation},{"state","loading"}});return;
+    }
+    if(catalog_results||catalog_open){
+        const auto g=payload.find("generation");
+        if(g==payload.end()||!g->is_number_unsigned()||g->get<uint64_t>()>UINT32_MAX){
+            reply(client,400,{{"error","Invalid generation"}});return;
+        }
+        const uint32_t generation=g->get<uint32_t>();
+        if(catalog_results){
+            const auto snap=catalog_.snapshot(generation);
+            Json items=Json::array();
+            if(snap.state=="ready"){
+                for(size_t i=0;i<snap.items.size();++i){
+                    const Entry& item=snap.items[i];
+                    if(item.kind!=EntryKind::Asset&&item.kind!=EntryKind::Channel)continue;
+                    const char* kind=item.kind==EntryKind::Channel?"tv":
+                                     item.program_type=="0"?"series":"movies";
+                    // Only catalogue metadata leaves the PC, never session
+                    // cookies, stream addresses, source headers or tokens.
+                    std::string picture=item.artwork;
+                    if(picture.rfind("https://",0)!=0||picture.size()>1800)picture.clear();
+                    std::string description=item.description;
+                    if(description.size()>240)description.resize(240);
+                    items.push_back({{"index",i},{"title",item.title},
+                        {"kind",kind},{"description",description},
+                        {"image",picture}});
+                }
+            }
+            reply(client,200,{{"generation",snap.generation},{"state",snap.state},
+                {"message",snap.message},{"items",std::move(items)}});return;
+        }
+        const auto i=payload.find("index");
+        if(i==payload.end()||!i->is_number_unsigned()||i->get<uint64_t>()>1000){
+            reply(client,400,{{"error","Invalid result index"}});return;
+        }
+        const int index=i->get<int>();
+        Catalog verify;
+        if(!catalog_.select(generation,static_cast<size_t>(index),verify)){
+            reply(client,400,{{"error","Result is no longer available"}});return;
+        }
+        SDL_Event event{};event.type=SDL_USEREVENT;
+        event.user.code=REMOTE_OPEN_CATALOG;
+        event.user.data1=reinterpret_cast<void*>(static_cast<intptr_t>(index));
+        event.user.data2=reinterpret_cast<void*>(static_cast<intptr_t>(generation));
+        if(SDL_PushEvent(&event)<0){
+            reply(client,400,{{"error","Cannot reach Windows player"}});return;
+        }
+        reply(client,200,{{"ok",true}});return;
+    }
     const auto action_it=payload.find("action");
     const std::string action=action_it!=payload.end()&&action_it->is_string()?action_it->get<std::string>():"";
     const auto number=[&](const char* name,int fallback){
