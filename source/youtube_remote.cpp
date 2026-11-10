@@ -75,6 +75,9 @@ static bool mouse(DWORD flags){
 bool youtube_input(const std::string& command,int dx,int dy){
     // Global Windows input is only sent while the foreground window's title
     // explicitly identifies YouTube. No arbitrary OS keyboard or URLs.
+    // Always release an earlier mouse drag, even if Windows unexpectedly
+    // changes focus; otherwise the left button could remain held.
+    if(command=="pointer_up")return mouse(MOUSEEVENTF_LEFTUP);
     if(!youtube_foreground())return false;
     if(command=="pointer_move"){
         POINT p{};
@@ -87,7 +90,6 @@ bool youtube_input(const std::string& command,int dx,int dy){
                             std::clamp(p.y+dy,top,bottom))!=0;
     }
     if(command=="pointer_down")return mouse(MOUSEEVENTF_LEFTDOWN);
-    if(command=="pointer_up")return mouse(MOUSEEVENTF_LEFTUP);
     if(command=="click")return mouse(MOUSEEVENTF_LEFTDOWN)&&mouse(MOUSEEVENTF_LEFTUP);
     if(command=="up")return key(VK_UP);
     if(command=="down")return key(VK_DOWN);
