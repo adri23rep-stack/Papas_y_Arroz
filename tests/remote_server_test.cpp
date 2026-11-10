@@ -71,6 +71,10 @@ int main(){
     REQUIRE(data.is_object()&&data.contains("token")&&data["token"].is_string());
     const std::string token=data["token"].get<std::string>();
     REQUIRE(token.size()==64);
+    REQUIRE(!okay(post("/input",R"({"action":"youtube_open"})"))); // unpaired
+    REQUIRE(!okay(post("/input",R"({"action":"youtube_search","text":"gatos"})",token))); // open browser first
+    REQUIRE(!okay(post("/input",R"({"action":"youtube_pause"})",token))); // outside YouTube mode
+
     REQUIRE(!okay(post("/catalog/search",R"({"query":"test"})")));
     REQUIRE(!okay(post("/catalog/search",R"({"query":"test"})",token))); // No service session yet
     REQUIRE(!okay(post("/catalog/open",R"({"generation":1,"index":0})",token)));
