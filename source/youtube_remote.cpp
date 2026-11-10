@@ -86,8 +86,8 @@ bool youtube_input(const std::string& command,int dx,int dy){
         const int top=GetSystemMetrics(SM_YVIRTUALSCREEN);
         const int right=left+GetSystemMetrics(SM_CXVIRTUALSCREEN)-1;
         const int bottom=top+GetSystemMetrics(SM_CYVIRTUALSCREEN)-1;
-        return SetCursorPos(std::clamp(p.x+dx,left,right),
-                            std::clamp(p.y+dy,top,bottom))!=0;
+        return SetCursorPos(std::clamp(static_cast<int>(p.x)+dx,left,right),
+                            std::clamp(static_cast<int>(p.y)+dy,top,bottom))!=0;
     }
     if(command=="pointer_down")return mouse(MOUSEEVENTF_LEFTDOWN);
     if(command=="click")return mouse(MOUSEEVENTF_LEFTDOWN)&&mouse(MOUSEEVENTF_LEFTUP);
