@@ -249,7 +249,7 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
             if(event.type==SDL_USEREVENT){
                 if(event.user.code==REMOTE_YOUTUBE_START){
                     // Avoid two audio tracks when browser YouTube starts.
-                    const int yes=1;
+                    int yes=1;
                     mpv_set_property(mpv,"pause",MPV_FORMAT_FLAG,&yes);
                     notice="Xuper TV pausado mientras usas YouTube.";
                     show();
