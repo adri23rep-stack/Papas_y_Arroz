@@ -206,6 +206,10 @@ int main(int argc,char** argv){
             if(event.type==SDL_QUIT)running=false;
             if(event.type==SDL_WINDOWEVENT)redraw=true;
 #ifdef _WIN32
+            if(event.type==SDL_USEREVENT&&event.user.code==xs::REMOTE_YOUTUBE_RETURN){
+                SDL_RaiseWindow(view.window);
+                redraw=true;
+            }
             if(event.type==SDL_USEREVENT&&event.user.code==xs::REMOTE_OPEN_CATALOG){
                 pending_remote_result=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
                 pending_remote_generation=static_cast<uint32_t>(reinterpret_cast<uintptr_t>(event.user.data2));

@@ -247,6 +247,18 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
 #endif
 #ifdef _WIN32
             if(event.type==SDL_USEREVENT){
+                if(event.user.code==REMOTE_YOUTUBE_START){
+                    // Avoid two audio tracks when browser YouTube starts.
+                    int yes=1;
+                    mpv_set_property(mpv,"pause",MPV_FORMAT_FLAG,&yes);
+                    notice="Xuper TV pausado mientras usas YouTube.";
+                    show();
+                }
+                if(event.user.code==REMOTE_YOUTUBE_RETURN){
+                    SDL_RaiseWindow(SDL_RenderGetWindow(renderer));
+                    notice="De vuelta a Xuper TV. Pulsa reproducir para continuar.";
+                    show();
+                }
                 if(event.user.code==REMOTE_VOLUME){
                     const int v=std::clamp(static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1)),0,100);
                     set_number("volume",v);notice="Volumen: "+std::to_string(v)+"%";show();

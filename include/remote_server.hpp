@@ -36,6 +36,7 @@ public:
     bool cursor_visible()const;
     int cursor_x()const{return pointer_x_.load();}
     int cursor_y()const{return pointer_y_.load();}
+    bool youtube_active()const{return youtube_mode_.load();}
     int volume()const{return volume_.load();}
     int brightness()const{return brightness_.load();}
     void draw_cursor(SDL_Renderer* renderer)const;
@@ -51,6 +52,7 @@ private:
     void push_mouse(Uint32 kind);
     void push_value(int code,int value);
     std::atomic<bool> running_{false};
+    std::atomic<bool> youtube_mode_{false};
     std::atomic<int> pointer_x_{640},pointer_y_{360};
     std::atomic<int> volume_{100},brightness_{50};
     std::atomic<Uint32> pointer_at_{0},active_at_{0};
@@ -66,5 +68,7 @@ private:
 constexpr int REMOTE_VOLUME=0x585501;
 constexpr int REMOTE_BRIGHTNESS=0x585502;
 constexpr int REMOTE_OPEN_CATALOG=0x585503;
+constexpr int REMOTE_YOUTUBE_START=0x585504;
+constexpr int REMOTE_YOUTUBE_RETURN=0x585505;
 }
 #endif
