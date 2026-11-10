@@ -4,6 +4,7 @@
 #endif
 #endif
 #include "remote_server.hpp"
+#include "youtube_remote.hpp"
 #ifdef _WIN32
 // Windows desktop only. The Switch homebrew build does not link this file.
 #ifndef WIN32_LEAN_AND_MEAN
@@ -195,6 +196,7 @@ bool RemoteServer::start(){
 }
 void RemoteServer::stop(){
     if(!running_.exchange(false))return;
+    youtube_mode_=false;
     catalog_.stop();
     if(listener_!=static_cast<uintptr_t>(~uintptr_t{0})){
         shutdown(static_cast<SOCKET>(listener_),SD_BOTH);
@@ -213,7 +215,7 @@ bool RemoteServer::cursor_visible()const{
     return last!=0&&(SDL_GetTicks()-last)<5000;
 }
 void RemoteServer::draw_cursor(SDL_Renderer* renderer)const{
-    if(!renderer||!cursor_visible())return;
+    if(!renderer||youtube_mode_.load()||!cursor_visible())return;
     const int x=pointer_x_.load(),y=pointer_y_.load();
     SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
     SDL_SetRenderDrawColor(renderer,0,0,0,230);
@@ -372,6 +374,77 @@ void RemoteServer::handle(uintptr_t id){
     }
     const auto action_it=payload.find("action");
     const std::string action=action_it!=payload.end()&&action_it->is_string()?action_it->get<std::string>():"";
+    // YouTube uses the user's default Windows browser, not a downloaded
+    // media stream or an unofficial YouTube API. Every request is paired.
+    if(input&&action=="youtube_open"){
+        if(!youtube_launch()){
+            reply(client,400,{{"error","No se pudo abrir YouTube en el navegador."}});return;
+        }
+        youtube_mode_=true;
+        push_value(REMOTE_YOUTUBE_START,0);
+        active_at_=SDL_GetTicks();
+        reply(client,200,{{"ok",true},{"mode","youtube"}});return;
+    }
+    if(input&&action=="youtube_search"){
+        const auto value_it=payload.find("text");
+        const std::string query=value_it!=payload.end()&&value_it->is_string()?
+            value_it->get<std::string>():"";
+        if(!youtube_mode_.load()||youtube_results_url(query).empty()){
+            reply(client,400,{{"error","Abre YouTube y escribe una búsqueda válida."}});return;
+        }
+        if(!youtube_search(query)){
+            reply(client,400,{{"error","No se pudo abrir la búsqueda de YouTube."}});return;
+        }
+        active_at_=SDL_GetTicks();
+        reply(client,200,{{"ok",true}});return;
+    }
+    if(input&&action=="youtube_close"){
+        youtube_mode_=false;
+        push_value(REMOTE_YOUTUBE_RETURN,0);
+        active_at_=SDL_GetTicks();
+        reply(client,200,{{"ok",true},{"mode","xuper"}});return;
+    }
+    if(input&&youtube_mode_.load()){
+        if(action=="ping"){
+            active_at_=SDL_GetTicks();
+            reply(client,200,{{"ok",true},{"mode","youtube"}});return;
+        }
+        if(action=="home"||action=="tv"||action=="movies"||action=="series"){
+            youtube_mode_=false;
+            push_value(REMOTE_YOUTUBE_RETURN,0);
+            dispatch(action,0,0,0);
+            active_at_=SDL_GetTicks();
+            reply(client,200,{{"ok",true},{"mode","xuper"}});return;
+        }
+        int dx=0,dy=0;
+        const auto displacement=[&](const char* key){
+            const auto value=payload.find(key);
+            return value!=payload.end()&&value->is_number_integer()?
+                std::clamp(value->get<int>(),-1500,1500):0;
+        };
+        dx=displacement("dx");dy=displacement("dy");
+        static const std::array<const char*,24> youtube_actions={
+            "up","down","left","right","ok","play_pause","click",
+            "pointer_move","pointer_down","pointer_up",
+            "youtube_pause","youtube_fullscreen","youtube_mute",
+            "youtube_seek_back","youtube_seek_forward","youtube_next",
+            "youtube_previous","youtube_back","youtube_volume_up",
+            "youtube_volume_down","previous","next","back","menu"};
+        const bool allowed=std::any_of(youtube_actions.begin(),youtube_actions.end(),
+            [&](const char* command){return action==command;});
+        if(!allowed){
+            reply(client,400,{{"error","Control no disponible en YouTube."}});return;
+        }
+        const std::string cmd=action=="back"?"youtube_back":
+                              action=="next"?"youtube_next":
+                              action=="previous"?"youtube_previous":
+                              action=="menu"?"youtube_fullscreen":action;
+        if(!youtube_input(cmd,dx,dy)){
+            reply(client,400,{{"error","Activa la ventana de YouTube en Windows."}});return;
+        }
+        active_at_=SDL_GetTicks();
+        reply(client,200,{{"ok",true},{"mode","youtube"}});return;
+    }
     const auto number=[&](const char* name,int fallback){
         const auto it=payload.find(name);
         return it!=payload.end()&&it->is_number_integer()?
