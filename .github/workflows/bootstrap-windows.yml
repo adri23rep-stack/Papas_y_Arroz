@@ -76,6 +76,7 @@ jobs:
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-SDL2
             mingw-w64-ucrt-x86_64-SDL2_ttf
+            mingw-w64-ucrt-x86_64-sdl3
             mingw-w64-ucrt-x86_64-mpv
             mingw-w64-ucrt-x86_64-curl
             mingw-w64-ucrt-x86_64-mbedtls
@@ -102,6 +103,11 @@ jobs:
           cp LICENSE LICENSE.nlohmann-json COPYRIGHT.mpv DEPENDENCIAS.md dist/Xuper-TV-Desktop/
           cp -r licenses/. dist/Xuper-TV-Desktop/licenses/
           ntldd -R build/windows/XuperTVDesktop.exe > build/windows/dependencies.txt
+          # Current MSYS2 SDL2.dll is sdl2-compat; it dynamically loads
+          # SDL3.dll with LoadLibrary, so ntldd cannot discover this runtime.
+          # Always bundle SDL3 explicitly. Missing it causes error 0xc0000142.
+          test -s /ucrt64/bin/SDL3.dll
+          cp /ucrt64/bin/SDL3.dll dist/Xuper-TV-Desktop/
           while IFS= read -r dll; do
             [[ -z "$dll" ]] && continue
             path=$(find /ucrt64/bin -maxdepth 1 -iname "$dll" -print -quit)
@@ -111,13 +117,33 @@ jobs:
           # and optional OS components often appear as "not found". Do not
           # interpret these as missing bundled runtime DLLs.
           grep -i '=> not found' build/windows/dependencies.txt > dist/Xuper-TV-Desktop/ntldd-unresolved.txt || true
-          for required in SDL2.dll SDL2_ttf.dll libmpv-2.dll libcurl-4.dll libstdc++-6.dll; do
+          for required in SDL2.dll SDL3.dll SDL2_ttf.dll libmpv-2.dll libcurl-4.dll libstdc++-6.dll; do
             if [[ ! -f "dist/Xuper-TV-Desktop/$required" ]]; then
               echo "Required portable runtime DLL missing: $required"
               exit 1
             fi
           done
           ls -lh dist/Xuper-TV-Desktop/XuperTVDesktop.exe
+      - name: Smoke test packaged SDL runtime outside MSYS2 PATH
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Copy-Item "build/windows/sdl_startup_smoke.exe" "dist/Xuper-TV-Desktop/sdl_startup_smoke.exe"
+          Push-Location "dist/Xuper-TV-Desktop"
+          try {
+            # Prevent DLLs in the runner's MSYS2 installation from masking
+            # a dependency missing in the portable artifact folder.
+            $env:Path = "$env:SystemRoot\System32;$env:SystemRoot"
+            $env:SDL_VIDEODRIVER = "dummy"
+            & ".\sdl_startup_smoke.exe"
+            if ($LASTEXITCODE -ne 0) {
+              throw "SDL startup smoke test failed outside MSYS2 PATH (exit $LASTEXITCODE)."
+            }
+            Write-Host "Packaged SDL2/SDL3 successfully initialized without MSYS2 runtime PATH."
+          } finally {
+            Pop-Location
+            Remove-Item "dist/Xuper-TV-Desktop/sdl_startup_smoke.exe" -ErrorAction SilentlyContinue
+          }
       - name: Prepare bundled, installation-neutral service template
         shell: pwsh
         run: |
