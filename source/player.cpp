@@ -14,6 +14,7 @@
 #include "catalog.hpp"
 #include "trace.hpp"
 #include "playback_error.hpp"
+#include "render_quality.hpp"
 #include <mpv/client.h>
 #include <mpv/render.h>
 #include <atomic>
@@ -98,7 +99,8 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
     rc=mpv_render_context_create(&context,mpv,init);
     if(rc<0){error=std::string("Render software: ")+mpv_error_string(rc);cleanup();return error;}
     mpv_render_context_set_update_callback(context,update,&dirty);
-    constexpr int width=640,height=360;size_t stride=width*4;
+    // Render the Windows video in 1080p instead of upscaling a 360p buffer.
+    constexpr int width=kVideoRenderWidth,height=kVideoRenderHeight;size_t stride=width*4;
 #if defined(_WIN32)
     pixels=_aligned_malloc(stride*height,64);
 #else
@@ -194,9 +196,9 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
         set_number("panscan",aspect==3?1:0);notice="Pantalla: "+ratios[aspect];show();};
     auto request_item=[&](int index){if(index>=0&&static_cast<size_t>(index)<options.items.size()){result.next_item=index;running=false;}};
     auto draw_text=[&](int x,int y,const std::string& message,SDL_Color color,int width=1150){if(!options.font||message.empty())return;
-        SDL_Surface* surface=TTF_RenderUTF8_Blended_Wrapped(options.font,message.c_str(),color,width);
+        SDL_Surface* surface=TTF_RenderUTF8_Blended_Wrapped(options.font,message.c_str(),color,width*kFontRenderScale);
         if(!surface)return;
-        SDL_Texture* label=SDL_CreateTextureFromSurface(renderer,surface);SDL_Rect dst{x,y,surface->w,surface->h};
+        SDL_Texture* label=SDL_CreateTextureFromSurface(renderer,surface);SDL_Rect dst{x,y,(surface->w+kFontRenderScale-1)/kFontRenderScale,(surface->h+kFontRenderScale-1)/kFontRenderScale};
         if(label){SDL_RenderCopy(renderer,label,nullptr,&dst);SDL_DestroyTexture(label);}SDL_FreeSurface(surface);};
     auto clock=[](double value){int n=std::max(0,static_cast<int>(value));char b[32];std::snprintf(b,sizeof(b),"%02d:%02d:%02d",n/3600,n/60%60,n%60);return std::string(b);};
     struct Row {std::string label;int action;int64_t value=0;};
