@@ -8,6 +8,7 @@
 #include "display_tools.hpp"
 #include "trace.hpp"
 #include "donation_qr.hpp"
+#include "render_quality.hpp"
 #include <algorithm>
 namespace xs {
 #ifdef _WIN32
@@ -18,24 +19,34 @@ static constexpr SDL_Color white{238,242,250,255},muted{150,163,185,255},accent{
 static const char* nav[]={"Inicio","TV en vivo","Peliculas","Series","Favoritos","Apoyar"};
 static const char* label(EntryKind kind,const std::string& type){switch(kind){case EntryKind::Channel:return "EN VIVO";case EntryKind::Asset:return type=="0"?"SERIE":"PELICULA";case EntryKind::Episode:return "REPRODUCIR";case EntryKind::VodPage:case EntryKind::SearchPage:return "SIGUIENTE PAGINA";case EntryKind::Category:case EntryKind::VodCategory:return "CATEGORIA";default:return "EXPLORAR";}}
 bool View::open(std::string& error){
+#if defined(_WIN32)
+    // Avoid Windows bitmap scaling the whole 720p window on HiDPI monitors.
+    SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS,"permonitorv2");
+#endif
     trace("view:init");if(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_EVENTS)!=0){error=SDL_GetError();return false;}if(TTF_Init()!=0){error=TTF_GetError();return false;}
-    window=SDL_CreateWindow("Xuper TV Desktop | by Jona Ruacho",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,1280,720,SDL_WINDOW_RESIZABLE);
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY,"1");
+    Uint32 window_flags=SDL_WINDOW_RESIZABLE;
+#if defined(_WIN32)
+    window_flags|=SDL_WINDOW_ALLOW_HIGHDPI;
+#endif
+    window=SDL_CreateWindow("Xuper TV Desktop | by Jona Ruacho",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,1280,720,window_flags);
     if(!window){error=SDL_GetError();return false;}renderer=SDL_CreateRenderer(window,-1,SDL_RENDERER_ACCELERATED|SDL_RENDERER_PRESENTVSYNC);if(!renderer)renderer=SDL_CreateRenderer(window,-1,SDL_RENDERER_SOFTWARE);
-    if(!renderer){error=SDL_GetError();return false;}SDL_RenderSetLogicalSize(renderer,1280,720);SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY,"1");
+    if(!renderer){error=SDL_GetError();return false;}SDL_RenderSetLogicalSize(renderer,1280,720);
 #ifdef __SWITCH__
     const char* path="sdmc:/switch/xuperswitch/font.ttf";
 #else
     const char* path="font.ttf";
 #endif
-    font=TTF_OpenFont(path,22);small=TTF_OpenFont(path,17);large=TTF_OpenFont(path,46);heading=TTF_OpenFont(path,30);
+    font=TTF_OpenFont(path,22*kFontRenderScale);small=TTF_OpenFont(path,17*kFontRenderScale);large=TTF_OpenFont(path,46*kFontRenderScale);heading=TTF_OpenFont(path,30*kFontRenderScale);
     if(!font||!small||!large||!heading){error=TTF_GetError();return false;}
     images=std::make_unique<Artwork>(renderer);trace("view:ready");return true;
 }
 void View::rect(SDL_Rect r,SDL_Color c){SDL_SetRenderDrawColor(renderer,c.r,c.g,c.b,c.a);SDL_RenderFillRect(renderer,&r);}
 void View::text(int x,int y,const std::string& value,SDL_Color color,int width,TTF_Font* type,int max_height){
     if(value.empty()||width<=0)return;
-    auto* s=TTF_RenderUTF8_Blended_Wrapped(type?type:font,value.c_str(),color,width);if(!s)return;
-    auto* t=SDL_CreateTextureFromSurface(renderer,s);SDL_Rect dst{x,y,s->w,s->h};
+    // Render text in more detail, keeping its original logical layout.
+    auto* s=TTF_RenderUTF8_Blended_Wrapped(type?type:font,value.c_str(),color,width*kFontRenderScale);if(!s)return;
+    auto* t=SDL_CreateTextureFromSurface(renderer,s);SDL_Rect dst{x,y,(s->w+kFontRenderScale-1)/kFontRenderScale,(s->h+kFontRenderScale-1)/kFontRenderScale};
     if(t){if(max_height>0){SDL_Rect clip{x,y,width,max_height};SDL_RenderSetClipRect(renderer,&clip);}SDL_RenderCopy(renderer,t,nullptr,&dst);SDL_RenderSetClipRect(renderer,nullptr);SDL_DestroyTexture(t);}SDL_FreeSurface(s);
 }
 void View::background(){
