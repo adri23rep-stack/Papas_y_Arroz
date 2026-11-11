@@ -9,6 +9,11 @@ static constexpr SDL_Color white{238,242,250,255},muted{150,163,185,255},accent{
 static const char* nav[]={"Inicio","TV en vivo","Peliculas","Series","Favoritos","Apoyar"};
 static const char* label(EntryKind kind,const std::string& type){switch(kind){case EntryKind::Channel:return "EN VIVO";case EntryKind::Asset:return type=="0"?"SERIE":"PELICULA";case EntryKind::Episode:return "REPRODUCIR";case EntryKind::VodPage:case EntryKind::SearchPage:return "SIGUIENTE PAGINA";case EntryKind::Category:case EntryKind::VodCategory:return "CATEGORIA";default:return "EXPLORAR";}}
 bool View::open(std::string& error){
+#if defined(_WIN32)
+    // Prevent Windows from bitmap-stretching the entire window at 125%/150%
+    // display scaling; SDL must receive this before initializing video.
+    SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS,"permonitorv2");
+#endif
     trace("view:init");if(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_EVENTS)!=0){error=SDL_GetError();return false;}if(TTF_Init()!=0){error=TTF_GetError();return false;}
     // Draw the UI in its original 1280x720 coordinates, but let SDL use the
     // display's native pixel density when it is available.
