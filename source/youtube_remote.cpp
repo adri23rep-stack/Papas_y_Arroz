@@ -91,6 +91,12 @@ bool youtube_input(const std::string& command,int dx,int dy){
     }
     if(command=="pointer_down")return mouse(MOUSEEVENTF_LEFTDOWN);
     if(command=="click")return mouse(MOUSEEVENTF_LEFTDOWN)&&mouse(MOUSEEVENTF_LEFTUP);
+    if(command=="wheel"){
+        if(dy==0)return true;
+        INPUT input{};input.type=INPUT_MOUSE;input.mi.dwFlags=MOUSEEVENTF_WHEEL;
+        input.mi.mouseData=static_cast<DWORD>(static_cast<LONG>(std::clamp(dy,-5,5)*WHEEL_DELTA));
+        return SendInput(1,&input,sizeof(INPUT))==1;
+    }
     if(command=="up")return key(VK_UP);
     if(command=="down")return key(VK_DOWN);
     if(command=="left")return key(VK_LEFT);
