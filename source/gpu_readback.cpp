@@ -60,9 +60,12 @@ bool GpuReadback::render(void* rgba_pixels,std::string& diagnostic){
     }
     mpv_opengl_fbo target{};
     target.fbo=0;target.w=width_;target.h=height_;target.internal_format=0;
-    // OpenGL's default framebuffer is bottom-up; flip in mpv so the
-    // buffer returned by glReadPixels is top-down for SDL's streaming texture.
-    int flip=1;
+    // IMPORTANT: OpenGL glReadPixels() transfers rows bottom-to-top, while
+    // SDL_UpdateTexture() consumes the buffer top-to-bottom. A direct GPU
+    // display needs mpv's FLIP_Y=1, but this readback-to-SDL pipeline needs
+    // FLIP_Y=0: the GL row ordering already supplies the vertical inversion.
+    // FLIP_Y=1 here inverted the video while SDL's menus stayed upright.
+    int flip=0;
     mpv_render_param params[]={
         {MPV_RENDER_PARAM_OPENGL_FBO,&target},
         {MPV_RENDER_PARAM_FLIP_Y,&flip},
