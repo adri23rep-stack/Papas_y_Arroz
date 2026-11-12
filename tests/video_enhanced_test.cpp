@@ -16,7 +16,6 @@ int main() {
     assert(next_video_preset(VideoPreset::ExtraDetail,1)==VideoPreset::GpuFsrcnnx);
     assert(next_video_preset(VideoPreset::GpuFsrcnnx,1)==VideoPreset::Compatible);
     assert(next_video_preset(VideoPreset::Compatible,-1)==VideoPreset::GpuFsrcnnx);
-    assert(next_video_preset(VideoPreset::Compatible,-1)==VideoPreset::ExtraDetail);
     assert(std::strcmp(video_hwdec(VideoPreset::Compatible),"no")==0);
     assert(std::string(video_hwdec(VideoPreset::Balanced)).find("nvdec-copy")!=std::string::npos);
     assert(std::strcmp(video_scaler(VideoPreset::Sharp),"lanczos")==0);
