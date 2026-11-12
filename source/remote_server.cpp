@@ -392,6 +392,15 @@ void RemoteServer::handle(uintptr_t id){
         active_at_=SDL_GetTicks();
         reply(client,200,{{"ok",true},{"mode","youtube"}});return;
     }
+    if(input&&(action=="netflix_open"||action=="hbo_max_open"||action=="apple_tv_open")){
+        if(!streaming_launch(action)){
+            reply(client,400,{{"error","No se pudo abrir el servicio en el navegador."}});return;
+        }
+        youtube_mode_=true; // browser-control session; pause Xuper's native player
+        push_value(REMOTE_YOUTUBE_START,0);
+        active_at_=SDL_GetTicks();
+        reply(client,200,{{"ok",true},{"mode","browser"}});return;
+    }
     if(input&&action=="youtube_search"){
         const auto value_it=payload.find("text");
         const std::string query=value_it!=payload.end()&&value_it->is_string()?
@@ -445,7 +454,8 @@ void RemoteServer::handle(uintptr_t id){
         const std::string cmd=action=="back"?"youtube_back":
                               action=="next"?"youtube_next":
                               action=="previous"?"youtube_previous":
-                              action=="menu"||action=="fullscreen"?"youtube_fullscreen":action;
+                              action=="fullscreen"?"browser_fullscreen":
+                              action=="menu"?"youtube_fullscreen":action;
         if(!youtube_input(cmd,dx,action=="wheel"?std::clamp(displacement("value"),-5,5):dy)){
             reply(client,400,{{"error","Activa la ventana de YouTube en Windows."}});return;
         }
