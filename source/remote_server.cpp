@@ -256,11 +256,18 @@ void RemoteServer::dispatch(const std::string& action,int dx,int dy,int value){
     else if(action=="series")push_key(SDLK_F7);
     else if(action=="search")push_key(SDLK_x);
     else if(action=="play_pause")push_key(SDLK_SPACE);
+    else if(action=="fullscreen")push_key(SDLK_F11);
     else if(action=="menu")push_key(SDLK_TAB);
     else if(action=="next")push_key(SDLK_PAGEDOWN);
     else if(action=="previous")push_key(SDLK_PAGEUP);
     else if(action=="volume"){volume_=value;push_value(REMOTE_VOLUME,value);}
     else if(action=="brightness"){brightness_=value;push_value(REMOTE_BRIGHTNESS,value);}
+    else if(action=="wheel"){
+        // Use the existing SDL mouse-wheel navigation, without OS-wide input.
+        SDL_Event event{};event.type=SDL_MOUSEWHEEL;
+        event.wheel.y=std::clamp(value,-5,5);
+        if(event.wheel.y!=0)SDL_PushEvent(&event);
+    }
     else if(action=="pointer_move"){
         pointer_x_=std::clamp(pointer_x_.load()+dx,0,1279);
         pointer_y_=std::clamp(pointer_y_.load()+dy,0,719);
@@ -423,13 +430,13 @@ void RemoteServer::handle(uintptr_t id){
                 std::clamp(value->get<int>(),-1500,1500):0;
         };
         dx=displacement("dx");dy=displacement("dy");
-        static const std::array<const char*,24> youtube_actions={
+        static const std::array<const char*,26> youtube_actions={
             "up","down","left","right","ok","play_pause","click",
             "pointer_move","pointer_down","pointer_up",
             "youtube_pause","youtube_fullscreen","youtube_mute",
             "youtube_seek_back","youtube_seek_forward","youtube_next",
             "youtube_previous","youtube_back","youtube_volume_up",
-            "youtube_volume_down","previous","next","back","menu"};
+            "youtube_volume_down","previous","next","back","menu","fullscreen","wheel"};
         const bool allowed=std::any_of(youtube_actions.begin(),youtube_actions.end(),
             [&](const char* command){return action==command;});
         if(!allowed){
@@ -438,8 +445,8 @@ void RemoteServer::handle(uintptr_t id){
         const std::string cmd=action=="back"?"youtube_back":
                               action=="next"?"youtube_next":
                               action=="previous"?"youtube_previous":
-                              action=="menu"?"youtube_fullscreen":action;
-        if(!youtube_input(cmd,dx,dy)){
+                              action=="menu"||action=="fullscreen"?"youtube_fullscreen":action;
+        if(!youtube_input(cmd,dx,action=="wheel"?std::clamp(displacement("value"),-5,5):dy)){
             reply(client,400,{{"error","Activa la ventana de YouTube en Windows."}});return;
         }
         active_at_=SDL_GetTicks();
@@ -450,10 +457,10 @@ void RemoteServer::handle(uintptr_t id){
         return it!=payload.end()&&it->is_number_integer()?
             std::clamp(it->get<int>(),-1500,1500):fallback;
     };
-    static const std::array<const char*,20> actions={
+    static const std::array<const char*,22> actions={
         "up","down","left","right","ok","back","home","tv","movies","series",
         "search","play_pause","menu","next","previous","volume","brightness",
-        "pointer_move","pointer_down","pointer_up"};
+        "pointer_move","pointer_down","pointer_up","fullscreen","wheel"};
     const bool valid=action=="click"||action=="text"||action=="ping"||
         std::any_of(actions.begin(),actions.end(),[&](const char* x){return action==x;});
     if(!valid){reply(client,400,{{"error","Unsupported action"}});return;}
