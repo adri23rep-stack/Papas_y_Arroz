@@ -263,10 +263,10 @@ void RemoteServer::dispatch(const std::string& action,int dx,int dy,int value){
     else if(action=="volume"){volume_=value;push_value(REMOTE_VOLUME,value);}
     else if(action=="brightness"){brightness_=value;push_value(REMOTE_BRIGHTNESS,value);}
     else if(action=="wheel"){
-        // Use the existing SDL mouse-wheel navigation, without OS-wide input.
-        SDL_Event event{};event.type=SDL_MOUSEWHEEL;
-        event.wheel.y=std::clamp(value,-5,5);
-        if(event.wheel.y!=0)SDL_PushEvent(&event);
+        // User events are reliable even in SDL_INIT_EVENTS-only test mode.
+        // The UI thread translates this into navigation / channel scrolling.
+        const int ticks=std::clamp(value,-5,5);
+        if(ticks!=0)push_value(REMOTE_WHEEL,ticks);
     }
     else if(action=="pointer_move"){
         pointer_x_=std::clamp(pointer_x_.load()+dx,0,1279);
