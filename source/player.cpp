@@ -71,6 +71,10 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
     // Stage 1: NVDEC/D3D11 copy-back decode (not zero-copy rendering).
     // Keep a reliable CPU preset for incompatible hardware.
     VideoPreset video_preset=load_video_preset();
+    // Changing the saved preset during playback affects the NEXT video only.
+    const bool extra_detail_started=(video_preset==VideoPreset::ExtraDetail);
+    std::string detail_graph;
+    bool detail_active=false;
     option("hwdec",video_hwdec(video_preset));
     option("sws-scaler",video_scaler(video_preset));
 #else
@@ -167,6 +171,24 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
     auto command=[&](const char* name,const std::string& value,const char* mode=nullptr){const char* args[]={name,value.c_str(),mode,nullptr};
         if(mpv_command(mpv,args)<0)notice="No se pudo aplicar esa opcion al video.";};
     auto show=[&]{visible_until=SDL_GetTicks()+4000;};
+#ifdef _WIN32
+    // Apply/undo a real FFmpeg filter graph on the SAME source frame for A/B.
+    // On failure revert to unfiltered playback rather than breaking video.
+    auto set_extra_detail=[&](bool enabled){
+        if(detail_graph.empty())return false;
+        const int apply=mpv_set_property_string(mpv,"vf",enabled?detail_graph.c_str():"");
+        if(apply<0){
+            mpv_set_property_string(mpv,"vf","");
+            detail_active=false;
+            notice="Filtro no disponible; reproduccion original.";
+            trace(("video:detail_filter_failed="+std::string(mpv_error_string(apply))).c_str());
+            return false;
+        }
+        detail_active=enabled;
+        trace((std::string("video:extra_detail=")+(enabled?"on":"off")).c_str());
+        return true;
+    };
+#endif
     auto seek_to=[&](double amount){if(!flag("seekable")){notice="Esta emision no permite adelantar o retroceder.";show();return;}
         command("seek",std::to_string(amount),"relative+exact");show();};
     auto toggle_pause=[&]{int value=!flag("pause");
@@ -224,6 +246,8 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
             {"Retroceder 60 segundos",14},{"Adelantar 60 segundos",15},{"Reiniciar video",16},{"Informacion del video",17},{std::string("Siguiente episodio automatico: ")+(auto_next?"Si":"No"),24},{"Cerrar reproductor",18}};
 #ifdef _WIN32
             rows.push_back({"Video mejorado: "+std::string(video_preset_label(video_preset))+" (proximo video)",25});
+            if(extra_detail_started)
+                rows.push_back({"Comparar imagen: "+std::string(detail_active?"CAS activo":"Original")+" (F8)",26});
 #endif
         }
         if(page==1||page==2){if(page==2)rows.push_back({"Desactivar subtitulos",20,-1});for(const auto& t:tracks())if(t.type==(page==1?"audio":"sub"))rows.push_back({(t.selected?"* ":"  ")+t.label,page==1?19:20,t.id});}
@@ -341,6 +365,13 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
                 }
                 switch(event.key.keysym.sym){
 #ifdef _WIN32
+                case SDLK_F8:
+                    if(extra_detail_started&&!detail_graph.empty()){
+                        if(set_extra_detail(!detail_active))
+                            notice=detail_active?"CAS/Lanczos ACTIVO | F8: comparar":
+                                                 "Imagen ORIGINAL | F8: comparar";
+                    }else notice="Selecciona Detalle extra y vuelve a abrir el video.";
+                    show();break;
                 case SDLK_F4:result.requested_navigation=0;running=false;break;
                 case SDLK_F5:result.requested_navigation=1;running=false;break;
                 case SDLK_F6:result.requested_navigation=2;running=false;break;
@@ -402,6 +433,8 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
                         char* decoder=mpv_get_property_string(mpv,"hwdec-current");
                         notice+=" | Decodificador: "+std::string(decoder?decoder:"no");
                         if(decoder)mpv_free(decoder);
+                        if(extra_detail_started)
+                            notice+=std::string(" | CAS: ")+(detail_active?"ON":"OFF");
 #endif
                         break;
                     }
@@ -412,6 +445,14 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
                     case 22:if(row.value!=options.item)request_item(static_cast<int>(row.value));break;
                     case 24:auto_next=!auto_next;break;
 #ifdef _WIN32
+                    case 26:{
+                        if(extra_detail_started&&!detail_graph.empty()){
+                            if(set_extra_detail(!detail_active))
+                                notice=detail_active?"Filtro CAS/Lanczos activo.":
+                                                     "Imagen original (sin filtro).";
+                        }else notice="Activa Detalle extra en el siguiente video.";
+                        break;
+                    }
                     case 25:{
                         video_preset=next_video_preset(video_preset,direction);
                         notice=save_video_preset(video_preset)?
@@ -458,6 +499,16 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
                 const std::string active=decoder?decoder:"no";
                 trace(("video:decoder="+active+" preset="+video_preset_key(video_preset)).c_str());
                 if(decoder)mpv_free(decoder);
+                if(extra_detail_started){
+                    const int vw=static_cast<int>(property("width"));
+                    const int vh=static_cast<int>(property("height"));
+                    detail_graph=extra_detail_filter(vw,vh);
+                    if(!detail_graph.empty()){
+                        if(set_extra_detail(true)){
+                            trace(("video:filter="+detail_graph).c_str());
+                        }else notice="Nitidez extra no disponible. Imagen original.";
+                    }
+                }
 #endif
         if(pending_start>0&&flag("seekable"))command("seek",std::to_string(pending_start),"absolute+exact");
                 pending_start=0;}
