@@ -81,9 +81,13 @@ bool GpuReadback::render(void* rgba_pixels,std::string& diagnostic){
     return true;
 }
 void GpuReadback::close(){
-    // mpv_render_context_free() must have been called by the owner BEFORE
-    // deleting the GL context. Never silently destroy live mpv resources.
-    if(context_)return;
+    // libmpv requires this exact GL context to remain current until
+    // render context teardown; never destroy the GL objects first.
+    if(context_){
+        make_current();
+        mpv_render_context_free(context_);
+        context_=nullptr;
+    }
     if(gl_){
         SDL_GL_DeleteContext(gl_);gl_=nullptr;
     }
