@@ -2,7 +2,7 @@ name: Xuper TV Desktop | Windows preview
 
 on:
   push:
-    branches: [windows-desktop-preview, feature/ui-cinematic-tv, feature/apple-controller-server, feature/cinematic-ui-v2, feature/search-remote-catalog, feature/youtube-browser-remote, fix/youtube-hidpi-video, feature/classic-remote-command-support, feature/video-enhanced-stage1, feature/video-enhanced-contrast-stage2]
+    branches: [windows-desktop-preview, feature/ui-cinematic-tv, feature/apple-controller-server, feature/cinematic-ui-v2, feature/search-remote-catalog, feature/youtube-browser-remote, fix/youtube-hidpi-video, feature/classic-remote-command-support, feature/video-enhanced-stage1, feature/video-enhanced-contrast-stage2, feature/video-enhanced-gpu-stage3]
     paths:
       - '.github/workflows/bootstrap-windows.yml'
       - 'patches/**'
@@ -13,6 +13,7 @@ on:
       - 'README_WINDOWS.md'
       - 'README_VIDEO_ENHANCED.md'
       - 'CMakeLists.txt'
+      - 'shaders/**'
       - 'catalog.m3u'
   workflow_dispatch:
 
@@ -105,11 +106,12 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          mkdir -p dist/Xuper-TV-Desktop/licenses
+          mkdir -p dist/Xuper-TV-Desktop/licenses dist/Xuper-TV-Desktop/shaders
           cp build/windows/XuperTVDesktop.exe dist/Xuper-TV-Desktop/
           cp packaging/runtime/switch/xuperswitch/{font.ttf,cacert.pem,test.mp4} dist/Xuper-TV-Desktop/
           cp packaging/runtime/switch/xuperswitch/service.template.json dist/Xuper-TV-Desktop/service.template.json
           cp catalog.m3u dist/Xuper-TV-Desktop/
+          cp shaders/FSRCNNX_x2_8-0-4-1.glsl dist/Xuper-TV-Desktop/shaders/
           cp LICENSE LICENSE.nlohmann-json COPYRIGHT.mpv DEPENDENCIAS.md dist/Xuper-TV-Desktop/
           cp -r licenses/. dist/Xuper-TV-Desktop/licenses/
           ntldd -R build/windows/XuperTVDesktop.exe > build/windows/dependencies.txt
@@ -174,16 +176,16 @@ jobs:
           Copy-Item README_VIDEO_ENHANCED.md dist/Xuper-TV-Desktop/README_VIDEO_ENHANCED.md
           Write-Host "Bundled service template verified. No APK import required."
       # The account's Actions artifact storage quota is currently exhausted.
-      # Instead of silently failing or deleting old user artifacts, stage 1
+      # Instead of silently failing or deleting old user artifacts, stage 3
       # can provide its verified ZIP on a dedicated orphan branch. No release.
       - name: Publish temporary ZIP to isolated build-delivery branch
-        if: github.ref_name == 'feature/video-enhanced-contrast-stage2'
+        if: github.ref_name == 'feature/video-enhanced-gpu-stage3'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $name = 'XuperTV-Enhanced-Stage2-Windows.zip'
+          $name = 'XuperTV-Enhanced-Stage3-GPU-Windows.zip'
           $zip = Join-Path $env:RUNNER_TEMP $name
           Compress-Archive -Path 'dist/Xuper-TV-Desktop' -DestinationPath $zip -CompressionLevel Optimal
           $bytes = (Get-Item $zip).Length
@@ -196,7 +198,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Could not open delivery worktree' }
           Push-Location $folder
           try {
-            git checkout --orphan build/video-enhanced-stage2
+            git checkout --orphan build/video-enhanced-stage3-gpu
             if ($LASTEXITCODE -ne 0) { throw 'Cannot create delivery branch' }
             git rm -r --cached --ignore-unmatch . | Out-Null
             Get-ChildItem -Force | Where-Object { $_.Name -ne '.git' } |
@@ -204,25 +206,25 @@ jobs:
             Copy-Item $zip -Destination (Join-Path $folder $name)
             $hash = (Get-FileHash -Algorithm SHA256 $name).Hash
             @(
-              'XuperTV Enhanced Stage 2 — Temporary Windows build',
+              'XuperTV Enhanced Stage 3 GPU — Temporary Windows build',
               'Experimental, unsigned portable build. No release or merge.',
               "SHA256: $hash",
-              'Source branch: feature/video-enhanced-contrast-stage2',
+              'Source branch: feature/video-enhanced-gpu-stage3',
               'Extract the ZIP as one folder. Do not mix DLLs from older builds.'
             ) | Set-Content -Encoding UTF8 README.txt
             git add -- $name README.txt
-            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Temporary stage 1 Windows ZIP (automated verified build)'
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Temporary stage 3 Windows ZIP (automated verified build)'
             if ($LASTEXITCODE -ne 0) { throw 'Cannot commit delivery package' }
-            git push --force origin HEAD:refs/heads/build/video-enhanced-stage2
+            git push --force origin HEAD:refs/heads/build/video-enhanced-stage3-gpu
             if ($LASTEXITCODE -ne 0) { throw 'Cannot publish delivery branch' }
-            Write-Host "Temporary download: https://github.com/$env:GITHUB_REPOSITORY/raw/refs/heads/build/video-enhanced-stage2/$name"
+            Write-Host "Temporary download: https://github.com/$env:GITHUB_REPOSITORY/raw/refs/heads/build/video-enhanced-stage3-gpu/$name"
           } finally {
             Pop-Location
           }
       - name: Upload test build (not a release)
-        if: github.ref_name != 'feature/video-enhanced-contrast-stage2'
+        if: github.ref_name != 'feature/video-enhanced-gpu-stage3'
         uses: actions/upload-artifact@v4
         with:
-          name: XuperTV-Enhanced-Stage2-Windows
+          name: XuperTV-Enhanced-Stage3-GPU-Windows
           path: dist/Xuper-TV-Desktop/
           if-no-files-found: error
