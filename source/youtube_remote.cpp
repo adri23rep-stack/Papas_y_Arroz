@@ -38,6 +38,19 @@ static bool browser_open(const std::string& address){
     const HINSTANCE result=ShellExecuteW(nullptr,L"open",w.c_str(),nullptr,nullptr,SW_SHOWNORMAL);
     return reinterpret_cast<INT_PTR>(result)>32;
 }
+std::string streaming_url(const std::string& action){
+    if(action=="netflix_open")return "https://www.netflix.com/";
+    if(action=="hbo_max_open")return "https://www.hbomax.com/";
+    if(action=="apple_tv_open")return "https://tv.apple.com/";
+    return "";
+}
+bool streaming_launch(const std::string& action){
+    const auto url=streaming_url(action);
+    if(url.empty())return false;
+    const std::wstring wide(url.begin(),url.end());
+    const HINSTANCE result=ShellExecuteW(nullptr,L"open",wide.c_str(),nullptr,nullptr,SW_SHOWNORMAL);
+    return reinterpret_cast<INT_PTR>(result)>32;
+}
 bool youtube_launch(){
     return browser_open("https://www.youtube.com/");
 }
@@ -53,7 +66,10 @@ bool youtube_foreground(){
     std::wstring title(text);
     std::transform(title.begin(),title.end(),title.begin(),
                    [](wchar_t c){return static_cast<wchar_t>(std::towlower(c));});
-    return title.find(L"youtube")!=std::wstring::npos;
+    return title.find(L"youtube")!=std::wstring::npos ||
+           title.find(L"netflix")!=std::wstring::npos ||
+           title.find(L"hbo max")!=std::wstring::npos ||
+           title.find(L"apple tv")!=std::wstring::npos;
 }
 static bool key(WORD vk,WORD modifier=0){
     INPUT keys[4]{};
@@ -102,8 +118,19 @@ bool youtube_input(const std::string& command,int dx,int dy){
     if(command=="left")return key(VK_LEFT);
     if(command=="right")return key(VK_RIGHT);
     if(command=="ok")return key(VK_RETURN);
-    if(command=="youtube_pause"||command=="play_pause")return key('K');
+    if(command=="youtube_pause")return key('K');
+    if(command=="play_pause"){
+        // Netflix and Apple TV often use Space rather than YouTube's K.
+        const HWND window=GetForegroundWindow();
+        wchar_t title[512]{};
+        if(window)GetWindowTextW(window,title,512);
+        std::wstring current(title);
+        std::transform(current.begin(),current.end(),current.begin(),
+            [](wchar_t c){return static_cast<wchar_t>(std::towlower(c));});
+        return current.find(L"youtube")!=std::wstring::npos?key('K'):key(VK_SPACE);
+    }
     if(command=="youtube_fullscreen")return key('F');
+    if(command=="browser_fullscreen")return key(VK_F11);
     if(command=="youtube_mute")return key('M');
     if(command=="youtube_seek_back")return key('J');
     if(command=="youtube_seek_forward")return key('L');
