@@ -162,10 +162,11 @@ jobs:
           $config | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $file
           if (Test-Path "dist/Xuper-TV-Desktop/service.json") { throw "Never ship device-specific service.json" }
           Copy-Item README_WINDOWS.md dist/Xuper-TV-Desktop/README_WINDOWS.md
+          Copy-Item README_VIDEO_ENHANCED.md dist/Xuper-TV-Desktop/README_VIDEO_ENHANCED.md
           Write-Host "Bundled service template verified. No APK import required."
       - name: Upload test build (not a release)
         uses: actions/upload-artifact@v4
         with:
-          name: Xuper-TV-Desktop-Windows-preview
+          name: XuperTV-Enhanced-Stage1-Windows
           path: dist/Xuper-TV-Desktop/
           if-no-files-found: error
