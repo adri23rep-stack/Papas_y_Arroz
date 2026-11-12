@@ -19,11 +19,11 @@ public:
     bool render(void* rgba_pixels,std::string& diagnostic);
     bool make_current();
     mpv_render_context* context() const {return context_;}
-    void close(); // must be called after the mpv render context is released
+    void close(); // frees mpv renderer while its OpenGL context is current
 private:
     SDL_Window* window_=nullptr;
     SDL_GLContext gl_=nullptr;
-    mpv_render_context* context_=nullptr; // libmpv owns this; caller frees it
+    mpv_render_context* context_=nullptr; // owned by this bridge
     int width_=0,height_=0;
 };
 }
