@@ -70,5 +70,6 @@ constexpr int REMOTE_BRIGHTNESS=0x585502;
 constexpr int REMOTE_OPEN_CATALOG=0x585503;
 constexpr int REMOTE_YOUTUBE_START=0x585504;
 constexpr int REMOTE_YOUTUBE_RETURN=0x585505;
+constexpr int REMOTE_WHEEL=0x585506;
 }
 #endif
