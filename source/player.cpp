@@ -17,6 +17,7 @@
 #include "render_quality.hpp"
 #ifdef _WIN32
 #include "video_enhanced.hpp"
+#include "gpu_readback.hpp"
 #endif
 #include <mpv/client.h>
 #include <mpv/render.h>
@@ -39,6 +40,11 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
     trace("play:begin");
     mpv_handle* mpv=mpv_create();mpv_render_context* context=nullptr;SDL_Texture* texture=nullptr;
     void* pixels=nullptr;std::atomic<bool> dirty{true};std::string error;bool subtitle_written=false;
+#ifdef _WIN32
+    std::unique_ptr<GpuReadback> gpu;
+    bool gpu_active=false,shader_enabled=false,shader_ready=false;
+    std::string gpu_diagnostic,shader_path;
+#endif
 #ifdef __SWITCH__
     const char* subtitle_cache="sdmc:/switch/xuperswitch/subtitle_cache.srt";
 #else
@@ -46,6 +52,13 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
 #endif
     auto cleanup=[&]{
         trace("play:free_context_begin");
+#ifdef _WIN32
+        if(gpu){
+            gpu->close(); // free libmpv renderer while its own GL context exists
+            gpu.reset();
+            context=nullptr;
+        }
+#endif
         if(context)mpv_render_context_free(context);
         trace("play:free_context_end");
         if(mpv)mpv_terminate_destroy(mpv);
@@ -77,6 +90,24 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
     bool detail_active=false;
     option("hwdec",video_hwdec(video_preset));
     option("sws-scaler",video_scaler(video_preset));
+    if(video_uses_gpu(video_preset)){
+        // Resolve relative to the EXE, not the current working directory.
+        char* base=SDL_GetBasePath();
+        shader_path=std::string(base?base:"")+"shaders/FSRCNNX_x2_8-0-4-1.glsl";
+        if(base)SDL_free(base);
+        shader_ready=std::ifstream(shader_path,std::ios::binary).good();
+        if(shader_ready){
+            // The mpv OpenGL render API can execute this real GLSL shader.
+            // No FFmpeg CAS pipeline is loaded in this GPU mode.
+            option("glsl-shaders",shader_path.c_str());
+            option("scale","ewa_lanczossharp");
+            option("cscale","ewa_lanczos");
+            option("fbo-format","rgba16f");
+            shader_enabled=true;
+        }else{
+            gpu_diagnostic="Falta shaders/FSRCNNX_x2_8-0-4-1.glsl; usando CPU.";
+        }
+    }
 #else
     option("hwdec","no");
 #endif
@@ -111,12 +142,28 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
         if(rc<0){error=mpv_error_string(rc);cleanup();return error;}
     trace("play:mpv_initialized");
     mpv_request_log_messages(mpv,"v");
-    mpv_render_param init[]={{MPV_RENDER_PARAM_API_TYPE,const_cast<char*>(MPV_RENDER_API_TYPE_SW)},{MPV_RENDER_PARAM_INVALID,nullptr}};
-    rc=mpv_render_context_create(&context,mpv,init);
-    if(rc<0){error=std::string("Render software: ")+mpv_error_string(rc);cleanup();return error;}
-    mpv_render_context_set_update_callback(context,update,&dirty);
     // Render the Windows video in 1080p instead of upscaling a 360p buffer.
     constexpr int width=kVideoRenderWidth,height=kVideoRenderHeight;size_t stride=width*4;
+#ifdef _WIN32
+    if(shader_ready&&video_uses_gpu(video_preset)){
+        gpu=std::make_unique<GpuReadback>();
+        if(gpu->open(mpv,width,height,gpu_diagnostic)){
+            context=gpu->context();
+            gpu_active=true;
+            trace(("video:gpu_context="+gpu_diagnostic).c_str());
+        }else{
+            trace(("video:gpu_fallback="+gpu_diagnostic).c_str());
+            gpu.reset();
+            shader_enabled=false;
+        }
+    }
+#endif
+    if(!context){
+        mpv_render_param init[]={{MPV_RENDER_PARAM_API_TYPE,const_cast<char*>(MPV_RENDER_API_TYPE_SW)},{MPV_RENDER_PARAM_INVALID,nullptr}};
+        rc=mpv_render_context_create(&context,mpv,init);
+        if(rc<0){error=std::string("Render software: ")+mpv_error_string(rc);cleanup();return error;}
+    }
+    mpv_render_context_set_update_callback(context,update,&dirty);
 #if defined(_WIN32)
     pixels=_aligned_malloc(stride*height,64);
 #else
@@ -138,6 +185,12 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
     const std::vector<double> speeds{0.5,0.75,1,1.25,1.5,1.75,2};
     const std::vector<std::string> ratios{"Original","16:9","4:3","Rellenar"};
     PlaybackOutcome result;bool auto_next=options.auto_next;std::string notice,media_hint;
+#ifdef _WIN32
+    if(video_uses_gpu(video_preset)&&!gpu_active){
+        notice="OpenGL no disponible; se usa el renderer compatible.";
+        trace(("video:gpu_unsupported="+gpu_diagnostic).c_str());
+    }
+#endif
     Uint32 visible_until=SDL_GetTicks()+5000,last_draw=0;
     const bool live_channels=options.channels.size()>1&&options.channels.size()==options.items.size();
     ChannelRail rail(live_channels?options.channels.size():0,
@@ -172,6 +225,19 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
         if(mpv_command(mpv,args)<0)notice="No se pudo aplicar esa opcion al video.";};
     auto show=[&]{visible_until=SDL_GetTicks()+4000;};
 #ifdef _WIN32
+    auto set_gpu_shader=[&](bool enabled){
+        if(!gpu_active||!shader_ready)return false;
+        const int rc=mpv_set_property_string(mpv,"glsl-shaders",enabled?shader_path.c_str():"");
+        if(rc<0){
+            notice="No se pudo alternar el shader GPU.";
+            trace(("video:gpu_shader_toggle_failed="+std::string(mpv_error_string(rc))).c_str());
+            return false;
+        }
+        shader_enabled=enabled;
+        trace(enabled?"video:fsrcnnx=on":"video:fsrcnnx=off");
+        return true;
+    };
+
     // Apply/undo a real FFmpeg filter graph on the SAME source frame for A/B.
     // On failure revert to unfiltered playback rather than breaking video.
     auto set_extra_detail=[&](bool enabled){
@@ -248,6 +314,8 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
             rows.push_back({"Video mejorado: "+std::string(video_preset_label(video_preset))+" (proximo video)",25});
             if(extra_detail_started)
                 rows.push_back({"Comparar imagen: "+std::string(detail_active?"CAS activo":"Original")+" (F8)",26});
+            if(gpu_active&&shader_ready)
+                rows.push_back({"Comparar GPU: "+std::string(shader_enabled?"FSRCNNX":"Original")+" (F8)",27});
 #endif
         }
         if(page==1||page==2){if(page==2)rows.push_back({"Desactivar subtitulos",20,-1});for(const auto& t:tracks())if(t.type==(page==1?"audio":"sub"))rows.push_back({(t.selected?"* ":"  ")+t.label,page==1?19:20,t.id});}
@@ -366,7 +434,11 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
                 switch(event.key.keysym.sym){
 #ifdef _WIN32
                 case SDLK_F8:
-                    if(extra_detail_started&&!detail_graph.empty()){
+                    if(gpu_active&&shader_ready){
+                        if(set_gpu_shader(!shader_enabled))
+                            notice=shader_enabled?"GPU FSRCNNX ACTIVO | F8: comparar":
+                                                  "Imagen original GPU | F8: comparar";
+                    }else if(extra_detail_started&&!detail_graph.empty()){
                         if(set_extra_detail(!detail_active))
                             notice=detail_active?"CAS/Lanczos ACTIVO | F8: comparar":
                                                  "Imagen ORIGINAL | F8: comparar";
@@ -435,6 +507,9 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
                         if(decoder)mpv_free(decoder);
                         if(extra_detail_started)
                             notice+=std::string(" | CAS: ")+(detail_active?"ON":"OFF");
+                        if(video_uses_gpu(video_preset))
+                            notice+=std::string(" | GPU: ")+(gpu_active?"OpenGL readback":"CPU fallback")+
+                                    " | FSRCNNX: "+(gpu_active&&shader_enabled?"ON":"OFF");
 #endif
                         break;
                     }
@@ -445,6 +520,12 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
                     case 22:if(row.value!=options.item)request_item(static_cast<int>(row.value));break;
                     case 24:auto_next=!auto_next;break;
 #ifdef _WIN32
+                    case 27:{
+                        if(set_gpu_shader(!shader_enabled))
+                            notice=shader_enabled?"GPU FSRCNNX activo.":
+                                                  "Imagen GPU sin FSRCNNX.";
+                        break;
+                    }
                     case 26:{
                         if(extra_detail_started&&!detail_graph.empty()){
                             if(set_extra_detail(!detail_active))
@@ -521,9 +602,43 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
         }
         if(!running)break;
         bool fresh=dirty.exchange(false);
-        if(fresh){int size[2]={width,height};mpv_render_param frame[]={{MPV_RENDER_PARAM_SW_SIZE,size},{MPV_RENDER_PARAM_SW_FORMAT,const_cast<char*>("rgb0")},
-            {MPV_RENDER_PARAM_SW_STRIDE,&stride},{MPV_RENDER_PARAM_SW_POINTER,pixels},{MPV_RENDER_PARAM_INVALID,nullptr}};
-            rc=mpv_render_context_render(context,frame);
+        if(fresh){
+#ifdef _WIN32
+            if(gpu_active){
+                std::string gpu_error;
+                if(!gpu->render(pixels,gpu_error)){
+                    trace(("video:gpu_readback_failed="+gpu_error).c_str());
+                    // Restore video without replacing XuperTV or its SDL UI.
+                    gpu->close();gpu.reset();gpu_active=false;shader_enabled=false;context=nullptr;
+                    mpv_render_param reset[]={
+                        {MPV_RENDER_PARAM_API_TYPE,const_cast<char*>(MPV_RENDER_API_TYPE_SW)},
+                        {MPV_RENDER_PARAM_INVALID,nullptr}
+                    };
+                    rc=mpv_render_context_create(&context,mpv,reset);
+                    if(rc<0){error="GPU y renderer compatible fallaron: "+std::string(mpv_error_string(rc));break;}
+                    mpv_render_context_set_update_callback(context,update,&dirty);
+                    notice="GPU no disponible. Continuando en modo CPU.";
+                    show();
+                }
+            }
+#endif
+            if(
+#ifdef _WIN32
+                !gpu_active
+#else
+                true
+#endif
+            ){
+                int size[2]={width,height};
+                mpv_render_param frame[]={
+                    {MPV_RENDER_PARAM_SW_SIZE,size},
+                    {MPV_RENDER_PARAM_SW_FORMAT,const_cast<char*>("rgb0")},
+                    {MPV_RENDER_PARAM_SW_STRIDE,&stride},
+                    {MPV_RENDER_PARAM_SW_POINTER,pixels},
+                    {MPV_RENDER_PARAM_INVALID,nullptr}
+                };
+                rc=mpv_render_context_render(context,frame);
+            }else rc=0;
         if(rc<0){error=mpv_error_string(rc);break;}
             if(SDL_UpdateTexture(texture,nullptr,pixels,static_cast<int>(stride))<0){error=SDL_GetError();break;}
             if(first_frame&&loaded){trace("play:first_frame");first_frame=false;}
