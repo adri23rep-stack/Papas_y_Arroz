@@ -98,6 +98,15 @@ int main(){
     bool saw_tv=false;
     while(SDL_PollEvent(&e))if(e.type==SDL_KEYDOWN&&e.key.keysym.sym==SDLK_F5)saw_tv=true;
     REQUIRE(saw_tv);
+    REQUIRE(okay(post("/input",R"({"action":"fullscreen"})",token)));
+    bool saw_fullscreen=false;
+    while(SDL_PollEvent(&e))if(e.type==SDL_KEYDOWN&&e.key.keysym.sym==SDLK_F11)saw_fullscreen=true;
+    REQUIRE(saw_fullscreen);
+    REQUIRE(okay(post("/input",R"({"action":"wheel","value":-2})",token)));
+    bool saw_wheel=false;
+    while(SDL_PollEvent(&e))if(e.type==SDL_MOUSEWHEEL&&e.wheel.y==-2)saw_wheel=true;
+    REQUIRE(saw_wheel);
+    REQUIRE(!okay(post("/input",R"({"action":"wheel_drop"})",token)));
     server.stop();
     SDL_Quit();
     std::remove("remote_secret.txt");
