@@ -1,30 +1,33 @@
-# XuperTV Enhanced — Stage 2: Contrast-Adaptive Detail (experimental)
+# XuperTV Enhanced Stage 3 — Experimental GPU FSRCNNX
 
-This branch preserves Stage 1 NVIDIA decode, the 1080p render buffer, iPhone remote, and original XuperTV menus.
+## What this build actually does
 
-## New features
+The fifth playback preset **GPU FSRCNNX (experimental)** attempts an OpenGL 3.3 libmpv renderer with the original **FSRCNNX x2 8-0-4-1** shader by igv. This is a **real mpv GLSL neural-network upscaling shader** (not NVIDIA RTX VSR). It is used when the output-to-source upscale factor is suitable, such as 720p to 1080p; 1080p already displayed at 1080p may look unchanged.
 
-- A fourth **Video mejorado** preset: **Detalle extra (CAS)**. The setting persists in `video_enhanced.txt` and takes effect when you start the **next** video.
-- Real FFmpeg **Contrast Adaptive Sharpen** filter (`cas`), not just a decoder or a name-only setting.
-- For native 16:9 SD/HD video below 1080p, a software Lanczos scale to 1920x1080 happens *before* CAS (`scale=1920:1080:flags=lanczos,cas=strength=0.30`). Other aspect ratios and HD/UHD sources preserve their resolution and use gentler sharpening (`cas=strength=0.24`).
-- A/B comparison on the **same video** with **F8**, or the **Comparar imagen** row in Options. Toggle between the CAS output and the original filter-free output without switching XuperTV versions. The original video/audio source, subtitle settings, frame timing, and renderer remain unchanged.
-- The in-player **Informacion del video** reports the current decode mode and whether CAS is enabled.
+### Why this is experimental
 
-## Important limitations
+XuperTV still uses SDL2 to draw its menus, tiles, subtitles and TV guide. Instead of replacing that rendering system in one risky step, Stage 3 renders the video offscreen using mpv's OpenGL render API, then **reads that frame back from GPU memory to an SDL video texture**. Consequently:
 
-- **NOT NVIDIA RTX Video Super Resolution, GPU shaders, libplacebo, FSRCNNX, or RIFE.** CAS and Lanczos here are performed by FFmpeg/libmpv on the CPU, despite hardware-assisted `nvdec-copy` decoding.
-- Software sharpening can increase CPU usage, exaggerate compression artifacts, or produce halos. 720p to 1080p scaling cannot reconstruct details absent from the original source.
-- Existing `MPV_RENDER_API_TYPE_SW` remains in place to preserve complex SDL2 overlays, live-TV previews, and menus. A separate GPU compositor is required for shader-based AI upscaling.
-- Real video and iPhone testing is still needed. CI tests the filter, but cannot evaluate perceptual quality or performance on RTX 3060.
+- FSRCNNX itself can run on the GPU, but **this is not a zero-copy GPU compositor** and video upload/readback may still be expensive. Expect possible frame pacing and CPU/GPU transfer overhead.
+- If the GPU context cannot be initialized, the app falls back to the existing software rendering and reports **GPU: CPU fallback** in Video Information. No artificial GPU success indication.
+- A real device test is required to verify shader compilation, image quality and timing. Windows GitHub-hosted runners usually cannot test an RTX GPU.
+- FSRCNNX is separate from **RTX Video Super Resolution**, **RIFE**, **HDR** and **libplacebo gpu-next**. This build does **not** claim any of those features.
+- Windows NVIDIA hardware decoder NVDEC remains available as `nvdec-copy` as in Stage 1. It does not imply the rendering shader is active.
 
-## How to A/B compare
+## How to test
 
-1. Extract this build to a **new folder**, leaving your old XuperTV and Stage 1 versions untouched.
-2. Play any 720p video, open **Opciones → Video mejorado**, choose **Detalle extra (CAS)**. Reopen the video once.
-3. While the same scene plays, press **F8** to alternate CAS and Original. Alternatively, toggle **Comparar imagen** in Options with the remote's D-pad.
-4. Pause on a detailed frame. Observe text, faces, hair, hard edges, blockiness, and halos. If worse or CPU usage spikes, use the **Nitidez alta** or **Equilibrado** preset.
-5. Open **Información del video** to inspect `Decodificador` and `CAS: ON/OFF` separately. `nvdec-copy` means GPU decoding, **not GPU sharpening**.
+1. Keep your existing Original, Enhanced Stage 1 and Stage 2 folders unchanged. Extract Stage 3 as a completely **new folder** with the `shaders` subfolder next to `XuperTVDesktop.exe`.
+2. Play a 720p (1280x720) video and open **Opciones → Video mejorado**. Select **GPU FSRCNNX (experimental)** and start the video again.
+3. In **Informacion del video**, check **GPU: OpenGL readback / CPU fallback** and **FSRCNNX: ON/OFF**. The former proves the OpenGL render backend started, but not that the image looks better.
+4. Press **F8** while on the same scene to toggle the shader (or use **Comparar GPU** in Options). Initial shader compilation can still cause a short stutter. If performance is poor, compare frame pacing and use the previous folder/preset.
+5. Expect increased video-latency in this experimental readback pipeline. This is the core issue a proper **zero-copy** integration must later solve.
 
-## Rollback
+## Credits and license
 
-Stop this build and launch your old folder, or change the preset to `Compatible`, `Equilibrado`, or `Nitidez alta`. No merge to main and no release without on-device validation.
+The file `shaders/FSRCNNX_x2_8-0-4-1.glsl` is copyright **2017–2021 igv**. It is redistributed without modifications under **LGPL-3.0-or-later**, with its original copyright/license header preserved. Its full license is at `licenses/LGPL-3.0-only.txt`, with the optional later-version clause preserved in the source header.
+
+Source mirror used: https://github.com/iwalton3/default-shader-pack/blob/master/shaders/FSRCNNX_x2_8-0-4-1.glsl
+
+Upstream shader author: https://github.com/igv/FSRCNN-TensorFlow/releases
+
+This development branch is **not** merged to main and is **not** a release. Verify on Windows + NVIDIA hardware before any merge.
