@@ -256,6 +256,14 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
                     notice="Xuper TV pausado mientras usas YouTube.";
                     show();
                 }
+                if(event.user.code==REMOTE_WHEEL){
+                    const int ticks=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
+                    if(ticks!=0){
+                        if(menu)vertical-=ticks>0?1:-1;
+                        else if(strip_visible)rail.wheel(ticks);
+                        else show_channels();
+                    }
+                }
                 if(event.user.code==REMOTE_YOUTUBE_RETURN){
                     SDL_RaiseWindow(SDL_RenderGetWindow(renderer));
                     notice="De vuelta a Xuper TV. Pulsa reproducir para continuar.";
