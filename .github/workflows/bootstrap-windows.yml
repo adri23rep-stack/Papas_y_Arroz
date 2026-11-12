@@ -2,7 +2,7 @@ name: Xuper TV Desktop | Windows preview
 
 on:
   push:
-    branches: [windows-desktop-preview, feature/ui-cinematic-tv, feature/apple-controller-server, feature/cinematic-ui-v2, feature/search-remote-catalog, feature/youtube-browser-remote, fix/youtube-hidpi-video, feature/classic-remote-command-support, feature/video-enhanced-stage1]
+    branches: [windows-desktop-preview, feature/ui-cinematic-tv, feature/apple-controller-server, feature/cinematic-ui-v2, feature/search-remote-catalog, feature/youtube-browser-remote, fix/youtube-hidpi-video, feature/classic-remote-command-support, feature/video-enhanced-stage1, feature/video-enhanced-contrast-stage2]
     paths:
       - '.github/workflows/bootstrap-windows.yml'
       - 'patches/**'
@@ -92,6 +92,15 @@ jobs:
           cmake -S . -B build/windows -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build/windows --parallel 2
           ctest --test-dir build/windows --output-on-failure
+      - name: Validate FFmpeg CAS/Lanczos filter graph
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          # mpv is installed by the Windows dependency step; run an actual
+          # local decode through the new graph before packaging the app.
+          test -x /ucrt64/bin/mpv.exe
+          /ucrt64/bin/mpv.exe --no-config --no-audio --vo=null --frames=2             '--vf=lavfi=[scale=1920:1080:flags=lanczos,cas=strength=0.30]'             packaging/runtime/switch/xuperswitch/test.mp4
+          echo 'CAS + Lanczos filter smoke test passed.'
       - name: Package Windows EXE and DLLs
         shell: msys2 {0}
         run: |
@@ -168,13 +177,13 @@ jobs:
       # Instead of silently failing or deleting old user artifacts, stage 1
       # can provide its verified ZIP on a dedicated orphan branch. No release.
       - name: Publish temporary ZIP to isolated build-delivery branch
-        if: github.ref_name == 'feature/video-enhanced-stage1'
+        if: github.ref_name == 'feature/video-enhanced-contrast-stage2'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $name = 'XuperTV-Enhanced-Stage1-Windows.zip'
+          $name = 'XuperTV-Enhanced-Stage2-Windows.zip'
           $zip = Join-Path $env:RUNNER_TEMP $name
           Compress-Archive -Path 'dist/Xuper-TV-Desktop' -DestinationPath $zip -CompressionLevel Optimal
           $bytes = (Get-Item $zip).Length
@@ -187,7 +196,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Could not open delivery worktree' }
           Push-Location $folder
           try {
-            git checkout --orphan build/video-enhanced-stage1
+            git checkout --orphan build/video-enhanced-stage2
             if ($LASTEXITCODE -ne 0) { throw 'Cannot create delivery branch' }
             git rm -r --cached --ignore-unmatch . | Out-Null
             Get-ChildItem -Force | Where-Object { $_.Name -ne '.git' } |
@@ -195,25 +204,25 @@ jobs:
             Copy-Item $zip -Destination (Join-Path $folder $name)
             $hash = (Get-FileHash -Algorithm SHA256 $name).Hash
             @(
-              'XuperTV Enhanced Stage 1 — Temporary Windows build',
+              'XuperTV Enhanced Stage 2 — Temporary Windows build',
               'Experimental, unsigned portable build. No release or merge.',
               "SHA256: $hash",
-              'Source branch: feature/video-enhanced-stage1',
+              'Source branch: feature/video-enhanced-contrast-stage2',
               'Extract the ZIP as one folder. Do not mix DLLs from older builds.'
             ) | Set-Content -Encoding UTF8 README.txt
             git add -- $name README.txt
             git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Temporary stage 1 Windows ZIP (automated verified build)'
             if ($LASTEXITCODE -ne 0) { throw 'Cannot commit delivery package' }
-            git push --force origin HEAD:refs/heads/build/video-enhanced-stage1
+            git push --force origin HEAD:refs/heads/build/video-enhanced-stage2
             if ($LASTEXITCODE -ne 0) { throw 'Cannot publish delivery branch' }
-            Write-Host "Temporary download: https://github.com/$env:GITHUB_REPOSITORY/raw/refs/heads/build/video-enhanced-stage1/$name"
+            Write-Host "Temporary download: https://github.com/$env:GITHUB_REPOSITORY/raw/refs/heads/build/video-enhanced-stage2/$name"
           } finally {
             Pop-Location
           }
       - name: Upload test build (not a release)
-        if: github.ref_name != 'feature/video-enhanced-stage1'
+        if: github.ref_name != 'feature/video-enhanced-contrast-stage2'
         uses: actions/upload-artifact@v4
         with:
-          name: XuperTV-Enhanced-Stage1-Windows
+          name: XuperTV-Enhanced-Stage2-Windows
           path: dist/Xuper-TV-Desktop/
           if-no-files-found: error
