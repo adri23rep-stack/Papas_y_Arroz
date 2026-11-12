@@ -2,7 +2,7 @@ name: Xuper TV Desktop | Windows preview
 
 on:
   push:
-    branches: [windows-desktop-preview, feature/ui-cinematic-tv, feature/apple-controller-server, feature/cinematic-ui-v2, feature/search-remote-catalog, feature/youtube-browser-remote, fix/youtube-hidpi-video, feature/classic-remote-command-support]
+    branches: [windows-desktop-preview, feature/ui-cinematic-tv, feature/apple-controller-server, feature/cinematic-ui-v2, feature/search-remote-catalog, feature/youtube-browser-remote, fix/youtube-hidpi-video, feature/classic-remote-command-support, feature/video-enhanced-stage1]
     paths:
       - '.github/workflows/bootstrap-windows.yml'
       - 'patches/**'
@@ -11,6 +11,7 @@ on:
       - 'tests/**'
       - 'tools/**'
       - 'README_WINDOWS.md'
+      - 'README_VIDEO_ENHANCED.md'
       - 'CMakeLists.txt'
       - 'catalog.m3u'
   workflow_dispatch:
