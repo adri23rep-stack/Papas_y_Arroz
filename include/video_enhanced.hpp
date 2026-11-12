@@ -3,7 +3,8 @@
 #include <fstream>
 
 namespace xs {
-// Stage 3 optionally uses libmpv OpenGL with a real FSRCNNX GPU shader.\n// Unsupported systems automatically retain the software renderer.
+// Stage 3 optionally uses libmpv OpenGL with a real FSRCNNX GPU shader.
+// Unsupported systems automatically retain the software renderer.
 enum class VideoPreset { Compatible, Balanced, Sharp, ExtraDetail, GpuFsrcnnx };
 
 inline VideoPreset video_preset_from_string(const std::string& value) {
