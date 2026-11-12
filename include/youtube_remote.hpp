@@ -6,6 +6,9 @@ namespace xs {
 // background playback, or unapproved third-party player is involved.
 std::string youtube_results_url(const std::string& query);
 bool youtube_launch();
+// Opens only explicitly approved official streaming service sites.
+std::string streaming_url(const std::string& action);
+bool streaming_launch(const std::string& action);
 bool youtube_search(const std::string& query);
 bool youtube_foreground();
 bool youtube_input(const std::string& command,int dx=0,int dy=0);
