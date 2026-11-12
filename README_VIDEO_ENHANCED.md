@@ -1,27 +1,30 @@
-# XuperTV Enhanced — Stage 1 (experimental)
+# XuperTV Enhanced — Stage 2: Contrast-Adaptive Detail (experimental)
 
-This preview branch builds on the complete Windows TV + iPhone remote integration.
+This branch preserves Stage 1 NVIDIA decode, the 1080p render buffer, iPhone remote, and original XuperTV menus.
 
-## What works in stage 1
+## New features
 
-- **Optional NVIDIA NVDEC decoding (copy-back mode).** With the current SDL2 + libmpv software render architecture, GPU-decoded frames must be copied back to system RAM. The decoder tries `nvdec-copy`, then `d3d11va-copy`, and safe software fallback. Hardware decoding depends on the installed drivers and the content codec, so it is **not guaranteed to be active**. Incompatible GPUs still work.
-- **Software scaling quality presets.** Balanced uses bicubic. Sharp uses Lanczos through mpv's software scaler. Neither is AI upscaling.
-- **Compatible / Balanced / Sharp presets**, available at the bottom of the in-player options menu. The setting persists in `video_enhanced.txt` (beside the EXE) and takes effect on the **next** video playback. Compatible disables hardware decoding.
-- The player diagnostics show the **actual** `hwdec-current` reported by mpv rather than claiming NVIDIA is active without verification.
-- Remote wheel/scroll now uses a reliable SDL user event and keeps the original iPhone control and 1080p output preview.
+- A fourth **Video mejorado** preset: **Detalle extra (CAS)**. The setting persists in `video_enhanced.txt` and takes effect when you start the **next** video.
+- Real FFmpeg **Contrast Adaptive Sharpen** filter (`cas`), not just a decoder or a name-only setting.
+- For native 16:9 SD/HD video below 1080p, a software Lanczos scale to 1920x1080 happens *before* CAS (`scale=1920:1080:flags=lanczos,cas=strength=0.30`). Other aspect ratios and HD/UHD sources preserve their resolution and use gentler sharpening (`cas=strength=0.24`).
+- A/B comparison on the **same video** with **F8**, or the **Comparar imagen** row in Options. Toggle between the CAS output and the original filter-free output without switching XuperTV versions. The original video/audio source, subtitle settings, frame timing, and renderer remain unchanged.
+- The in-player **Informacion del video** reports the current decode mode and whether CAS is enabled.
 
-## Not yet implemented
+## Important limitations
 
-- **libplacebo GPU renderer** and **FSRCNNX shader**: these require a native GPU rendering path. The existing app currently uses `MPV_RENDER_API_TYPE_SW`, so writing shader settings alone would have no effect. Stage 2 needs to move from software compositing to a compatible GPU renderer without breaking cinematic menus, mouse events, secure playback headers, or the TV preview.
-- **RTX Video Super Resolution**, **RTX Video HDR**, **RIFE / TensorRT interpolation**: not shipped or activated. They require separate validation and/or SDK integration.
-- Current video output is 1920x1080 on Windows, but UI coordinates still use a 1280x720 logical layout.
+- **NOT NVIDIA RTX Video Super Resolution, GPU shaders, libplacebo, FSRCNNX, or RIFE.** CAS and Lanczos here are performed by FFmpeg/libmpv on the CPU, despite hardware-assisted `nvdec-copy` decoding.
+- Software sharpening can increase CPU usage, exaggerate compression artifacts, or produce halos. 720p to 1080p scaling cannot reconstruct details absent from the original source.
+- Existing `MPV_RENDER_API_TYPE_SW` remains in place to preserve complex SDL2 overlays, live-TV previews, and menus. A separate GPU compositor is required for shader-based AI upscaling.
+- Real video and iPhone testing is still needed. CI tests the filter, but cannot evaluate perceptual quality or performance on RTX 3060.
 
-## How to test
+## How to A/B compare
 
-1. Download the Windows ZIP artifact for branch `feature/video-enhanced-stage1` once CI succeeds.
-2. Replace the portable folder as a unit. Keep your local configuration/private session files off GitHub.
-3. Play a video; open Options; choose `Video mejorado` to cycle preset; reopen a video.
-4. Open `Informacion del video` and inspect the decoder: `nvdec-copy`, `d3d11va-copy`, or `no` means actual fallback.
-5. Compare CPU/GPU usage and visible quality on real 720p/1080p content before merging.
+1. Extract this build to a **new folder**, leaving your old XuperTV and Stage 1 versions untouched.
+2. Play any 720p video, open **Opciones → Video mejorado**, choose **Detalle extra (CAS)**. Reopen the video once.
+3. While the same scene plays, press **F8** to alternate CAS and Original. Alternatively, toggle **Comparar imagen** in Options with the remote's D-pad.
+4. Pause on a detailed frame. Observe text, faces, hair, hard edges, blockiness, and halos. If worse or CPU usage spikes, use the **Nitidez alta** or **Equilibrado** preset.
+5. Open **Información del video** to inspect `Decodificador` and `CAS: ON/OFF` separately. `nvdec-copy` means GPU decoding, **not GPU sharpening**.
 
-Windows build/test and a real device test are required before any merge to main or release.
+## Rollback
+
+Stop this build and launch your old folder, or change the preset to `Compatible`, `Equilibrado`, or `Nitidez alta`. No merge to main and no release without on-device validation.
