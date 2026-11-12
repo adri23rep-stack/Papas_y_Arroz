@@ -15,6 +15,9 @@
 #include "trace.hpp"
 #include "playback_error.hpp"
 #include "render_quality.hpp"
+#ifdef _WIN32
+#include "video_enhanced.hpp"
+#endif
 #include <mpv/client.h>
 #include <mpv/render.h>
 #include <atomic>
@@ -63,7 +66,16 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
     auto option=[&](const char* name,const char* value){int rc=mpv_set_option_string(mpv,name,value);
         if(rc<0&&error.empty())error=std::string(name)+": "+mpv_error_string(rc);};
     option("config","no");option("load-scripts","no");option("terminal","no");
-    option("vo","libmpv");option("hwdec","no");
+    option("vo","libmpv");
+#if defined(_WIN32)
+    // Stage 1: NVDEC/D3D11 copy-back decode (not zero-copy rendering).
+    // Keep a reliable CPU preset for incompatible hardware.
+    VideoPreset video_preset=load_video_preset();
+    option("hwdec",video_hwdec(video_preset));
+    option("sws-scaler",video_scaler(video_preset));
+#else
+    option("hwdec","no");
+#endif
     option("osd-level","0");option("sub-visibility","yes");
     option("sub-auto","no");option("audio-pitch-correction","yes");
     option("speed",std::to_string(options.speed).c_str());option("volume",std::to_string(options.volume).c_str());
@@ -209,7 +221,11 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
             {flag("mute")?"Activar sonido":"Silenciar",9},{"Sincronia audio: "+std::to_string(property("audio-delay")).substr(0,5)+" s",10},
             {"Sincronia subtitulos: "+std::to_string(property("sub-delay")).substr(0,5)+" s",11},
             {"Tamano subtitulos: "+std::to_string(property("sub-scale")).substr(0,4),12},{"Brillo: "+std::to_string(static_cast<int>(property("brightness"))),13},
-            {"Retroceder 60 segundos",14},{"Adelantar 60 segundos",15},{"Reiniciar video",16},{"Informacion del video",17},{std::string("Siguiente episodio automatico: ")+(auto_next?"Si":"No"),24},{"Cerrar reproductor",18}};}
+            {"Retroceder 60 segundos",14},{"Adelantar 60 segundos",15},{"Reiniciar video",16},{"Informacion del video",17},{std::string("Siguiente episodio automatico: ")+(auto_next?"Si":"No"),24},{"Cerrar reproductor",18}};
+#ifdef _WIN32
+            rows.push_back({"Video mejorado: "+std::string(video_preset_label(video_preset))+" (proximo video)",25});
+#endif
+        }
         if(page==1||page==2){if(page==2)rows.push_back({"Desactivar subtitulos",20,-1});for(const auto& t:tracks())if(t.type==(page==1?"audio":"sub"))rows.push_back({(t.selected?"* ":"  ")+t.label,page==1?19:20,t.id});}
         if(page==2)for(size_t i=0;i<options.subtitles.size();++i)rows.push_back({"Servicio: "+options.subtitles[i],23,static_cast<int64_t>(i)});
         if(page==3)for(size_t i=0;i<options.variants.size();++i)rows.push_back({(static_cast<int>(i)==options.variant?"* ":"  ")+options.variants[i],21,static_cast<int64_t>(i)});
@@ -375,13 +391,36 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
                     case 13:set_number("brightness",std::clamp(property("brightness")+direction*5,-100.0,100.0));break;
                     case 14:seek_to(-60);break;case 15:seek_to(60);break;
                     case 16:if(flag("seekable"))command("seek","0","absolute+exact");else notice="Esta emision no permite reiniciar.";break;
-                    case 17:{char* format=mpv_get_property_string(mpv,"video-format");notice=(format?std::string(format):"Video")+" | "+std::to_string(static_cast<int>(property("width")))+"x"+std::to_string(static_cast<int>(property("height")))+" | "+std::to_string(property("container-fps")).substr(0,5)+" fps";mpv_free(format);break;}
+                    case 17:{
+                        char* format=mpv_get_property_string(mpv,"video-format");
+                        notice=(format?std::string(format):"Video")+" | "+
+                            std::to_string(static_cast<int>(property("width")))+"x"+
+                            std::to_string(static_cast<int>(property("height")))+" | "+
+                            std::to_string(property("container-fps")).substr(0,5)+" fps";
+                        if(format)mpv_free(format);
+#ifdef _WIN32
+                        char* decoder=mpv_get_property_string(mpv,"hwdec-current");
+                        notice+=" | Decodificador: "+std::string(decoder?decoder:"no");
+                        if(decoder)mpv_free(decoder);
+#endif
+                        break;
+                    }
                     case 18:running=false;break;
                     case 19:mpv_set_property_string(mpv,"aid",std::to_string(row.value).c_str());notice="Audio seleccionado";page=0;selection=1;break;
                     case 20:{mpv_set_property_string(mpv,"sid",row.value<0?"no":std::to_string(row.value).c_str());int value=row.value>=0;mpv_set_property(mpv,"sub-visibility",MPV_FORMAT_FLAG,&value);notice="Subtitulos actualizados";page=0;selection=2;break;}
                     case 21:if(row.value!=options.variant){result.next_variant=static_cast<int>(row.value);running=false;}break;
                     case 22:if(row.value!=options.item)request_item(static_cast<int>(row.value));break;
                     case 24:auto_next=!auto_next;break;
+#ifdef _WIN32
+                    case 25:{
+                        video_preset=next_video_preset(video_preset,direction);
+                        notice=save_video_preset(video_preset)?
+                            "Video mejorado: "+std::string(video_preset_label(video_preset))+
+                            " | Se aplica al siguiente video.":
+                            "No se pudo guardar el ajuste de video.";
+                        break;
+                    }
+#endif
                     case 23:{std::string data,subtitle_error;
                         if(external_index==row.value&&external_id>=0){mpv_set_property_string(mpv,"sid",std::to_string(external_id).c_str());int on=1;mpv_set_property(mpv,"sub-visibility",MPV_FORMAT_FLAG,&on);notice="Subtitulo seleccionado";page=0;selection=2;break;}
                         SDL_SetRenderDrawColor(renderer,10,17,28,255);SDL_RenderClear(renderer);SDL_RenderCopy(renderer,texture,nullptr,nullptr);
@@ -414,6 +453,12 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
                 }
             }
             if(e->event_id==MPV_EVENT_FILE_LOADED){loaded=true;
+#ifdef _WIN32
+                char* decoder=mpv_get_property_string(mpv,"hwdec-current");
+                const std::string active=decoder?decoder:"no";
+                trace(("video:decoder="+active+" preset="+video_preset_key(video_preset)).c_str());
+                if(decoder)mpv_free(decoder);
+#endif
         if(pending_start>0&&flag("seekable"))command("seek",std::to_string(pending_start),"absolute+exact");
                 pending_start=0;}
             if(e->event_id==MPV_EVENT_END_FILE){trace("play:end_file");auto* end=static_cast<mpv_event_end_file*>(e->data);
