@@ -220,6 +220,12 @@ int main(int argc,char** argv){
             if(event.type==SDL_USEREVENT&&event.user.code==xs::REMOTE_VOLUME)
                 playback_history.volume=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
 #endif
+#ifdef _WIN32
+            if(event.type==SDL_USEREVENT&&event.user.code==xs::REMOTE_WHEEL){
+                const int ticks=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
+                previous|=ticks>0;next|=ticks<0;
+            }
+#endif
             if(event.type==SDL_MOUSEWHEEL){previous|=event.wheel.y>0;next|=event.wheel.y<0;}
             if(event.type==SDL_MOUSEBUTTONDOWN||event.type==SDL_FINGERDOWN){
                 const int x=event.type==SDL_FINGERDOWN?int(event.tfinger.x*1280):event.button.x,y=event.type==SDL_FINGERDOWN?int(event.tfinger.y*720):event.button.y;
