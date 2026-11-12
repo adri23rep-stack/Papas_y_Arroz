@@ -3,6 +3,11 @@
 #include <string>
 int main(){
     using xs::youtube_results_url;
+    using xs::streaming_url;
+    assert(streaming_url("netflix_open")=="https://www.netflix.com/");
+    assert(streaming_url("hbo_max_open")=="https://www.hbomax.com/");
+    assert(streaming_url("apple_tv_open")=="https://tv.apple.com/");
+    assert(streaming_url("shell_command").empty());
     assert(youtube_results_url("gatos divertidos")==
         "https://www.youtube.com/results?search_query=gatos%20divertidos");
     assert(youtube_results_url("musica & cine")==
