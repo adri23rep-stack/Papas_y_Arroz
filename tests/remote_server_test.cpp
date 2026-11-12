@@ -104,7 +104,7 @@ int main(){
     REQUIRE(saw_fullscreen);
     REQUIRE(okay(post("/input",R"({"action":"wheel","value":-2})",token)));
     bool saw_wheel=false;
-    while(SDL_PollEvent(&e))if(e.type==SDL_MOUSEWHEEL&&e.wheel.y==-2)saw_wheel=true;
+    while(SDL_PollEvent(&e))if(e.type==SDL_USEREVENT&&e.user.code==xs::REMOTE_WHEEL&&static_cast<int>(reinterpret_cast<intptr_t>(e.user.data1))==-2)saw_wheel=true;
     REQUIRE(saw_wheel);
     REQUIRE(!okay(post("/input",R"({"action":"wheel_drop"})",token)));
     server.stop();
