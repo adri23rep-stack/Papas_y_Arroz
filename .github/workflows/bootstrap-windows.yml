@@ -2,7 +2,7 @@ name: Xuper TV Desktop | Windows preview
 
 on:
   push:
-    branches: [windows-desktop-preview, feature/ui-cinematic-tv, feature/apple-controller-server, feature/cinematic-ui-v2, feature/search-remote-catalog, feature/youtube-browser-remote, fix/youtube-hidpi-video, feature/classic-remote-command-support, feature/video-enhanced-stage1, feature/video-enhanced-contrast-stage2, feature/video-enhanced-gpu-stage3]
+    branches: [windows-desktop-preview, feature/ui-cinematic-tv, feature/apple-controller-server, feature/cinematic-ui-v2, feature/search-remote-catalog, feature/youtube-browser-remote, fix/youtube-hidpi-video, feature/classic-remote-command-support, feature/video-enhanced-stage1, feature/video-enhanced-contrast-stage2, feature/video-enhanced-gpu-stage3, feature/xuper-native-engine-v1]
     paths:
       - '.github/workflows/bootstrap-windows.yml'
       - 'patches/**'
@@ -14,6 +14,7 @@ on:
       - 'README_VIDEO_ENHANCED.md'
       - 'CMakeLists.txt'
       - 'shaders/**'
+      - 'README_NATIVE_ENGINE.md'
       - 'catalog.m3u'
   workflow_dispatch:
 
@@ -80,6 +81,7 @@ jobs:
             mingw-w64-ucrt-x86_64-SDL2_ttf
             mingw-w64-ucrt-x86_64-sdl3
             mingw-w64-ucrt-x86_64-mpv
+            mingw-w64-ucrt-x86_64-ffmpeg
             mingw-w64-ucrt-x86_64-curl
             mingw-w64-ucrt-x86_64-mbedtls
             mingw-w64-ucrt-x86_64-libpng
@@ -108,6 +110,7 @@ jobs:
           set -euo pipefail
           mkdir -p dist/Xuper-TV-Desktop/licenses dist/Xuper-TV-Desktop/shaders
           cp build/windows/XuperTVDesktop.exe dist/Xuper-TV-Desktop/
+          cp build/windows/XuperNativeProbe.exe dist/Xuper-TV-Desktop/
           cp packaging/runtime/switch/xuperswitch/{font.ttf,cacert.pem,test.mp4} dist/Xuper-TV-Desktop/
           cp packaging/runtime/switch/xuperswitch/service.template.json dist/Xuper-TV-Desktop/service.template.json
           cp catalog.m3u dist/Xuper-TV-Desktop/
@@ -115,6 +118,7 @@ jobs:
           cp LICENSE LICENSE.nlohmann-json COPYRIGHT.mpv DEPENDENCIAS.md dist/Xuper-TV-Desktop/
           cp -r licenses/. dist/Xuper-TV-Desktop/licenses/
           ntldd -R build/windows/XuperTVDesktop.exe > build/windows/dependencies.txt
+          ntldd -R build/windows/XuperNativeProbe.exe >> build/windows/dependencies.txt
           # Current MSYS2 SDL2.dll is sdl2-compat; it dynamically loads
           # SDL3.dll with LoadLibrary, so ntldd cannot discover this runtime.
           # Always bundle SDL3 explicitly. Missing it causes error 0xc0000142.
@@ -174,18 +178,19 @@ jobs:
           if (Test-Path "dist/Xuper-TV-Desktop/service.json") { throw "Never ship device-specific service.json" }
           Copy-Item README_WINDOWS.md dist/Xuper-TV-Desktop/README_WINDOWS.md
           Copy-Item README_VIDEO_ENHANCED.md dist/Xuper-TV-Desktop/README_VIDEO_ENHANCED.md
+          Copy-Item README_NATIVE_ENGINE.md dist/Xuper-TV-Desktop/README_NATIVE_ENGINE.md
           Write-Host "Bundled service template verified. No APK import required."
       # The account's Actions artifact storage quota is currently exhausted.
       # Instead of silently failing or deleting old user artifacts, stage 3
       # can provide its verified ZIP on a dedicated orphan branch. No release.
       - name: Publish temporary ZIP to isolated build-delivery branch
-        if: github.ref_name == 'feature/video-enhanced-gpu-stage3'
+        if: github.ref_name == 'feature/xuper-native-engine-v1'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $name = 'XuperTV-Enhanced-Stage3-GPU-Windows.zip'
+          $name = 'XuperTV-Native-Engine-Pilot-Windows.zip'
           $zip = Join-Path $env:RUNNER_TEMP $name
           Compress-Archive -Path 'dist/Xuper-TV-Desktop' -DestinationPath $zip -CompressionLevel Optimal
           $bytes = (Get-Item $zip).Length
@@ -198,7 +203,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Could not open delivery worktree' }
           Push-Location $folder
           try {
-            git checkout --orphan build/video-enhanced-stage3-gpu
+            git checkout --orphan build/xuper-native-engine-pilot
             if ($LASTEXITCODE -ne 0) { throw 'Cannot create delivery branch' }
             git rm -r --cached --ignore-unmatch . | Out-Null
             Get-ChildItem -Force | Where-Object { $_.Name -ne '.git' } |
@@ -206,25 +211,25 @@ jobs:
             Copy-Item $zip -Destination (Join-Path $folder $name)
             $hash = (Get-FileHash -Algorithm SHA256 $name).Hash
             @(
-              'XuperTV Enhanced Stage 3 GPU — Temporary Windows build',
+              'XuperTV Native Engine Pilot — Temporary Windows build',
               'Experimental, unsigned portable build. No release or merge.',
               "SHA256: $hash",
-              'Source branch: feature/video-enhanced-gpu-stage3',
+              'Source branch: feature/xuper-native-engine-v1',
               'Extract the ZIP as one folder. Do not mix DLLs from older builds.'
             ) | Set-Content -Encoding UTF8 README.txt
             git add -- $name README.txt
-            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Temporary stage 3 Windows ZIP (automated verified build)'
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Temporary native engine pilot Windows ZIP (automated verified build)'
             if ($LASTEXITCODE -ne 0) { throw 'Cannot commit delivery package' }
-            git push --force origin HEAD:refs/heads/build/video-enhanced-stage3-gpu
+            git push --force origin HEAD:refs/heads/build/xuper-native-engine-pilot
             if ($LASTEXITCODE -ne 0) { throw 'Cannot publish delivery branch' }
-            Write-Host "Temporary download: https://github.com/$env:GITHUB_REPOSITORY/raw/refs/heads/build/video-enhanced-stage3-gpu/$name"
+            Write-Host "Temporary download: https://github.com/$env:GITHUB_REPOSITORY/raw/refs/heads/build/xuper-native-engine-pilot/$name"
           } finally {
             Pop-Location
           }
       - name: Upload test build (not a release)
-        if: github.ref_name != 'feature/video-enhanced-gpu-stage3'
+        if: github.ref_name != 'feature/xuper-native-engine-v1'
         uses: actions/upload-artifact@v4
         with:
-          name: XuperTV-Enhanced-Stage3-GPU-Windows
+          name: XuperTV-Native-Engine-Pilot-Windows
           path: dist/Xuper-TV-Desktop/
           if-no-files-found: error
