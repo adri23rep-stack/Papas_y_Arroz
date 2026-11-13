@@ -24,8 +24,35 @@ extern "C" {
 #include <memory>
 #include <string>
 #include <vector>
+#ifdef _WIN32
+#include <windows.h>
+#include <commdlg.h>
+#endif
 
 namespace {
+// Opening XuperNativePlayer.exe directly shows the standard Windows file
+// picker; dragging a file on the EXE still opens that file directly.
+std::string pick_local_video(){
+#ifdef _WIN32
+    wchar_t buffer[32768]{};
+    OPENFILENAMEW request{};
+    request.lStructSize=sizeof(request);
+    request.lpstrFile=buffer;
+    request.nMaxFile=static_cast<DWORD>(sizeof(buffer)/sizeof(buffer[0]));
+    request.lpstrFilter=L"Videos\0*.mp4;*.mkv;*.avi;*.mov;*.webm;*.ts;*.m4v\0Todos los archivos\0*.*\0";
+    request.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_EXPLORER|OFN_NOCHANGEDIR;
+    if(!GetOpenFileNameW(&request))return {};
+    const int count=WideCharToMultiByte(CP_UTF8,0,buffer,-1,nullptr,0,nullptr,nullptr);
+    if(count<2)return {};
+    std::string result(static_cast<size_t>(count),'\0');
+    if(!WideCharToMultiByte(CP_UTF8,0,buffer,-1,result.data(),count,nullptr,nullptr))
+        return {};
+    result.resize(static_cast<size_t>(count-1));
+    return result;
+#else
+    return {};
+#endif
+}
 std::string av_err(int rc){
     char b[AV_ERROR_MAX_STRING_SIZE]{};
     av_strerror(rc,b,sizeof(b));
@@ -136,7 +163,7 @@ struct NativePlayer {
     bool open(const std::string& path,bool prefer_gpu,bool smoke,int limit,bool with_test_audio){
         source=path;test_mode=smoke;requested_frames=limit;smoke_audio=with_test_audio;
         if(!xs::native_is_local_media(path)||
-           !std::filesystem::is_regular_file(path)){
+           !std::filesystem::is_regular_file(std::filesystem::u8path(path))){
             error="Local media file not found. No remote URLs allowed in pilot.";
             return false;
         }
@@ -560,13 +587,8 @@ struct NativePlayer {
 
 int main(int argc,char** argv){
     SDL_SetMainReady();
-    if(argc<2){
-        std::cout<<"XuperNativePlayer <local-video-file> [--cpu] [--smoke N] [--screenshot bmp]\n"
-                 <<"  Space pause | arrows seek | Up/Down volume | F fullscreen\n"
-                 <<"  F8 nearest/linear GPU scaler | I status | Esc exit\n";
-        return 2;
-    }
-    const std::string file=argv[1];
+    const std::string file=argc>=2?argv[1]:pick_local_video();
+    if(file.empty())return 0; // the file dialog was closed without selection
     bool hardware=true,smoke=false,audio_smoke=false;
     int frames=0;
     std::string screenshot;
