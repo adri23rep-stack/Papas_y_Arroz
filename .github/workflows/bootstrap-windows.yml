@@ -19,6 +19,10 @@ on:
       - 'catalog.m3u'
   workflow_dispatch:
 
+concurrency:
+  group: xuper-native-player-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
@@ -124,7 +128,8 @@ jobs:
           bmp=Path("build/windows/orientation-test.bmp").read_bytes()
           assert bmp[:2]==b"BM", "Missing native screenshot"
           data_offset=struct.unpack_from("<I",bmp,10)[0]
-          width,height,bpp=struct.unpack_from("<iiH",bmp,18)[:3]
+          width,height,planes,bpp=struct.unpack_from("<iiHH",bmp,18)
+          assert planes==1, planes[:3]
           assert width>0 and abs(height)>0 and bpp in (24,32), (width,height,bpp)
           stride=((width*bpp+31)//32)*4
           def at(x,y):
