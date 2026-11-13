@@ -105,6 +105,38 @@ jobs:
           test -x /ucrt64/bin/mpv.exe
           /ucrt64/bin/mpv.exe --no-config --no-audio --vo=null --frames=2             '--vf=lavfi=[scale=1920:1080:flags=lanczos,cas=strength=0.30]'             packaging/runtime/switch/xuperswitch/test.mp4
           echo 'CAS + Lanczos filter smoke test passed.'
+      - name: Check native renderer orientation with synthetic two-color video
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          /ucrt64/bin/ffmpeg -hide_banner -loglevel error -y \
+            -f lavfi -i 'color=c=red:s=320x180:r=12:d=1' \
+            -f lavfi -i 'color=c=blue:s=320x180:r=12:d=1' \
+            -filter_complex 'vstack=inputs=2' \
+            -an -c:v mpeg4 -q:v 2 build/windows/orientation-test.avi
+          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software \
+            build/windows/XuperNativePlayer.exe \
+            build/windows/orientation-test.avi --cpu --smoke 2 \
+            --screenshot build/windows/orientation-test.bmp
+          python - <<'PY'
+          from pathlib import Path
+          import struct
+          bmp=Path("build/windows/orientation-test.bmp").read_bytes()
+          assert bmp[:2]==b"BM", "Missing native screenshot"
+          data_offset=struct.unpack_from("<I",bmp,10)[0]
+          width,height,bpp=struct.unpack_from("<iiH",bmp,18)[:3]
+          assert width>0 and abs(height)>0 and bpp in (24,32), (width,height,bpp)
+          stride=((width*bpp+31)//32)*4
+          def at(x,y):
+              row=(abs(height)-1-y) if height>0 else y
+              i=data_offset+row*stride+x*(bpp//8)
+              return tuple(bmp[i:i+3]) # B,G,R for BMP
+          blue_top,green_top,red_top=at(width//2,abs(height)//4)
+          blue_bottom,green_bottom,red_bottom=at(width//2,abs(height)*3//4)
+          assert red_top>140 and blue_top<110 and green_top<110, (red_top,green_top,blue_top)
+          assert blue_bottom>140 and red_bottom<110 and green_bottom<110, (red_bottom,green_bottom,blue_bottom)
+          print("Native video orientation verified: red top / blue bottom")
+          PY
       - name: Package Windows EXE and DLLs
         shell: msys2 {0}
         run: |
