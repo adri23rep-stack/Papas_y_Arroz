@@ -88,7 +88,7 @@ if(WIN32)
     SDL2::SDL2 PkgConfig::SDL2_TTF
     PkgConfig::AVFORMAT PkgConfig::AVCODEC PkgConfig::AVUTIL
     PkgConfig::SWSCALE PkgConfig::SWRESAMPLE
-    d3d11 dxgi)
+    d3d11 dxgi comdlg32)
 endif()
 target_include_directories(XuperTVDesktop PRIVATE include include/vendor)
 target_link_libraries(XuperTVDesktop PRIVATE
