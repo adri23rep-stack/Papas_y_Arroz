@@ -66,10 +66,10 @@ struct NativePlayer {
     SDL_AudioDeviceID audio_device=0;
     TTF_Font* font=nullptr;
     int video_index=-1,audio_index=-1,src_w=0,src_h=0;
-    int sample_rate=48000,volume=100,rendered=0,dropped=0,requested_frames=0;
+    int sample_rate=48000,volume=100,rendered=0,dropped=0,requested_frames=0,audio_samples_decoded=0;
     int audio_input_rate=0,audio_input_fmt=-1,audio_input_channels=0;
     bool running=true,paused=false,fullscreen=false,verbose=true,nearest=false;
-    bool test_mode=false,hw_active=false,has_audio_pts=false,clock_started=false;
+    bool test_mode=false,smoke_audio=false,hw_active=false,has_audio_pts=false,clock_started=false;
     bool did_sdl=false,did_ttf=false,valid=false,seeking=false;
     double duration=0,last_video_pts=0,audio_end_pts=0,clock_origin=0,seek_to=-1;
     Uint64 tick_origin=0,tick_pause_started=0;
@@ -133,8 +133,8 @@ struct NativePlayer {
         }
         return true;
     }
-    bool open(const std::string& path,bool prefer_gpu,bool smoke,int limit){
-        source=path;test_mode=smoke;requested_frames=limit;
+    bool open(const std::string& path,bool prefer_gpu,bool smoke,int limit,bool with_test_audio){
+        source=path;test_mode=smoke;requested_frames=limit;smoke_audio=with_test_audio;
         if(!xs::native_is_local_media(path)||
            !std::filesystem::is_regular_file(path)){
             error="Local media file not found. No remote URLs allowed in pilot.";
@@ -160,7 +160,7 @@ struct NativePlayer {
                 hw_device=nullptr;
         }
         if(!open_decoder(vdec,video_index,true))return false;
-        if(!test_mode&&audio_index>=0&&!open_decoder(adec,audio_index,false)){
+        if((!test_mode||smoke_audio)&&audio_index>=0&&!open_decoder(adec,audio_index,false)){
             audio_index=-1;error.clear(); // video remains playable without audio
         }
         frame=av_frame_alloc();cpu_frame=av_frame_alloc();packet=av_packet_alloc();
@@ -198,7 +198,7 @@ struct NativePlayer {
             if(root)SDL_free(root);
             font=TTF_OpenFont(fontfile.c_str(),18);
         }
-        if(adec&&!smoke){
+        if(adec&&(!smoke||smoke_audio)){
             SDL_AudioSpec desired{},obtained{};
             desired.freq=sample_rate;
             desired.format=AUDIO_F32SYS;
@@ -400,7 +400,7 @@ struct NativePlayer {
         return true;
     }
     bool process_audio(AVFrame* f){
-        if(!audio_device||test_mode)return true;
+        if(!audio_device||(test_mode&&!smoke_audio))return true;
         if(!prepare_audio(f))return false;
         const int possible=static_cast<int>(av_rescale_rnd(
             swr_get_delay(swr,f->sample_rate)+f->nb_samples,
@@ -411,6 +411,7 @@ struct NativePlayer {
         int samples=swr_convert(swr,&dest,possible,
             const_cast<const uint8_t**>(f->extended_data),f->nb_samples);
         if(samples<0){error="Resampling: "+av_err(samples);return false;}
+        audio_samples_decoded+=samples;
         const size_t floats=static_cast<size_t>(samples)*2;
         const float gain=volume/100.f;
         for(size_t i=0;i<floats;++i)stereo[i]*=gain;
@@ -423,7 +424,7 @@ struct NativePlayer {
         }
         // Bound buffered audio to avoid multi-second A/V drift and memory
         // growth on files with unusually dense audio packet interleaving.
-        while(running&&!paused&&seek_to<0&&
+        while(!test_mode&&running&&!paused&&seek_to<0&&
               SDL_GetQueuedAudioSize(audio_device)>static_cast<Uint32>(sample_rate*2*sizeof(float))){
             pump_events();
             SDL_Delay(5);
@@ -546,7 +547,12 @@ struct NativePlayer {
                  <<" decoder="<<decoder_name
                  <<" renderer="<<render_name
                  <<" audio="<<(audio_device?"SDL queued stereo":"off")
+                 <<" audio_samples="<<audio_samples_decoded
                  <<" frame_size="<<src_w<<"x"<<src_h<<"\n";
+        if(test_mode&&smoke_audio&&audio_samples_decoded==0){
+            error="Audio smoke requested but no PCM samples were decoded.";
+            return 1;
+        }
         return rendered>0&&(screenshot_path.empty()||screenshot_ok)?0:1;
     }
 };
@@ -561,12 +567,13 @@ int main(int argc,char** argv){
         return 2;
     }
     const std::string file=argv[1];
-    bool hardware=true,smoke=false;
+    bool hardware=true,smoke=false,audio_smoke=false;
     int frames=0;
     std::string screenshot;
     for(int i=2;i<argc;++i){
         const std::string arg=argv[i];
         if(arg=="--cpu")hardware=false;
+        else if(arg=="--smoke-audio")audio_smoke=true;
         else if(arg=="--screenshot"&&i+1<argc)screenshot=argv[++i];
         else if(arg=="--smoke"&&i+1<argc){
             smoke=true;
@@ -574,13 +581,14 @@ int main(int argc,char** argv){
             if(frames<1||frames>300){std::cerr<<"Invalid smoke frame count.\n";return 2;}
         }else {std::cerr<<"Unknown argument: "<<arg<<"\n";return 2;}
     }
+    if(audio_smoke&&!smoke){std::cerr<<"--smoke-audio requires --smoke N.\n";return 2;}
     if(!smoke&&!screenshot.empty()){
         std::cerr<<"Screenshot export is only available in smoke-test mode.\n";
         return 2;
     }
     NativePlayer player;
     player.screenshot_path=screenshot;
-    if(!player.open(file,hardware,smoke,frames)){
+    if(!player.open(file,hardware,smoke,frames,audio_smoke)){
         std::cerr<<"Native player start failed: "<<player.error<<"\n";
         return 1;
     }
