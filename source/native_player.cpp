@@ -75,6 +75,8 @@ struct NativePlayer {
     Uint64 tick_origin=0,tick_pause_started=0;
     std::string decoder_name="CPU",render_name="uninitialized",error,source,codec_name;
     std::vector<uint8_t> pixels;
+    std::string screenshot_path;
+    bool screenshot_ok=false;
     std::vector<int> audio_tracks;
     std::vector<xs::NativeSubtitleCue> sidecar_subtitles;
     bool subtitle_visible=true;
@@ -283,6 +285,18 @@ struct NativePlayer {
                 SDL_SetRenderDrawColor(renderer,157,133,244,255);
                 SDL_RenderFillRect(renderer,&done);
             }
+        }
+        if(test_mode&&!screenshot_path.empty()&&requested_frames>0&&
+           rendered==requested_frames){
+            SDL_Surface* capture=SDL_CreateRGBSurfaceWithFormat(
+                0,w,h,32,SDL_PIXELFORMAT_ARGB8888);
+            if(capture){
+                screenshot_ok=SDL_RenderReadPixels(renderer,nullptr,
+                        SDL_PIXELFORMAT_ARGB8888,capture->pixels,capture->pitch)==0&&
+                    SDL_SaveBMP(capture,screenshot_path.c_str())==0;
+                SDL_FreeSurface(capture);
+            }
+            if(!screenshot_ok)error=std::string("Frame screenshot: ")+SDL_GetError();
         }
         SDL_RenderPresent(renderer);
     }
@@ -533,7 +547,7 @@ struct NativePlayer {
                  <<" renderer="<<render_name
                  <<" audio="<<(audio_device?"SDL queued stereo":"off")
                  <<" frame_size="<<src_w<<"x"<<src_h<<"\n";
-        return rendered>0?0:1;
+        return rendered>0&&(screenshot_path.empty()||screenshot_ok)?0:1;
     }
 };
 } // namespace
@@ -541,7 +555,7 @@ struct NativePlayer {
 int main(int argc,char** argv){
     SDL_SetMainReady();
     if(argc<2){
-        std::cout<<"XuperNativePlayer <local-video-file> [--cpu] [--smoke N]\n"
+        std::cout<<"XuperNativePlayer <local-video-file> [--cpu] [--smoke N] [--screenshot bmp]\n"
                  <<"  Space pause | arrows seek | Up/Down volume | F fullscreen\n"
                  <<"  F8 nearest/linear GPU scaler | I status | Esc exit\n";
         return 2;
@@ -549,16 +563,23 @@ int main(int argc,char** argv){
     const std::string file=argv[1];
     bool hardware=true,smoke=false;
     int frames=0;
+    std::string screenshot;
     for(int i=2;i<argc;++i){
         const std::string arg=argv[i];
         if(arg=="--cpu")hardware=false;
+        else if(arg=="--screenshot"&&i+1<argc)screenshot=argv[++i];
         else if(arg=="--smoke"&&i+1<argc){
             smoke=true;
             try{frames=std::stoi(argv[++i]);}catch(...){return 2;}
             if(frames<1||frames>300){std::cerr<<"Invalid smoke frame count.\n";return 2;}
         }else {std::cerr<<"Unknown argument: "<<arg<<"\n";return 2;}
     }
+    if(!smoke&&!screenshot.empty()){
+        std::cerr<<"Screenshot export is only available in smoke-test mode.\n";
+        return 2;
+    }
     NativePlayer player;
+    player.screenshot_path=screenshot;
     if(!player.open(file,hardware,smoke,frames)){
         std::cerr<<"Native player start failed: "<<player.error<<"\n";
         return 1;
