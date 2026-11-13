@@ -142,6 +142,19 @@ jobs:
           assert blue_bottom>140 and red_bottom<110 and green_bottom<110, (red_bottom,green_bottom,blue_bottom)
           print("Native video orientation verified: red top / blue bottom")
           PY
+      - name: Check native audio decoding and SDL stereo playback path
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          /ucrt64/bin/ffmpeg -hide_banner -loglevel error -y \
+            -f lavfi -i 'testsrc2=size=320x180:rate=12:duration=1.5' \
+            -f lavfi -i 'sine=frequency=440:sample_rate=48000:duration=1.5' \
+            -c:v mpeg4 -q:v 3 -c:a aac -b:a 96k -shortest \
+            build/windows/audio-test.mp4
+          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software \
+            build/windows/XuperNativePlayer.exe \
+            build/windows/audio-test.mp4 --cpu --smoke 12 --smoke-audio
+          echo 'FFmpeg audio decode, resample and SDL queued audio smoke passed.'
       - name: Package Windows EXE and DLLs
         shell: msys2 {0}
         run: |
