@@ -2,7 +2,7 @@ name: Xuper TV Desktop | Windows preview
 
 on:
   push:
-    branches: [windows-desktop-preview, feature/ui-cinematic-tv, feature/apple-controller-server, feature/cinematic-ui-v2, feature/search-remote-catalog, feature/youtube-browser-remote, fix/youtube-hidpi-video, feature/classic-remote-command-support, feature/video-enhanced-stage1, feature/video-enhanced-contrast-stage2, feature/video-enhanced-gpu-stage3, feature/xuper-native-engine-v1]
+    branches: [windows-desktop-preview, feature/ui-cinematic-tv, feature/apple-controller-server, feature/cinematic-ui-v2, feature/search-remote-catalog, feature/youtube-browser-remote, fix/youtube-hidpi-video, feature/classic-remote-command-support, feature/video-enhanced-stage1, feature/video-enhanced-contrast-stage2, feature/video-enhanced-gpu-stage3, feature/xuper-native-engine-v1, feature/xuper-native-player-v2]
     paths:
       - '.github/workflows/bootstrap-windows.yml'
       - 'patches/**'
@@ -15,6 +15,7 @@ on:
       - 'CMakeLists.txt'
       - 'shaders/**'
       - 'README_NATIVE_ENGINE.md'
+      - 'README_NATIVE_PLAYER.md'
       - 'catalog.m3u'
   workflow_dispatch:
 
@@ -111,6 +112,7 @@ jobs:
           mkdir -p dist/Xuper-TV-Desktop/licenses dist/Xuper-TV-Desktop/shaders
           cp build/windows/XuperTVDesktop.exe dist/Xuper-TV-Desktop/
           cp build/windows/XuperNativeProbe.exe dist/Xuper-TV-Desktop/
+          cp build/windows/XuperNativePlayer.exe dist/Xuper-TV-Desktop/
           cp packaging/runtime/switch/xuperswitch/{font.ttf,cacert.pem,test.mp4} dist/Xuper-TV-Desktop/
           cp packaging/runtime/switch/xuperswitch/service.template.json dist/Xuper-TV-Desktop/service.template.json
           cp catalog.m3u dist/Xuper-TV-Desktop/
@@ -119,6 +121,7 @@ jobs:
           cp -r licenses/. dist/Xuper-TV-Desktop/licenses/
           ntldd -R build/windows/XuperTVDesktop.exe > build/windows/dependencies.txt
           ntldd -R build/windows/XuperNativeProbe.exe >> build/windows/dependencies.txt
+          ntldd -R build/windows/XuperNativePlayer.exe >> build/windows/dependencies.txt
           # Current MSYS2 SDL2.dll is sdl2-compat; it dynamically loads
           # SDL3.dll with LoadLibrary, so ntldd cannot discover this runtime.
           # Always bundle SDL3 explicitly. Missing it causes error 0xc0000142.
@@ -160,6 +163,24 @@ jobs:
             Pop-Location
             Remove-Item "dist/Xuper-TV-Desktop/sdl_startup_smoke.exe" -ErrorAction SilentlyContinue
           }
+      - name: Smoke test packaged native player with no runner DLL paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Push-Location "dist/Xuper-TV-Desktop"
+          try {
+            $env:Path = "$env:SystemRoot\System32;$env:SystemRoot"
+            $env:SDL_VIDEODRIVER = "dummy"
+            $env:SDL_AUDIODRIVER = "dummy"
+            $env:SDL_RENDER_DRIVER = "software"
+            & ".\XuperNativePlayer.exe" "test.mp4" "--cpu" "--smoke" "12"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Packaged native video pipeline smoke test failed (exit $LASTEXITCODE)."
+            }
+            Write-Host "Native FFmpeg -> SDL video pipeline passed using portable DLLs."
+          } finally {
+            Pop-Location
+          }
       - name: Prepare bundled, installation-neutral service template
         shell: pwsh
         run: |
@@ -179,18 +200,19 @@ jobs:
           Copy-Item README_WINDOWS.md dist/Xuper-TV-Desktop/README_WINDOWS.md
           Copy-Item README_VIDEO_ENHANCED.md dist/Xuper-TV-Desktop/README_VIDEO_ENHANCED.md
           Copy-Item README_NATIVE_ENGINE.md dist/Xuper-TV-Desktop/README_NATIVE_ENGINE.md
+          Copy-Item README_NATIVE_PLAYER.md dist/Xuper-TV-Desktop/README_NATIVE_PLAYER.md
           Write-Host "Bundled service template verified. No APK import required."
       # The account's Actions artifact storage quota is currently exhausted.
       # Instead of silently failing or deleting old user artifacts, stage 3
       # can provide its verified ZIP on a dedicated orphan branch. No release.
       - name: Publish temporary ZIP to isolated build-delivery branch
-        if: github.ref_name == 'feature/xuper-native-engine-v1'
+        if: github.ref_name == 'feature/xuper-native-player-v2'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $name = 'XuperTV-Native-Engine-Pilot-Windows.zip'
+          $name = 'XuperTV-Native-Player-v2-Windows.zip'
           $zip = Join-Path $env:RUNNER_TEMP $name
           Compress-Archive -Path 'dist/Xuper-TV-Desktop' -DestinationPath $zip -CompressionLevel Optimal
           $bytes = (Get-Item $zip).Length
@@ -203,7 +225,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Could not open delivery worktree' }
           Push-Location $folder
           try {
-            git checkout --orphan build/xuper-native-engine-pilot
+            git checkout --orphan build/xuper-native-player-v2
             if ($LASTEXITCODE -ne 0) { throw 'Cannot create delivery branch' }
             git rm -r --cached --ignore-unmatch . | Out-Null
             Get-ChildItem -Force | Where-Object { $_.Name -ne '.git' } |
@@ -211,25 +233,25 @@ jobs:
             Copy-Item $zip -Destination (Join-Path $folder $name)
             $hash = (Get-FileHash -Algorithm SHA256 $name).Hash
             @(
-              'XuperTV Native Engine Pilot — Temporary Windows build',
+              'XuperTV Native Player v2 — Temporary Windows build',
               'Experimental, unsigned portable build. No release or merge.',
               "SHA256: $hash",
-              'Source branch: feature/xuper-native-engine-v1',
+              'Source branch: feature/xuper-native-player-v2',
               'Extract the ZIP as one folder. Do not mix DLLs from older builds.'
             ) | Set-Content -Encoding UTF8 README.txt
             git add -- $name README.txt
-            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Temporary native engine pilot Windows ZIP (automated verified build)'
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Temporary native player v2 Windows ZIP (automated verified build)'
             if ($LASTEXITCODE -ne 0) { throw 'Cannot commit delivery package' }
-            git push --force origin HEAD:refs/heads/build/xuper-native-engine-pilot
+            git push --force origin HEAD:refs/heads/build/xuper-native-player-v2
             if ($LASTEXITCODE -ne 0) { throw 'Cannot publish delivery branch' }
-            Write-Host "Temporary download: https://github.com/$env:GITHUB_REPOSITORY/raw/refs/heads/build/xuper-native-engine-pilot/$name"
+            Write-Host "Temporary download: https://github.com/$env:GITHUB_REPOSITORY/raw/refs/heads/build/xuper-native-player-v2/$name"
           } finally {
             Pop-Location
           }
       - name: Upload test build (not a release)
-        if: github.ref_name != 'feature/xuper-native-engine-v1'
+        if: github.ref_name != 'feature/xuper-native-player-v2'
         uses: actions/upload-artifact@v4
         with:
-          name: XuperTV-Native-Engine-Pilot-Windows
+          name: XuperTV-Native-Player-v2-Windows
           path: dist/Xuper-TV-Desktop/
           if-no-files-found: error
