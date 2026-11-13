@@ -6,6 +6,7 @@
 #include <SDL.h>
 #include <SDL_ttf.h>
 #include "native_playback_utils.hpp"
+#include "native_subtitles.hpp"
 extern "C" {
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
@@ -74,6 +75,9 @@ struct NativePlayer {
     Uint64 tick_origin=0,tick_pause_started=0;
     std::string decoder_name="CPU",render_name="uninitialized",error,source,codec_name;
     std::vector<uint8_t> pixels;
+    std::vector<int> audio_tracks;
+    std::vector<xs::NativeSubtitleCue> sidecar_subtitles;
+    bool subtitle_visible=true;
     ~NativePlayer(){
         if(audio_device)SDL_CloseAudioDevice(audio_device);
         if(font)TTF_CloseFont(font);
@@ -141,6 +145,13 @@ struct NativePlayer {
         video_index=av_find_best_stream(fmt,AVMEDIA_TYPE_VIDEO,-1,-1,nullptr,0);
         audio_index=av_find_best_stream(fmt,AVMEDIA_TYPE_AUDIO,-1,-1,nullptr,0);
         if(video_index<0){error="File has no playable video stream.";return false;}
+        for(unsigned i=0;i<fmt->nb_streams;++i){
+            if(fmt->streams[i]->codecpar->codec_type==AVMEDIA_TYPE_AUDIO)
+                audio_tracks.push_back(static_cast<int>(i));
+        }
+        std::filesystem::path subtitle_path(path);
+        subtitle_path.replace_extension(".srt");
+        sidecar_subtitles=xs::native_read_srt(subtitle_path.string());
         duration=fmt->duration>0?fmt->duration/double(AV_TIME_BASE):0;
         if(prefer_gpu&&supports_d3d11(avcodec_find_decoder(fmt->streams[video_index]->codecpar->codec_id))){
             if(av_hwdevice_ctx_create(&hw_device,AV_HWDEVICE_TYPE_D3D11VA,nullptr,nullptr,0)<0)
@@ -230,6 +241,28 @@ struct NativePlayer {
         SDL_SetRenderDrawColor(renderer,7,9,14,255);
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer,texture,nullptr,&rect);
+        if(!test_mode&&subtitle_visible&&font){
+            const auto caption=xs::native_subtitle_at(sidecar_subtitles,
+                    static_cast<int64_t>(std::max(0.0,pts)*1000));
+            if(!caption.empty()){
+                SDL_Surface* sub=TTF_RenderUTF8_Blended_Wrapped(
+                    font,caption.c_str(),SDL_Color{251,251,255,255},
+                    static_cast<Uint32>(std::max(100,w-100)));
+                if(sub){
+                    SDL_Texture* sub_tex=SDL_CreateTextureFromSurface(renderer,sub);
+                    if(sub_tex){
+                        SDL_Rect dest{(w-sub->w)/2,std::max(86,h-76-sub->h),sub->w,sub->h};
+                        SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
+                        SDL_SetRenderDrawColor(renderer,0,0,0,195);
+                        SDL_Rect shade{dest.x-12,dest.y-6,dest.w+24,dest.h+12};
+                        SDL_RenderFillRect(renderer,&shade);
+                        SDL_RenderCopy(renderer,sub_tex,nullptr,&dest);
+                        SDL_DestroyTexture(sub_tex);
+                    }
+                    SDL_FreeSurface(sub);
+                }
+            }
+        }
         if(!test_mode&&(verbose||paused)){
             SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
             SDL_Rect panel{0,0,w,80};
@@ -240,7 +273,7 @@ struct NativePlayer {
             overlay_text(16,8,line);
             overlay_text(16,37,
                 std::string(paused?"PAUSADO | ":"")+
-                "Space: pausa   <-/->: 10s   Up/Down: volumen   F: pantalla   F8: escala   I: info");
+                "Space pausa | flechas +/-10s | A audio | C subtitulos | F pantalla | F8 escala | I info");
             SDL_Rect bar{0,h-12,w,12};
             SDL_SetRenderDrawColor(renderer,26,32,48,228);
             SDL_RenderFillRect(renderer,&bar);
@@ -274,6 +307,8 @@ struct NativePlayer {
                     case SDLK_UP:volume=xs::native_clamp_volume(volume+5);break;
                     case SDLK_DOWN:volume=xs::native_clamp_volume(volume-5);break;
                     case SDLK_i:verbose=!verbose;break;
+                    case SDLK_c:subtitle_visible=!subtitle_visible;break;
+                    case SDLK_a:cycle_audio_track();break;
                     case SDLK_f:
                     case SDLK_F11:
                         fullscreen=!fullscreen;
@@ -294,6 +329,23 @@ struct NativePlayer {
                     seek_to=xs::native_clamp_seek(duration*ev.button.x/double(w),duration);
             }
         }
+    }
+    void cycle_audio_track(){
+        if(audio_tracks.size()<2||!audio_device)return;
+        const auto current=std::find(audio_tracks.begin(),audio_tracks.end(),audio_index);
+        const size_t index=current==audio_tracks.end()?0:
+            (static_cast<size_t>(current-audio_tracks.begin())+1)%audio_tracks.size();
+        const int selected=audio_tracks[index];
+        AVCodecContext* replacement=nullptr;
+        if(!open_decoder(replacement,selected,false)){
+            error.clear();
+            std::cerr<<"Audio track "<<selected<<" unsupported.\n";
+            return;
+        }
+        if(adec)avcodec_free_context(&adec);
+        adec=replacement;
+        audio_index=selected;
+        seek_to=last_video_pts;
     }
     bool do_seek(){
         const double target=seek_to;
