@@ -205,9 +205,7 @@ jobs:
             $env:SDL_VIDEODRIVER = "dummy"
             $env:SDL_AUDIODRIVER = "dummy"
             $env:SDL_RENDER_DRIVER = "software"
-            $native = Start-Process -FilePath ".\XuperNativePlayer.exe" \
-              -ArgumentList @("test.mp4", "--cpu", "--smoke", "12") \
-              -Wait -PassThru -NoNewWindow
+            $native = Start-Process -FilePath ".\XuperNativePlayer.exe" -ArgumentList @("test.mp4", "--cpu", "--smoke", "12") -Wait -PassThru -NoNewWindow
             if ($native.ExitCode -ne 0) {
               throw "Packaged native video pipeline smoke test failed (exit $($native.ExitCode))."
             }
