@@ -9,6 +9,13 @@ find_package(PkgConfig REQUIRED)
 find_package(SDL2 REQUIRED CONFIG COMPONENTS SDL2 SDL2main)
 pkg_check_modules(SDL2_TTF REQUIRED IMPORTED_TARGET SDL2_ttf)
 pkg_check_modules(MPV REQUIRED IMPORTED_TARGET mpv)
+if(WIN32)
+  # Native engine pilot: link FFmpeg directly, rather than depending on mpv's
+  # audio/video playback and intermediate OpenGL-to-SDL image copies.
+  pkg_check_modules(AVFORMAT REQUIRED IMPORTED_TARGET libavformat)
+  pkg_check_modules(AVCODEC REQUIRED IMPORTED_TARGET libavcodec)
+  pkg_check_modules(AVUTIL REQUIRED IMPORTED_TARGET libavutil)
+endif()
 pkg_check_modules(CURL REQUIRED IMPORTED_TARGET libcurl)
 pkg_check_modules(WEBP REQUIRED IMPORTED_TARGET libwebp)
 find_package(PNG REQUIRED)
@@ -18,7 +25,7 @@ find_library(MBEDCRYPTO_LIBRARY NAMES mbedcrypto REQUIRED)
 # The MSYS2 UCRT64 pkg-config files expose POSIX paths (e.g. /ucrt64/include).
 # Native MinGW CMake needs their Windows equivalents (D:/.../ucrt64/include).
 if(WIN32 AND MINGW)
-  foreach(_pkg_target IN ITEMS PkgConfig::SDL2_TTF PkgConfig::MPV PkgConfig::CURL PkgConfig::WEBP)
+  foreach(_pkg_target IN ITEMS PkgConfig::SDL2_TTF PkgConfig::MPV PkgConfig::CURL PkgConfig::WEBP PkgConfig::AVFORMAT PkgConfig::AVCODEC PkgConfig::AVUTIL)
     get_target_property(_inc_dirs "${_pkg_target}" INTERFACE_INCLUDE_DIRECTORIES)
     if(_inc_dirs)
       set(_fixed_dirs "")
@@ -64,6 +71,12 @@ target_sources(XuperTVDesktop PRIVATE
 if(WIN32)
   target_sources(XuperTVDesktop PRIVATE source/live_preview.cpp source/remote_server.cpp source/view_cinematic.cpp source/remote_catalog.cpp source/youtube_remote.cpp source/gpu_readback.cpp)
   target_link_libraries(XuperTVDesktop PRIVATE ws2_32 bcrypt shell32 user32 opengl32)
+  # The native engine currently builds as an independent decoder pilot.
+  # It cannot accidentally replace, break, or steal XuperTV's working playback.
+  add_executable(XuperNativeProbe source/native_engine.cpp tests/native_engine_probe.cpp)
+  target_include_directories(XuperNativeProbe PRIVATE include)
+  target_link_libraries(XuperNativeProbe PRIVATE
+    PkgConfig::AVFORMAT PkgConfig::AVCODEC PkgConfig::AVUTIL d3d11 dxgi)
 endif()
 target_include_directories(XuperTVDesktop PRIVATE include include/vendor)
 target_link_libraries(XuperTVDesktop PRIVATE
@@ -107,6 +120,11 @@ if(BUILD_TESTING)
   target_include_directories(cinematic_home_test PRIVATE include)
   add_test(NAME cinematic_home_test COMMAND cinematic_home_test)
   if(WIN32)
+    add_test(NAME native_engine_api_test COMMAND XuperNativeProbe --self-test)
+    add_test(NAME native_engine_file_decode_test
+      COMMAND XuperNativeProbe "${CMAKE_CURRENT_SOURCE_DIR}/packaging/runtime/switch/xuperswitch/test.mp4" 16)
+    add_test(NAME native_engine_file_cpu_test
+      COMMAND XuperNativeProbe "${CMAKE_CURRENT_SOURCE_DIR}/packaging/runtime/switch/xuperswitch/test.mp4" 16 cpu)
     add_executable(sdl_startup_smoke tests/sdl_startup_smoke.cpp)
     target_link_libraries(sdl_startup_smoke PRIVATE SDL2::SDL2)
     add_test(NAME sdl_startup_smoke COMMAND sdl_startup_smoke)
