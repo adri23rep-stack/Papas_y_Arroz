@@ -103,6 +103,12 @@ int main(int argc,char** argv){
         status="El control de iPhone no pudo iniciar. Comprueba firewall o puerto 47831.";
 #endif
     xs::PlaybackHistory playback_history;
+#ifdef _WIN32
+    const auto& remote=xs::RemoteServer::shared();
+    playback_history.volume=remote.setting_value(xs::remote_setting_index("volume"));
+    playback_history.speed=remote.setting_value(xs::remote_setting_index("speed"))/100.0;
+    playback_history.auto_next=remote.setting_value(xs::remote_setting_index("auto_next"))!=0;
+#endif
     xs::SavedCatalog saved(
 #ifdef __SWITCH__
         "sdmc:/switch/xuperswitch/library_state.json"
@@ -114,6 +120,7 @@ int main(int argc,char** argv){
     int pending_remote_navigation=-1;
     int pending_remote_result=-1;
     uint32_t pending_remote_generation=0;
+    bool pending_remote_is_browse=false;
     xs::Catalog root_catalog;
     std::atomic<bool> cancel_task{false};std::atomic<size_t> task_done{0},task_total{0};
     std::shared_ptr<xs::ServiceSession> session;
@@ -210,9 +217,26 @@ int main(int argc,char** argv){
                 SDL_RaiseWindow(view.window);
                 redraw=true;
             }
-            if(event.type==SDL_USEREVENT&&event.user.code==xs::REMOTE_OPEN_CATALOG){
+            if(event.type==SDL_USEREVENT&&
+               (event.user.code==xs::REMOTE_OPEN_CATALOG||
+                event.user.code==xs::REMOTE_OPEN_BROWSE)){
                 pending_remote_result=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
                 pending_remote_generation=static_cast<uint32_t>(reinterpret_cast<uintptr_t>(event.user.data2));
+                pending_remote_is_browse=event.user.code==xs::REMOTE_OPEN_BROWSE;
+            }
+            if(event.type==SDL_USEREVENT&&event.user.code==xs::REMOTE_SETTING){
+                const int id=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
+                const int value=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data2));
+                if(xs::valid_remote_setting(id,value)){
+                    if(id==xs::remote_setting_index("volume"))
+                        playback_history.volume=value;
+                    else if(id==xs::remote_setting_index("speed"))
+                        playback_history.speed=value/100.0;
+                    else if(id==xs::remote_setting_index("auto_next"))
+                        playback_history.auto_next=value!=0;
+                    else if(id==xs::remote_setting_index("video_preset"))
+                        xs::save_video_preset(static_cast<xs::VideoPreset>(value));
+                }
             }
 #endif
 #ifdef _WIN32
@@ -279,8 +303,11 @@ int main(int argc,char** argv){
 #ifdef _WIN32
         if(pending_remote_result>=0){
             xs::Catalog remote;
-            if(xs::RemoteServer::shared().selected_result(pending_remote_generation,
-                        static_cast<size_t>(pending_remote_result),remote)){
+            if((pending_remote_is_browse?
+                xs::RemoteServer::shared().selected_browse_result(pending_remote_generation,
+                          static_cast<size_t>(pending_remote_result),remote):
+                xs::RemoteServer::shared().selected_result(pending_remote_generation,
+                          static_cast<size_t>(pending_remote_result),remote))){
                 history.emplace_back(catalog,selected);
                 catalog=std::move(remote);
                 selected=static_cast<size_t>(pending_remote_result);
@@ -288,6 +315,7 @@ int main(int argc,char** argv){
                 donating=false;search=false;back=false;nav_action=-1;play=true;redraw=true;
             }else{status="El resultado del iPhone ya no está disponible.";redraw=true;}
             pending_remote_result=-1;
+            pending_remote_is_browse=false;
         }
 #endif
         if(donating){if(back||play||login){donating=false;redraw=true;}SDL_Delay(10);continue;}
@@ -318,11 +346,17 @@ int main(int argc,char** argv){
                 xs::trace(attempt.authenticated?"bootstrap:accepted":"bootstrap:failed");
                 session=attempt.session;status=attempt.status;root_catalog=std::move(attempt.catalog);
 #ifdef _WIN32
-                xs::RemoteServer::shared().set_session(session);
+                xs::RemoteServer::shared().set_session(session,root_catalog);
 #endif
             }
             if(session&&root_catalog.entries.empty()){
-                xs::BrowseResult result;load([&]{result=xs::service_root(session);},"Reintentando carga del catalogo...");status=result.status;if(result.ok)root_catalog=std::move(result.catalog);
+                xs::BrowseResult result;load([&]{result=xs::service_root(session);},"Reintentando carga del catalogo...");status=result.status;
+                if(result.ok){
+                    root_catalog=std::move(result.catalog);
+#ifdef _WIN32
+                    xs::RemoteServer::shared().set_session(session,root_catalog);
+#endif
+                }
             }
 #ifdef _WIN32
             if(session&&!root_catalog.entries.empty()&&!home_prepared){
@@ -491,6 +525,7 @@ int main(int argc,char** argv){
                             if(outcome.requested_remote_result>=0){
                                 pending_remote_result=outcome.requested_remote_result;
                                 pending_remote_generation=outcome.requested_remote_generation;
+                                pending_remote_is_browse=outcome.requested_remote_browse;
                             }
 #endif
                             if(status.empty()&&(current.kind==xs::EntryKind::Channel||outcome.position>3||outcome.ended)&&!saved.remember(current))xs::trace("catalog:recent_save_failed");
