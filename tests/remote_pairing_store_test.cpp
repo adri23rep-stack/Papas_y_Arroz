@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include "remote_pairing_store.hpp"
 #include <cassert>
+#include <cstdio>
 #include <fstream>
 #include <string>
 int main(){
@@ -35,11 +36,17 @@ int main(){
     const auto old_cwd=std::filesystem::current_path();
     std::filesystem::current_path(folder);
     {
-        std::ofstream legacy("remote_secret.txt");
-        legacy<<b<<"\n";
+        std::ofstream legacy("remote_secret.txt",std::ios::binary);
+        legacy<<b<<"\r\n";
     }
     out.clear();error.clear();
     assert(remote_load_or_create_secret(out,std::string(64,'c'),error));
+    if(out!=b){
+        std::fprintf(stderr,"Pairing migration unexpected: imported=%d legacy_exists=%d old_size=%zu\n",
+            out==std::string(64,'c')?0:1,
+            std::filesystem::exists("remote_secret.txt")?1:0,
+            out.size());
+    }
     assert(out==b);
     assert(remote_read_secret_file(file,out)&&out==b);
     assert(!std::filesystem::exists("remote_secret.txt"));
