@@ -99,6 +99,10 @@ inline bool remote_load_or_create_secret(std::string& out,
     std::string legacy;
     std::getline(old,legacy);
     old.close(); // Windows must release the legacy file before removing it.
+    // Legacy builds used text-mode streams. Accept both LF and Windows CRLF,
+    // but only after removing final line terminators (never arbitrary data).
+    while(!legacy.empty()&&(legacy.back()=='\r'||legacy.back()=='\n'))
+        legacy.pop_back();
     const bool migrating=remote_valid_secret(legacy);
     const std::string token=migrating?legacy:proposed;
     if(!remote_save_secret_file(path,token)){
