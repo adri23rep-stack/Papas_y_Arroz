@@ -35,7 +35,8 @@ public:
 
     void set_session(std::shared_ptr<ServiceSession> session,const Catalog& root){
         catalog_.set_session(session);
-        browse_.set_session(std::move(session),root);
+        browse_.set_session(session,root);
+        mobile_browse_.set_session(std::move(session),root);
     }
     bool selected_result(uint32_t generation,size_t index,Catalog& out)const{return catalog_.select(generation,index,out);}
     bool selected_browse_result(uint32_t generation,size_t index,Catalog& out)const{
@@ -69,6 +70,7 @@ private:
     std::thread worker_;
     RemoteCatalog catalog_;
     RemoteBrowse browse_;
+    RemoteBrowse mobile_browse_;
     RemoteSettingsStore settings_;
     std::mutex text_mutex_;
     std::string pending_text_;
