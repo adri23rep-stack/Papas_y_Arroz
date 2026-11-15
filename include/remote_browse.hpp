@@ -4,6 +4,7 @@
 #include "service.hpp"
 #include <cstdint>
 #include <memory>
+#include <map>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -22,7 +23,7 @@ enum class BrowseSelection { Invalid, Loading, Play };
 class RemoteBrowse {
 public:
     void set_session(std::shared_ptr<ServiceSession> session,const Catalog& root);
-    bool start(uint32_t& generation,std::string& error);
+    bool start(uint32_t& generation,std::string& error,const std::string& provider={});
     BrowseSelection select(uint32_t generation,size_t index,uint32_t& next_generation,std::string& error);
     bool back(uint32_t generation,uint32_t& next_generation,std::string& error);
     RemoteBrowseSnapshot snapshot(uint32_t generation,size_t offset=0,size_t limit=48) const;
@@ -34,6 +35,7 @@ private:
     std::shared_ptr<ServiceSession> session_;
     Catalog root_,page_;
     std::vector<Catalog> history_;
+    std::map<std::string,std::vector<Entry>> provider_categories_;
     std::thread worker_;
     uint32_t generation_=0;
     bool busy_=false,stopping_=false,autoplayed_=false;
