@@ -2,6 +2,7 @@
 #ifdef _WIN32
 #include "cinematic_layout.hpp"
 #include "remote_server.hpp"
+#include "remote_pairing_qr.hpp"
 #include <algorithm>
 #include <string>
 
@@ -67,8 +68,8 @@ void View::draw_cinematic(const Catalog& c,size_t selected,const std::string& st
     }
     rect({1081,13,88,43},{49,36,64,255});
     text(1087,24,"⌕ Buscar",white,80,small,28);
-    rect({1175,13,85,43},{42,34,60,255});
-    text(1180,24,"⛶ Full",white,80,small,28);
+    rect({1175,13,85,43},pairing_visible?pink:SDL_Color{42,34,60,255});
+    text(1180,24,"QR iPhone",white,82,small,28);
 
     const int hero_y=79,hero_height=home?213:303;
     rect({19,hero_y,1242,hero_height},navy);
@@ -198,16 +199,37 @@ void View::draw_cinematic(const Catalog& c,size_t selected,const std::string& st
     text(790,689,pairing,remote.connected?SDL_Color{118,233,179,255}:white,466,small,29);
     SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
     RemoteServer::shared().draw_cursor(renderer);
+    if(pairing_visible)draw_pairing_overlay();
     SDL_RenderPresent(renderer);
 }
+void View::draw_pairing_overlay(){
+    const auto info=RemoteServer::shared().info();
+    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
+    rect({0,0,1280,720},{5,8,20,220});
+    rect({365,66,550,583},{23,30,47,255});
+    rect({365,66,550,5},pink);
+    text(410,91,"VINCULAR IPHONE",white,460,heading,54);
+    text(410,141,"En Apple Controller, pulsa Escanear QR.",subtle,460,font,45);
+    const auto payload=pairing_qr_payload(info.address,info.pin);
+    if(info.running&&!payload.empty()){
+        if(!render_pairing_qr(renderer,payload,511,194,260))
+            text(424,289,"No se pudo generar el codigo QR.",white,440,font,55);
+    }else text(418,282,"Conecta Windows a tu red local.",white,450,font,75);
+    text(424,473,"O escribe estos datos manualmente:",subtle,450,font,36);
+    text(423,508,"IP: "+info.address,white,460,font,37);
+    text(423,548,"PIN: "+info.pin,white,440,heading,43);
+    text(423,597,"Pulsa F9 o haz clic para cerrar.",subtle,455,small,35);
+    SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
+}
 int View::hit_cinematic(const Catalog& c,size_t selected,int x,int y)const{
+    if(pairing_visible)return -13;
     // Negative numbers are routed by main.cpp, never mistaken for indices.
     if(y>=13&&y<=56&&x>=224&&x<224+6*143){
         const int column=(x-224)/143;
         if((x-224)%143<134)return -2-column;
     }
     if(y>=13&&y<=56&&x>=1081&&x<1170)return -12;
-    if(y>=13&&y<=56&&x>=1175&&x<1260)return -10;
+    if(y>=13&&y<=56&&x>=1175&&x<1260)return -13;
     const bool home=is_home(c);
     const int hero_bottom=home?292:382;
     const int y_button=hero_bottom-45;
