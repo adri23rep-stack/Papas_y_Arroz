@@ -737,4 +737,17 @@ BrowseResult service_browse_remote(const std::shared_ptr<ServiceSession>& sessio
     return service_browse(isolated,entry);
 }
 
+SourceResult service_source_remote(const std::shared_ptr<ServiceSession>& session,
+                                  const Entry& entry,int variant){
+    SourceResult out;
+    if(!session){out.status="No hay una sesión conectada en Windows.";return out;}
+    if(entry.kind!=EntryKind::Channel&&entry.kind!=EntryKind::Episode){
+        out.status="Este elemento no es un video reproducible.";return out;
+    }
+    // Resolving a phone's video must never modify the shared desktop source
+    // cache or the currently playing channel's session.
+    auto isolated=std::make_shared<ServiceSession>(*session);
+    return service_source(isolated,entry,variant);
+}
+
 }
