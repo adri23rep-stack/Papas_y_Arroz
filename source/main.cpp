@@ -255,7 +255,8 @@ int main(int argc,char** argv){
             if(event.type==SDL_MOUSEBUTTONDOWN||event.type==SDL_FINGERDOWN){
                 const int x=event.type==SDL_FINGERDOWN?int(event.tfinger.x*1280):event.button.x,y=event.type==SDL_FINGERDOWN?int(event.tfinger.y*720):event.button.y;
                 if(donating){back=true;continue;}const int hit=view.hit(catalog,selected,x,y);
-                if(hit==-8)toggle_favorite=true;
+                if(hit==-13){view.pairing_visible=!view.pairing_visible;redraw=true;}
+                else if(hit==-8)toggle_favorite=true;
                 else if(hit==-9)play=true;
                 else if(hit==-10){view.toggle_fullscreen();redraw=true;}
                 else if(hit==-11){view.show_details=!view.show_details;redraw=true;}
@@ -265,8 +266,15 @@ int main(int argc,char** argv){
             }
             if(event.type==SDL_KEYDOWN){
                 switch(event.key.keysym.sym){
-                    case SDLK_ESCAPE:if(!history.empty()||donating||view.nav_focus>=0)back=true;else running=false;break;
+                    case SDLK_ESCAPE:
 #ifdef _WIN32
+                        if(view.pairing_visible){view.pairing_visible=false;redraw=true;break;}
+#endif
+                        if(!history.empty()||donating||view.nav_focus>=0)back=true;
+                        else running=false;
+                        break;
+#ifdef _WIN32
+                    case SDLK_F9:view.pairing_visible=!view.pairing_visible;redraw=true;break;
                     case SDLK_F4:nav_action=0;break;
                     case SDLK_F5:nav_action=1;break;
                     case SDLK_F6:nav_action=2;break;
