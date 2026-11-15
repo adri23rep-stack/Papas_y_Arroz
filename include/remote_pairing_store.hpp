@@ -98,6 +98,7 @@ inline bool remote_load_or_create_secret(std::string& out,
     std::ifstream old("remote_secret.txt",std::ios::binary);
     std::string legacy;
     std::getline(old,legacy);
+    old.close(); // Windows must release the legacy file before removing it.
     const bool migrating=remote_valid_secret(legacy);
     const std::string token=migrating?legacy:proposed;
     if(!remote_save_secret_file(path,token)){
