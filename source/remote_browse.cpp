@@ -106,6 +106,9 @@ BrowseSelection RemoteBrowse::select(uint32_t generation,size_t index,
             if(stopping_||generation_!=request_generation)return;
             if(result.ok){
                 page_=std::move(result.catalog);
+                // Enqueue autoplay BEFORE marking the page ready. Otherwise
+                // the iPhone can read "playing" before Windows sees the event.
+                if(autoplay)push_play(autoplay_index,request_generation);
                 state_="ready";
                 message_=autoplay?"Reproduciendo pelicula en Windows.":result.status;
                 autoplayed_=autoplay;
@@ -118,7 +121,6 @@ BrowseSelection RemoteBrowse::select(uint32_t generation,size_t index,
             }
             busy_=false;
         }
-        if(autoplay)push_play(autoplay_index,request_generation);
     });
     return BrowseSelection::Loading;
 }
