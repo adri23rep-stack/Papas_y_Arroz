@@ -2,6 +2,8 @@
 #ifdef _WIN32
 #include <SDL.h>
 #include "remote_catalog.hpp"
+#include "remote_browse.hpp"
+#include "remote_settings.hpp"
 #include <atomic>
 #include <cstdint>
 #include <string>
@@ -31,8 +33,16 @@ public:
         return value;
     }
 
-    void set_session(std::shared_ptr<ServiceSession> session){catalog_.set_session(std::move(session));}
+    void set_session(std::shared_ptr<ServiceSession> session,const Catalog& root){
+        catalog_.set_session(session);
+        browse_.set_session(std::move(session),root);
+    }
     bool selected_result(uint32_t generation,size_t index,Catalog& out)const{return catalog_.select(generation,index,out);}
+    bool selected_browse_result(uint32_t generation,size_t index,Catalog& out)const{
+        return browse_.selected_result(generation,index,out);
+    }
+    int setting_value(int id)const{return settings_.get(id);}
+    void publish_setting(int id,int value){settings_.put(id,value,false);}
     bool cursor_visible()const;
     int cursor_x()const{return pointer_x_.load();}
     int cursor_y()const{return pointer_y_.load();}
@@ -58,6 +68,8 @@ private:
     std::atomic<Uint32> pointer_at_{0},active_at_{0};
     std::thread worker_;
     RemoteCatalog catalog_;
+    RemoteBrowse browse_;
+    RemoteSettingsStore settings_;
     std::mutex text_mutex_;
     std::string pending_text_;
     uintptr_t listener_=static_cast<uintptr_t>(~uintptr_t{0});
@@ -71,5 +83,7 @@ constexpr int REMOTE_OPEN_CATALOG=0x585503;
 constexpr int REMOTE_YOUTUBE_START=0x585504;
 constexpr int REMOTE_YOUTUBE_RETURN=0x585505;
 constexpr int REMOTE_WHEEL=0x585506;
+constexpr int REMOTE_OPEN_BROWSE=0x585507;
+constexpr int REMOTE_SETTING=0x585508;
 }
 #endif
