@@ -11,6 +11,7 @@
 #include <cstring>
 #include <cmath>
 #include "playback_state.hpp"
+#include "live_tv_recovery.hpp"
 #include "saved_catalog.hpp"
 #include <thread>
 #include <atomic>
@@ -472,7 +473,7 @@ int main(int argc,char** argv){
                     if(result.ok){history.emplace_back(std::move(catalog),selected);catalog=std::move(result.catalog);selected=0;}
                 }else if(!full_memory)status="Abre hbmenu manteniendo R sobre un juego para probar el video.";
                 else{
-                    int variant=0;double start=0,speed=playback_history.speed,volume=playback_history.volume;bool auto_next=playback_history.auto_next,keep_paused=false;
+                    int variant=0,live_failures=0;double start=0,speed=playback_history.speed,volume=playback_history.volume;bool auto_next=playback_history.auto_next,keep_paused=false;
                     std::vector<size_t> queue;
                     for(size_t i=0;i<catalog.entries.size();++i)if(catalog.entries[i].kind==entry.kind&&(entry.series_id.empty()||catalog.entries[i].series_id==entry.series_id))queue.push_back(i);
                     bool continue_playback=true;
@@ -480,6 +481,7 @@ int main(int argc,char** argv){
                         std::string source=current.source;std::vector<std::pair<std::string,std::string>> headers;
                         xs::PlaybackOptions options;options.font=view.font;options.title=current.title;
                         options.variant=variant;options.start=start>0?start:current.kind==xs::EntryKind::Episode?playback_history.position(current.content_id):0;options.speed=speed;options.volume=volume;options.auto_next=auto_next;options.paused=keep_paused;
+                        options.is_live=current.kind==xs::EntryKind::Channel;
                         if(current.kind==xs::EntryKind::Channel||current.kind==xs::EntryKind::Episode){
                             status="Solicitando fuente del video...";view.draw(catalog,selected,status,full_memory);
                             xs::SourceResult result;xs::trace("catalog:source_begin");load([&]{result=xs::service_source(session,current,variant);},"Preparando reproduccion...");status=result.status;
@@ -503,7 +505,9 @@ int main(int argc,char** argv){
                             }
                             if(queue[i]==selected)options.item=static_cast<int>(i);
                         }
-                        if(current.kind==xs::EntryKind::Channel&&session){
+                        if(current.kind==xs::EntryKind::Channel&&session&&false){
+                            // Preview decoder temporarily disabled until the
+                            // live-TV stability fix is verified on real hardware.
                             // Copy only the eligible channels; an asynchronous
                             // preview must not hold references to the mutable
                             // navigation catalogue or require another account.
@@ -526,9 +530,40 @@ int main(int argc,char** argv){
                                     return !video.empty();
                                 };
                         }
+                        if(source.empty()&&options.is_live){
+                            const auto retry=xs::retry_live_channel(true,false,true,false,
+                                variant,static_cast<int>(options.variants.size()),live_failures);
+                            if(retry.retry){
+                                variant=retry.next_variant;live_failures=retry.next_attempt;
+                                status="Reconectando TV en vivo ("+
+                                    std::to_string(live_failures)+"/2)...";
+                                xs::trace("live:source_retry");
+                                SDL_Delay(static_cast<Uint32>(retry.delay_ms));
+                                continue_playback=true;
+                                continue;
+                            }
+                            if(status.empty())status="Canal no disponible. Prueba otra señal.";
+                            xs::trace("live:source_unavailable_after_retries");
+                        }
                         if(!source.empty()){
                             xs::PlaybackOutcome outcome;status=xs::play(source,view.renderer,headers,options,&outcome);xs::trace("main:video_returned");
                             speed=outcome.speed;volume=outcome.volume;auto_next=outcome.auto_next;
+                            const auto recovery=xs::retry_live_channel(options.is_live,
+                                outcome.requested_remote_result>=0||
+                                    outcome.requested_navigation>=0||
+                                    outcome.next_item>=0||outcome.next_variant>=0,
+                                !status.empty(),outcome.ended,variant,
+                                static_cast<int>(options.variants.size()),live_failures);
+                            if(recovery.retry){
+                                variant=recovery.next_variant;
+                                live_failures=recovery.next_attempt;
+                                xs::trace("live:playback_reconnect");
+                                status="Se cortó la señal. Reconectando ("+
+                                    std::to_string(live_failures)+"/2)...";
+                                SDL_Delay(static_cast<Uint32>(recovery.delay_ms));
+                                continue_playback=true;
+                                continue;
+                            }
 #ifdef _WIN32
                             if(outcome.requested_navigation>=0)pending_remote_navigation=outcome.requested_navigation;
                             if(outcome.requested_remote_result>=0){
