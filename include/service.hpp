@@ -31,4 +31,5 @@ BrowseResult service_search_remote(const std::shared_ptr<ServiceSession>& sessio
 BrowseResult service_browse_remote(const std::shared_ptr<ServiceSession>& session,const Entry& entry);
 
 SourceResult service_source(const std::shared_ptr<ServiceSession>& session,const Entry& entry,int variant=0);
+SourceResult service_source_remote(const std::shared_ptr<ServiceSession>& session,const Entry& entry,int variant=0);
 }
