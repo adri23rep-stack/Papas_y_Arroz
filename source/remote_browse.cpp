@@ -90,10 +90,10 @@ void RemoteBrowse::set_session(std::shared_ptr<ServiceSession> session,const Cat
     if(worker_.joinable())worker_.join();
     std::lock_guard<std::mutex> lock(mutex_);
     session_=std::move(session);root_=root;
-    page_={};history_.clear();provider_categories_.clear();autoplayed_=false;
+    page_={};history_.clear();provider_categories_.clear();autoplayed_=false;mobile_mode_=false;
 }
 bool RemoteBrowse::start(uint32_t& generation,std::string& error,
-                         const std::string& provider){
+                         const std::string& provider,bool mobile){
     if(!provider.empty()&&!provider_title(provider)){
         error="Esta plataforma no está disponible en el control.";
         return false;
@@ -110,7 +110,7 @@ bool RemoteBrowse::start(uint32_t& generation,std::string& error,
     Catalog root;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        history_.clear();provider_categories_.clear();autoplayed_=false;
+        history_.clear();provider_categories_.clear();autoplayed_=false;mobile_mode_=mobile;
         generation=++generation_;
         if(provider.empty()){
             page_=make_sections(root_);
@@ -160,6 +160,7 @@ BrowseSelection RemoteBrowse::select(uint32_t generation,size_t index,
         }
         if(playable(entry.kind)){
             next_generation=generation_;
+            if(mobile_mode_)return BrowseSelection::Play;
             if(!push_play(index,generation_)){
                 error="Windows no pudo recibir la orden de reproduccion.";
                 return BrowseSelection::Invalid;
@@ -214,7 +215,7 @@ BrowseSelection RemoteBrowse::select(uint32_t generation,size_t index,
         if(result.catalog.title.empty())result.catalog.title=entry.title;
         bool autoplay=false;
         size_t autoplay_index=0;
-        if(result.ok&&entry.kind==EntryKind::Asset&&entry.program_type=="1"){
+        if(result.ok&&!mobile_mode_&&entry.kind==EntryKind::Asset&&entry.program_type=="1"){
             for(size_t i=0;i<result.catalog.entries.size();++i)
                 if(result.catalog.entries[i].kind==EntryKind::Episode){
                     autoplay=true;autoplay_index=i;break;
@@ -277,6 +278,16 @@ bool RemoteBrowse::selected_result(uint32_t generation,size_t index,Catalog& out
        !playable(page_.entries[index].kind))return false;
     out=page_;
     return true;
+}
+bool RemoteBrowse::mobile_selection(uint32_t generation,size_t index,Entry& result,
+                                    std::shared_ptr<ServiceSession>& session) const{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if(!mobile_mode_||stopping_||busy_||state_!="ready"||
+       generation!=generation_||index>=page_.entries.size()||
+       !playable(page_.entries[index].kind))return false;
+    result=page_.entries[index];
+    session=session_;
+    return session!=nullptr||result.kind==EntryKind::Media;
 }
 void RemoteBrowse::stop(){
     {
