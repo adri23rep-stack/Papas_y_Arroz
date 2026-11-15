@@ -2,7 +2,7 @@ name: Xuper TV Desktop | Windows preview
 
 on:
   push:
-    branches: [windows-desktop-preview, feature/ui-cinematic-tv, feature/apple-controller-server, feature/cinematic-ui-v2, feature/search-remote-catalog, feature/youtube-browser-remote, fix/youtube-hidpi-video, feature/classic-remote-command-support, feature/video-enhanced-stage1, feature/video-enhanced-contrast-stage2, feature/video-enhanced-gpu-stage3, feature/xuper-native-engine-v1, feature/xuper-native-player-v2, feature/iphone-catalog-settings, feature/qr-pairing-remembered, feature/provider-catalog-tiles]
+    branches: [windows-desktop-preview, feature/ui-cinematic-tv, feature/apple-controller-server, feature/cinematic-ui-v2, feature/search-remote-catalog, feature/youtube-browser-remote, fix/youtube-hidpi-video, feature/classic-remote-command-support, feature/video-enhanced-stage1, feature/video-enhanced-contrast-stage2, feature/video-enhanced-gpu-stage3, feature/xuper-native-engine-v1, feature/xuper-native-player-v2, feature/iphone-catalog-settings, feature/qr-pairing-remembered, feature/provider-catalog-tiles, fix/live-tv-recovery, feature/private-iphone-player]
     paths:
       - '.github/workflows/bootstrap-windows.yml'
       - 'patches/**'
@@ -19,6 +19,7 @@ on:
       - 'README_IPHONE_CATALOG.md'
       - 'README_QR_PAIRING.md'
       - 'README_PROVIDER_CATALOG.md'
+      - 'README_LIVE_TV.md'
       - 'catalog.m3u'
   workflow_dispatch:
 
@@ -260,18 +261,19 @@ jobs:
           Copy-Item README_IPHONE_CATALOG.md dist/Xuper-TV-Desktop/README_IPHONE_CATALOG.md
           Copy-Item README_QR_PAIRING.md dist/Xuper-TV-Desktop/README_QR_PAIRING.md
           Copy-Item README_PROVIDER_CATALOG.md dist/Xuper-TV-Desktop/README_PROVIDER_CATALOG.md
+          Copy-Item README_LIVE_TV.md dist/Xuper-TV-Desktop/README_LIVE_TV.md
           Write-Host "Bundled service template verified. No APK import required."
       # The account's Actions artifact storage quota is currently exhausted.
       # Instead of silently failing or deleting old user artifacts, stage 3
       # can provide its verified ZIP on a dedicated orphan branch. No release.
       - name: Publish temporary ZIP to isolated build-delivery branch
-        if: github.ref_name == 'feature/provider-catalog-tiles'
+        if: github.ref_name == 'fix/live-tv-recovery'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $name = 'XuperTV-Provider-Catalog-Windows.zip'
+          $name = 'XuperTV-Live-TV-Recovery-Windows.zip'
           $zip = Join-Path $env:RUNNER_TEMP $name
           Compress-Archive -Path 'dist/Xuper-TV-Desktop' -DestinationPath $zip -CompressionLevel Optimal
           $bytes = (Get-Item $zip).Length
@@ -284,7 +286,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Could not open delivery worktree' }
           Push-Location $folder
           try {
-            git checkout --orphan build/provider-catalog-tiles
+            git checkout --orphan build/live-tv-recovery
             if ($LASTEXITCODE -ne 0) { throw 'Cannot create delivery branch' }
             git rm -r --cached --ignore-unmatch . | Out-Null
             Get-ChildItem -Force | Where-Object { $_.Name -ne '.git' } |
@@ -292,25 +294,25 @@ jobs:
             Copy-Item $zip -Destination (Join-Path $folder $name)
             $hash = (Get-FileHash -Algorithm SHA256 $name).Hash
             @(
-              'XuperTV Provider Catalogue + iPhone Tiles — Temporary Windows build',
+              'XuperTV Live-TV-Recovery — Temporary Windows build',
               'Experimental, unsigned portable build. No release or merge.',
               "SHA256: $hash",
-              'Source branch: feature/provider-catalog-tiles',
+              'Source branch: fix/live-tv-recovery',
               'Extract the ZIP as one folder. Do not mix DLLs from older builds.'
             ) | Set-Content -Encoding UTF8 README.txt
             git add -- $name README.txt
-            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Temporary Provider Catalogue Windows ZIP (automated verified build)'
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Temporary Live-TV-Recovery Windows ZIP (automated verified build)'
             if ($LASTEXITCODE -ne 0) { throw 'Cannot commit delivery package' }
-            git push --force origin HEAD:refs/heads/build/provider-catalog-tiles
+            git push --force origin HEAD:refs/heads/build/live-tv-recovery
             if ($LASTEXITCODE -ne 0) { throw 'Cannot publish delivery branch' }
-            Write-Host "Temporary download: https://github.com/$env:GITHUB_REPOSITORY/raw/refs/heads/build/provider-catalog-tiles/$name"
+            Write-Host "Temporary download: https://github.com/$env:GITHUB_REPOSITORY/raw/refs/heads/build/live-tv-recovery/$name"
           } finally {
             Pop-Location
           }
       - name: Upload test build (not a release)
-        if: github.ref_name != 'feature/provider-catalog-tiles'
+        if: github.ref_name != 'fix/live-tv-recovery'
         uses: actions/upload-artifact@v4
         with:
-          name: XuperTV-Provider-Catalog-Windows
+          name: XuperTV-Live-TV-Recovery-Windows
           path: dist/Xuper-TV-Desktop/
           if-no-files-found: error
