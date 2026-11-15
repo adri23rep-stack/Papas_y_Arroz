@@ -83,7 +83,12 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
 #if defined(_WIN32)
     // Stage 1: NVDEC/D3D11 copy-back decode (not zero-copy rendering).
     // Keep a reliable CPU preset for incompatible hardware.
-    VideoPreset video_preset=load_video_preset();
+    // The experimental GL readback renderer and secondary live previews
+    // amplify GPU/decoder load. Live TV defaults to the reliable CPU path.
+    VideoPreset video_preset=options.is_live?
+        VideoPreset::Compatible:load_video_preset();
+    if(options.is_live)trace("live:safe_decoder_cpu");
+
     // Changing the saved preset during playback affects the NEXT video only.
     const bool extra_detail_started=(video_preset==VideoPreset::ExtraDetail);
     std::string detail_graph;
@@ -123,7 +128,12 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
     option("mute",remote_initial.setting_value(remote_setting_index("mute"))?"yes":"no");
 #endif
     option("pause",options.paused?"yes":"no");
-    option("network-timeout","15");option("tls-verify","yes");option("demuxer-max-bytes","33554432");
+    option("network-timeout",options.is_live?"25":"15");
+    option("tls-verify","yes");option("demuxer-max-bytes","33554432");
+    if(options.is_live){
+        option("cache","yes");
+        option("demuxer-readahead-secs","3");
+    }
 #ifdef __SWITCH__
     option("ao","hos");option("sub-fonts-dir","sdmc:/switch/xuperswitch");option("sub-font","DejaVu Sans");const char* ca="sdmc:/switch/xuperswitch/cacert.pem";
     if(std::ifstream(ca).good())option("tls-ca-file",ca);
@@ -807,7 +817,7 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
                         SDL_Rect hint{917,452,317,47};SDL_RenderFillRect(renderer,&hint);
 #ifdef _WIN32
                         const std::string message=opened_preview==held?
-                            (preview_error.empty()?"Cargando señal...":preview_error):
+                            (preview_error.empty()?"Vista previa no disponible en modo estable.":preview_error):
                             (held==options.item?"Canal en reproducción":"Preparando vista previa...");
 #else
                         const std::string message="Vista rápida del canal";
