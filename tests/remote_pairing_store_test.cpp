@@ -28,9 +28,10 @@ int main(){
     const std::string ciphertext((std::istreambuf_iterator<char>(input)),
                                  std::istreambuf_iterator<char>());
     assert(ciphertext!=a&&ciphertext.find(a)==std::string::npos);
+    input.close(); // Windows cannot remove a file while this stream holds it.
     // Simulate an update from an older ZIP: the plaintext secret survives
     // migration into a profile path and is not recreated with the new token.
-    std::filesystem::remove(file,ec);
+    assert(std::filesystem::remove(file,ec)&&!ec);
     const auto old_cwd=std::filesystem::current_path();
     std::filesystem::current_path(folder);
     {
