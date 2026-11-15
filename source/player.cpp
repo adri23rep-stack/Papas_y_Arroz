@@ -372,7 +372,7 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
                     set_number("panscan",aspect==3?1:0);
                 }else if(id==remote_setting_index("auto_next"))auto_next=value!=0;
                 else if(id==remote_setting_index("mute")){
-                    const int flag=value!=0;
+                    int flag=value!=0;
                     mpv_set_property(mpv,"mute",MPV_FORMAT_FLAG,&flag);
                 }else if(id==remote_setting_index("audio_delay"))set_number("audio-delay",value/1000.0);
                 else if(id==remote_setting_index("sub_delay"))set_number("sub-delay",value/1000.0);
