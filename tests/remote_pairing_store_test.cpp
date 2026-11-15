@@ -21,12 +21,28 @@ int main(){
     assert(remote_save_secret_file(file,a));
     std::string out;
     assert(remote_read_secret_file(file,out)&&out==a);
-    assert(remote_load_or_create_secret(out,b,out)&&out==a);
+    std::string error;
+    assert(remote_load_or_create_secret(out,b,error)&&out==a);
     // DPAPI ciphertext cannot be mistaken for a plaintext bearer token.
     std::ifstream input(file,std::ios::binary);
     const std::string ciphertext((std::istreambuf_iterator<char>(input)),
                                  std::istreambuf_iterator<char>());
     assert(ciphertext!=a&&ciphertext.find(a)==std::string::npos);
+    // Simulate an update from an older ZIP: the plaintext secret survives
+    // migration into a profile path and is not recreated with the new token.
+    std::filesystem::remove(file,ec);
+    const auto old_cwd=std::filesystem::current_path();
+    std::filesystem::current_path(folder);
+    {
+        std::ofstream legacy("remote_secret.txt");
+        legacy<<b<<"\n";
+    }
+    out.clear();error.clear();
+    assert(remote_load_or_create_secret(out,std::string(64,'c'),error));
+    assert(out==b);
+    assert(remote_read_secret_file(file,out)&&out==b);
+    assert(!std::filesystem::exists("remote_secret.txt"));
+    std::filesystem::current_path(old_cwd);
     std::filesystem::remove_all(folder,ec);
     SetEnvironmentVariableW(L"XUPER_PAIRING_TEST_DIR",nullptr);
     return 0;
