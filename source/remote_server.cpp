@@ -259,6 +259,7 @@ void RemoteServer::dispatch(const std::string& action,int dx,int dy,int value){
     else if(action=="search")push_key(SDLK_x);
     else if(action=="play_pause")push_key(SDLK_SPACE);
     else if(action=="fullscreen")push_key(SDLK_F11);
+    else if(action=="monitor_next")push_key(SDLK_F10);
     else if(action=="menu")push_key(SDLK_TAB);
     else if(action=="next")push_key(SDLK_PAGEDOWN);
     else if(action=="previous")push_key(SDLK_PAGEUP);
@@ -577,10 +578,10 @@ void RemoteServer::handle(uintptr_t id){
         return it!=payload.end()&&it->is_number_integer()?
             std::clamp(it->get<int>(),-1500,1500):fallback;
     };
-    static const std::array<const char*,22> actions={
+    static const std::array<const char*,23> actions={
         "up","down","left","right","ok","back","home","tv","movies","series",
         "search","play_pause","menu","next","previous","volume","brightness",
-        "pointer_move","pointer_down","pointer_up","fullscreen","wheel"};
+        "pointer_move","pointer_down","pointer_up","fullscreen","monitor_next","wheel"};
     const bool valid=action=="click"||action=="text"||action=="ping"||
         std::any_of(actions.begin(),actions.end(),[&](const char* x){return action==x;});
     if(!valid){reply(client,400,{{"error","Unsupported action"}});return;}
