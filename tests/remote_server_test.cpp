@@ -92,6 +92,9 @@ int main(){
     REQUIRE(!okay(post("/catalog/open",R"({"generation":1,"index":0})",token)));
     REQUIRE(!okay(post("/catalog/browse/start",R"({})")));
     REQUIRE(!okay(post("/catalog/browse/start",R"({})",token))); // no session
+    REQUIRE(!okay(post("/catalog/browse/start",R"({"provider":"netflix"})"))); // unauthenticated
+    REQUIRE(!okay(post("/catalog/browse/start",R"({"provider":"notreal"})",token)));
+    REQUIRE(!okay(post("/catalog/browse/start",R"({"provider":5})",token)));
     REQUIRE(!okay(post("/catalog/browse/select",R"({"generation":1,"index":0})",token)));
     REQUIRE(!okay(post("/settings/get",R"({})")));
     const auto settings=post("/settings/get",R"({})",token);
