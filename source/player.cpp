@@ -192,10 +192,10 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
 #ifdef _WIN32
     aspect=std::clamp(RemoteServer::shared().setting_value(remote_setting_index("aspect")),0,3);
     if(aspect==1||aspect==2) {
-        const double ratio=aspect==1?16.0/9:4.0/3;
+        double ratio=aspect==1?16.0/9:4.0/3;
         mpv_set_property(mpv,"video-aspect-override",MPV_FORMAT_DOUBLE,&ratio);
     }else if(aspect==3){
-        const double zoom=1.0;
+        double zoom=1.0;
         mpv_set_property(mpv,"panscan",MPV_FORMAT_DOUBLE,&zoom);
     }
 #endif
