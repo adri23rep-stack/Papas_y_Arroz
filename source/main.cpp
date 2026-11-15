@@ -18,6 +18,7 @@
 #include <windows.h>
 #include <filesystem>
 #include "remote_server.hpp"
+#include "video_enhanced.hpp"
 #include "cinematic_home.hpp"
 #include "cinematic_layout.hpp"
 #endif
