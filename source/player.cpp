@@ -114,6 +114,14 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
     option("osd-level","0");option("sub-visibility","yes");
     option("sub-auto","no");option("audio-pitch-correction","yes");
     option("speed",std::to_string(options.speed).c_str());option("volume",std::to_string(options.volume).c_str());
+#ifdef _WIN32
+    const auto& remote_initial=RemoteServer::shared();
+    option("sub-scale",std::to_string(remote_initial.setting_value(remote_setting_index("sub_scale"))/100.0).c_str());
+    option("audio-delay",std::to_string(remote_initial.setting_value(remote_setting_index("audio_delay"))/1000.0).c_str());
+    option("sub-delay",std::to_string(remote_initial.setting_value(remote_setting_index("sub_delay"))/1000.0).c_str());
+    option("brightness",std::to_string(remote_initial.setting_value(remote_setting_index("brightness"))*2-100).c_str());
+    option("mute",remote_initial.setting_value(remote_setting_index("mute"))?"yes":"no");
+#endif
     option("pause",options.paused?"yes":"no");
     option("network-timeout","15");option("tls-verify","yes");option("demuxer-max-bytes","33554432");
 #ifdef __SWITCH__
@@ -181,6 +189,16 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
 #endif
     bool running=true,paused=false,first_frame=true,menu=false,loaded=false;
     int page=0,selection=0,aspect=0;double pending_start=options.start;
+#ifdef _WIN32
+    aspect=std::clamp(RemoteServer::shared().setting_value(remote_setting_index("aspect")),0,3);
+    if(aspect==1||aspect==2) {
+        const double ratio=aspect==1?16.0/9:4.0/3;
+        mpv_set_property(mpv,"video-aspect-override",MPV_FORMAT_DOUBLE,&ratio);
+    }else if(aspect==3){
+        const double zoom=1.0;
+        mpv_set_property(mpv,"panscan",MPV_FORMAT_DOUBLE,&zoom);
+    }
+#endif
     int64_t external_id=-1,external_index=-1;
     const std::vector<double> speeds{0.5,0.75,1,1.25,1.5,1.75,2};
     const std::vector<std::string> ratios{"Original","16:9","4:3","Rellenar"};
@@ -333,11 +351,37 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
         while(SDL_PollEvent(&event)){
             if(event.type==SDL_QUIT)running=false;
 #ifdef _WIN32
-            if(event.type==SDL_USEREVENT&&event.user.code==REMOTE_OPEN_CATALOG){
+            if(event.type==SDL_USEREVENT&&
+               (event.user.code==REMOTE_OPEN_CATALOG||event.user.code==REMOTE_OPEN_BROWSE)){
                 result.requested_remote_result=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
                 result.requested_remote_generation=static_cast<uint32_t>(
                     reinterpret_cast<uintptr_t>(event.user.data2));
+                result.requested_remote_browse=event.user.code==REMOTE_OPEN_BROWSE;
                 running=false;break;
+            }
+            if(event.type==SDL_USEREVENT&&event.user.code==REMOTE_SETTING){
+                const int id=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
+                const int value=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data2));
+                if(!valid_remote_setting(id,value))continue;
+                if(id==remote_setting_index("volume"))set_number("volume",value);
+                else if(id==remote_setting_index("brightness"))set_number("brightness",value*2-100);
+                else if(id==remote_setting_index("speed"))set_number("speed",value/100.0);
+                else if(id==remote_setting_index("aspect")){
+                    aspect=value;
+                    set_number("video-aspect-override",aspect==1?16.0/9:aspect==2?4.0/3:-1);
+                    set_number("panscan",aspect==3?1:0);
+                }else if(id==remote_setting_index("auto_next"))auto_next=value!=0;
+                else if(id==remote_setting_index("mute")){
+                    const int flag=value!=0;
+                    mpv_set_property(mpv,"mute",MPV_FORMAT_FLAG,&flag);
+                }else if(id==remote_setting_index("audio_delay"))set_number("audio-delay",value/1000.0);
+                else if(id==remote_setting_index("sub_delay"))set_number("sub-delay",value/1000.0);
+                else if(id==remote_setting_index("sub_scale"))set_number("sub-scale",value/100.0);
+                else if(id==remote_setting_index("video_preset")){
+                    save_video_preset(static_cast<VideoPreset>(value));
+                    notice="La calidad nueva se aplica al siguiente video.";
+                }
+                show();continue;
             }
 #endif
 #ifdef _WIN32
