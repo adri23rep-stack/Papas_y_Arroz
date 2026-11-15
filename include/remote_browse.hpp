@@ -23,11 +23,13 @@ enum class BrowseSelection { Invalid, Loading, Play };
 class RemoteBrowse {
 public:
     void set_session(std::shared_ptr<ServiceSession> session,const Catalog& root);
-    bool start(uint32_t& generation,std::string& error,const std::string& provider={});
+    bool start(uint32_t& generation,std::string& error,const std::string& provider={},bool mobile=false);
     BrowseSelection select(uint32_t generation,size_t index,uint32_t& next_generation,std::string& error);
     bool back(uint32_t generation,uint32_t& next_generation,std::string& error);
     RemoteBrowseSnapshot snapshot(uint32_t generation,size_t offset=0,size_t limit=48) const;
     bool selected_result(uint32_t generation,size_t index,Catalog& result) const;
+    bool mobile_selection(uint32_t generation,size_t index,Entry& result,
+                          std::shared_ptr<ServiceSession>& session) const;
     void stop();
     ~RemoteBrowse(){stop();}
 private:
@@ -38,7 +40,7 @@ private:
     std::map<std::string,std::vector<Entry>> provider_categories_;
     std::thread worker_;
     uint32_t generation_=0;
-    bool busy_=false,stopping_=false,autoplayed_=false;
+    bool busy_=false,stopping_=false,autoplayed_=false,mobile_mode_=false;
     std::string state_="idle",message_;
 };
 }
