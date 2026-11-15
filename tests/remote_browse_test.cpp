@@ -93,7 +93,19 @@ int main(){
     assert(page.state=="ready"&&page.auto_played);
     assert(page.items[0].second.kind==xs::EntryKind::Episode);
     assert(browse.selected_result(movie_gen,0,playback));
-    assert(SDL_PollEvent(&ev)&&ev.user.code==xs::REMOTE_OPEN_BROWSE);
+    // SDL can enqueue unrelated poll/wakeup events. The contract is that
+    // a matching Windows playback command is delivered, not that it is
+    // always the very first queued event.
+    bool saw_autoplay=false;
+    for(int tick=0;tick<80&&!saw_autoplay;++tick){
+        while(SDL_PollEvent(&ev)){
+            if(ev.type==SDL_USEREVENT&&ev.user.code==xs::REMOTE_OPEN_BROWSE){
+                saw_autoplay=true;break;
+            }
+        }
+        if(!saw_autoplay)std::this_thread::sleep_for(std::chrono::milliseconds(3));
+    }
+    assert(saw_autoplay);
     browse.stop();
     SDL_Quit();
     return 0;
