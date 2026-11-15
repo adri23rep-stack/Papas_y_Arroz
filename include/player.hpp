@@ -31,6 +31,7 @@ struct PlaybackOptions {
     double speed=1,volume=100;
     bool auto_next=true;
     bool paused=false;
+    bool is_live=false;
 };
 struct PlaybackOutcome {
     int next_item=-1,next_variant=-1;
