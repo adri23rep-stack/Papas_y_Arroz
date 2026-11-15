@@ -12,6 +12,8 @@
 #include <cstring>
 #include <string>
 #include <algorithm>
+#include <filesystem>
+#include <windows.h>
 
 static std::string post(const std::string& path,const std::string& body,
                         const std::string& token=""){
@@ -61,6 +63,13 @@ BrowseResult service_browse_remote(const std::shared_ptr<ServiceSession>&,const 
 }
 #define REQUIRE(condition) do{std::fprintf(stderr,"Checking %d: %s\\n",__LINE__,#condition);std::fflush(stderr);if(!(condition)){std::fprintf(stderr,"FAILED at %d: %s\\n",__LINE__,#condition);return 1;}}while(0)
 int main(){
+    // CI must never alter a real Windows user's remembered phone pairing.
+    wchar_t temp_dir[MAX_PATH]{};
+    REQUIRE(GetTempPathW(MAX_PATH,temp_dir)>0);
+    const auto root=std::filesystem::path(temp_dir)/
+        (L"xuper-remote-server-"+std::to_wstring(GetCurrentProcessId()));
+    std::filesystem::create_directories(root);
+    REQUIRE(SetEnvironmentVariableW(L"XUPER_PAIRING_TEST_DIR",root.c_str())!=0);
     REQUIRE(SDL_Init(SDL_INIT_EVENTS)==0);
     auto& server=xs::RemoteServer::shared();
     REQUIRE(server.start());
@@ -135,6 +144,8 @@ int main(){
     REQUIRE(!okay(post("/input",R"({"action":"wheel_drop"})",token)));
     server.stop();
     SDL_Quit();
-    std::remove("remote_secret.txt");
+    std::error_code cleanup;
+    std::filesystem::remove_all(root,cleanup);
+    SetEnvironmentVariableW(L"XUPER_PAIRING_TEST_DIR",nullptr);
     return 0;
 }
