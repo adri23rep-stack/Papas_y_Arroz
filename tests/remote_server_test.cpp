@@ -55,6 +55,9 @@ namespace xs {
 BrowseResult service_search_remote(const std::shared_ptr<ServiceSession>&,const std::string&){
     return {};
 }
+BrowseResult service_browse_remote(const std::shared_ptr<ServiceSession>&,const Entry&){
+    return {};
+}
 }
 #define REQUIRE(condition) do{std::fprintf(stderr,"Checking %d: %s\\n",__LINE__,#condition);std::fflush(stderr);if(!(condition)){std::fprintf(stderr,"FAILED at %d: %s\\n",__LINE__,#condition);return 1;}}while(0)
 int main(){
@@ -78,6 +81,29 @@ int main(){
     REQUIRE(!okay(post("/catalog/search",R"({"query":"test"})")));
     REQUIRE(!okay(post("/catalog/search",R"({"query":"test"})",token))); // No service session yet
     REQUIRE(!okay(post("/catalog/open",R"({"generation":1,"index":0})",token)));
+    REQUIRE(!okay(post("/catalog/browse/start",R"({})")));
+    REQUIRE(!okay(post("/catalog/browse/start",R"({})",token))); // no session
+    REQUIRE(!okay(post("/catalog/browse/select",R"({"generation":1,"index":0})",token)));
+    REQUIRE(!okay(post("/settings/get",R"({})")));
+    const auto settings=post("/settings/get",R"({})",token);
+    REQUIRE(okay(settings));
+    const auto settings_json=nlohmann::json::parse(payload(settings),nullptr,false);
+    REQUIRE(settings_json.contains("settings")&&settings_json["settings"].size()==10);
+    REQUIRE(!okay(post("/settings/set",R"({"key":"unknown","value":15})",token)));
+    REQUIRE(!okay(post("/settings/set",R"({"key":"volume","value":101})",token)));
+    REQUIRE(!okay(post("/settings/set",R"({"key":"speed","value":137})",token)));
+    REQUIRE(okay(post("/settings/set",R"({"key":"speed","value":125})",token)));
+    bool saw_setting=false;
+    SDL_Event setting_event{};
+    while(SDL_PollEvent(&setting_event))
+        if(setting_event.type==SDL_USEREVENT&&setting_event.user.code==xs::REMOTE_SETTING&&
+           static_cast<int>(reinterpret_cast<intptr_t>(setting_event.user.data1))==
+                xs::remote_setting_index("speed")&&
+           static_cast<int>(reinterpret_cast<intptr_t>(setting_event.user.data2))==125)
+            saw_setting=true;
+    REQUIRE(saw_setting);
+    REQUIRE(server.setting_value(xs::remote_setting_index("speed"))==125);
+
 
     REQUIRE(okay(post("/input",R"({"action":"right"})",token)));
     SDL_Event e{};bool saw_right=false;
