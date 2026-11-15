@@ -4,6 +4,7 @@
 #endif
 #endif
 #include "remote_server.hpp"
+#include "remote_pairing_store.hpp"
 #include "youtube_remote.hpp"
 #ifdef _WIN32
 // Windows desktop only. The Switch homebrew build does not link this file.
@@ -164,13 +165,15 @@ bool RemoteServer::start(){
     settings_.load();
     WSADATA ws{};
     if(WSAStartup(MAKEWORD(2,2),&ws)!=0)return false;
-    std::ifstream stored("remote_secret.txt",std::ios::binary);
-    std::getline(stored,secret_);
-    if(!valid_secret(secret_)){
-        secret_=make_secret();
-        if(secret_.empty()){WSACleanup();return false;}
-        std::ofstream saved("remote_secret.txt",std::ios::binary|std::ios::trunc);
-        saved<<secret_<<"\n";
+    const std::string fresh_secret=make_secret();
+    std::string storage_error;
+    if(fresh_secret.empty()||
+       !remote_load_or_create_secret(secret_,fresh_secret,storage_error)){
+        // Never silently rotate an existing paired device when the encrypted
+        // profile file is inaccessible or damaged.
+        std::fprintf(stderr,"XuperTV pairing: %s\n",storage_error.c_str());
+        WSACleanup();
+        return false;
     }
     unsigned char digits[4]{};
     if(!random_bytes(digits,sizeof(digits))){WSACleanup();return false;}
