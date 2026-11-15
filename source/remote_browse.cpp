@@ -21,11 +21,11 @@ Catalog make_sections(const Catalog& root){
     return sections;
 }
 bool playable(EntryKind kind){return kind==EntryKind::Channel||kind==EntryKind::Episode||kind==EntryKind::Media;}
-void push_play(size_t index,uint32_t generation){
+bool push_play(size_t index,uint32_t generation){
     SDL_Event ev{};ev.type=SDL_USEREVENT;ev.user.code=REMOTE_OPEN_BROWSE;
     ev.user.data1=reinterpret_cast<void*>(static_cast<intptr_t>(index));
     ev.user.data2=reinterpret_cast<void*>(static_cast<uintptr_t>(generation));
-    SDL_PushEvent(&ev);
+    return SDL_PushEvent(&ev)==1;
 }
 }
 void RemoteBrowse::set_session(std::shared_ptr<ServiceSession> session,const Catalog& root){
@@ -62,7 +62,10 @@ BrowseSelection RemoteBrowse::select(uint32_t generation,size_t index,
         entry=page_.entries[index];session=session_;
         if(playable(entry.kind)){
             next_generation=generation_;
-            push_play(index,generation_);
+            if(!push_play(index,generation_)){
+                error="Windows no pudo recibir la orden de reproduccion.";
+                return BrowseSelection::Invalid;
+            }
             return BrowseSelection::Play;
         }
         if(entry.kind!=EntryKind::LiveSection&&entry.kind!=EntryKind::Section&&
@@ -108,10 +111,11 @@ BrowseSelection RemoteBrowse::select(uint32_t generation,size_t index,
                 page_=std::move(result.catalog);
                 // Enqueue autoplay BEFORE marking the page ready. Otherwise
                 // the iPhone can read "playing" before Windows sees the event.
-                if(autoplay)push_play(autoplay_index,request_generation);
-                state_="ready";
-                message_=autoplay?"Reproduciendo pelicula en Windows.":result.status;
-                autoplayed_=autoplay;
+                const bool queued=!autoplay||push_play(autoplay_index,request_generation);
+                state_=queued?"ready":"error";
+                message_=!queued?"Windows no pudo recibir la pelicula.":
+                          autoplay?"Reproduciendo pelicula en Windows.":result.status;
+                autoplayed_=autoplay&&queued;
             }else{
                 if(!history_.empty()){
                     page_=std::move(history_.back());history_.pop_back();
