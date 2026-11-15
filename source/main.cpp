@@ -2,6 +2,7 @@
 #include "player.hpp"
 #include "service.hpp"
 #include "view.hpp"
+#include "live_retry.hpp"
 #include "trace.hpp"
 #include <fstream>
 #include <cstdio>
@@ -269,6 +270,7 @@ int main(int argc,char** argv){
                     int variant=0;double start=0,speed=playback_history.speed,volume=playback_history.volume;bool auto_next=playback_history.auto_next,keep_paused=false;
                     std::vector<size_t> queue;
                     for(size_t i=0;i<catalog.entries.size();++i)if(catalog.entries[i].kind==entry.kind&&(entry.series_id.empty()||catalog.entries[i].series_id==entry.series_id))queue.push_back(i);
+                    xs::LiveRetryState live_retry;
                     bool continue_playback=true;
                     while(continue_playback){continue_playback=false;const auto current=catalog.entries[selected];
                         std::string source=current.source;std::vector<std::pair<std::string,std::string>> headers;
@@ -292,11 +294,21 @@ int main(int argc,char** argv){
                             if(status.empty()&&(outcome.position>3||outcome.ended)&&!saved.remember(current))xs::trace("catalog:recent_save_failed");
                             if(status.empty()&&!playback_history.save(current.kind==xs::EntryKind::Episode?current.content_id:"",outcome.position,outcome.speed,outcome.volume,outcome.auto_next,outcome.ended))xs::trace((std::string("play:history_save_failed stage=")+playback_history.last_error).c_str());
                             if(outcome.ended&&auto_next&&!current.series_id.empty()&&static_cast<size_t>(options.item+1)<queue.size())outcome.next_item=options.item+1;
-                            if(outcome.next_variant>=0){variant=outcome.next_variant;start=outcome.position;keep_paused=outcome.paused;continue_playback=true;}
+                            if(outcome.next_variant>=0){variant=outcome.next_variant;start=outcome.position;keep_paused=outcome.paused;live_retry={};continue_playback=true;}
                             else if(outcome.next_item>=0&&static_cast<size_t>(outcome.next_item)<queue.size()){
-                                selected=queue[outcome.next_item];variant=0;start=0;keep_paused=false;continue_playback=true;
+                                selected=queue[outcome.next_item];variant=0;start=0;keep_paused=false;live_retry={};continue_playback=true;
+                            }
+                            else if(xs::retry_live_after_failure(current.kind==xs::EntryKind::Channel,
+                                                                !status.empty()||outcome.ended,
+                                                                options.variants.size(),variant,live_retry)){
+                                start=0;keep_paused=false;continue_playback=true;
+                                status="TV en vivo: recuperando senal...";xs::trace("play:live_retry");
                             }
                             if(status.empty())status="Video finalizado. A: reproducir; X: buscar.";
+                        }else if(xs::retry_live_after_failure(current.kind==xs::EntryKind::Channel,
+                                                               true,options.variants.size(),variant,live_retry)){
+                            start=0;keep_paused=false;continue_playback=true;
+                            status="TV en vivo: buscando otra fuente...";xs::trace("play:live_source_retry");
                         }
                     }
 
