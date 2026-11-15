@@ -727,4 +727,14 @@ bool service_subtitle(const std::shared_ptr<ServiceSession>& s,const SubtitleSou
     }
     data=std::move(received);return true;
 }
+BrowseResult service_browse_remote(const std::shared_ptr<ServiceSession>& session,const Entry& entry){
+    BrowseResult out;
+    if(!session){out.status="Conecta XuperTV en Windows primero.";return out;}
+    // The service interface already verifies access, filters protected items
+    // and resolves per-title details. Never return its source URLs to iOS.
+    auto isolated=std::make_shared<ServiceSession>(*session);
+    if(entry.kind==EntryKind::Category)return service_channels(isolated,entry.column_id);
+    return service_browse(isolated,entry);
+}
+
 }
