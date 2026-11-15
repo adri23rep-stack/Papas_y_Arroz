@@ -2,7 +2,7 @@ name: Xuper TV Desktop | Windows preview
 
 on:
   push:
-    branches: [windows-desktop-preview, fix/windows-hidpi-video]
+    branches: [windows-desktop-preview, fix/windows-hidpi-video, fix/windows-live-tv-recovery]
     paths:
       - '.github/workflows/bootstrap-windows.yml'
       - 'patches/**'
