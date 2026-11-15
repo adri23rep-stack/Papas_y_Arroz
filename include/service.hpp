@@ -27,6 +27,8 @@ BrowseResult service_search(const std::shared_ptr<ServiceSession>& session,const
 BrowseResult service_search_all(const std::shared_ptr<ServiceSession>& session,const std::string& query,const std::function<bool(size_t,size_t)>& progress={});
 // Remote search uses a private session copy to avoid races with live playback.
 BrowseResult service_search_remote(const std::shared_ptr<ServiceSession>& session,const std::string& query);
+// Browse on an independent session copy so remote page loads cannot alter playback caches.
+BrowseResult service_browse_remote(const std::shared_ptr<ServiceSession>& session,const Entry& entry);
 
 SourceResult service_source(const std::shared_ptr<ServiceSession>& session,const Entry& entry,int variant=0);
 }
