@@ -378,8 +378,20 @@ void RemoteServer::handle(uintptr_t id){
     };
     if(browse_start){
         uint32_t gen=0;std::string error;
-        if(!browse_.start(gen,error)){reply(client,400,{{"error",error}});return;}
-        reply(client,200,{{"generation",gen},{"state","ready"}});return;
+        const auto requested=payload.find("provider");
+        if(requested!=payload.end()&&!requested->is_string()){
+            reply(client,400,{{"error","Plataforma inválida."}});return;
+        }
+        const std::string provider=requested!=payload.end()?
+            requested->get<std::string>():"";
+        if(provider.size()>32){
+            reply(client,400,{{"error","Plataforma inválida."}});return;
+        }
+        if(!browse_.start(gen,error,provider)){
+            reply(client,400,{{"error",error}});return;
+        }
+        reply(client,200,{{"generation",gen},
+            {"state",provider.empty()?"ready":"loading"}});return;
     }
     if(browse_results||browse_select||browse_back){
         const uint64_t raw_gen=get_unsigned("generation",UINT32_MAX,0);
@@ -392,7 +404,9 @@ void RemoteServer::handle(uintptr_t id){
             Json entries=Json::array();
             for(const auto& item:view.items){
                 const Entry& entry=item.second;
-                const char* kind=entry.kind==EntryKind::LiveSection?"folder":
+                const char* kind=entry.kind==EntryKind::Provider?"platform":
+                                 entry.kind==EntryKind::ProviderDirectory?"providers":
+                                 entry.kind==EntryKind::LiveSection?"folder":
                                  entry.kind==EntryKind::Channel?"tv":
                                  entry.kind==EntryKind::Episode?"episode":
                                  entry.kind==EntryKind::Asset?
@@ -404,8 +418,9 @@ void RemoteServer::handle(uintptr_t id){
                 std::string title=entry.title;
                 if(title.size()>240)title.resize(240);
                 entries.push_back({{"index",item.first},{"title",title},
-                    {"kind",kind},{"description",description},
-                    {"image",picture}});
+                    {"kind",kind},{"provider",entry.kind==EntryKind::Provider?
+                        entry.program_type:std::string{}},
+                    {"description",description},{"image",picture}});
             }
             std::string cover=view.image;
             if(cover.rfind("https://",0)!=0||cover.size()>1800)cover.clear();
