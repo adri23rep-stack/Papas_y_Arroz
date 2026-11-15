@@ -172,6 +172,8 @@ jobs:
           cp shaders/FSRCNNX_x2_8-0-4-1.glsl dist/Xuper-TV-Desktop/shaders/
           cp LICENSE LICENSE.nlohmann-json COPYRIGHT.mpv DEPENDENCIAS.md dist/Xuper-TV-Desktop/
           cp -r licenses/. dist/Xuper-TV-Desktop/licenses/
+          test -s /ucrt64/share/licenses/qrencode/COPYING
+          cp /ucrt64/share/licenses/qrencode/COPYING dist/Xuper-TV-Desktop/licenses/libqrencode-LGPL.txt
           ntldd -R build/windows/XuperTVDesktop.exe > build/windows/dependencies.txt
           ntldd -R build/windows/XuperNativeProbe.exe >> build/windows/dependencies.txt
           ntldd -R build/windows/XuperNativePlayer.exe >> build/windows/dependencies.txt
@@ -189,7 +191,7 @@ jobs:
           # and optional OS components often appear as "not found". Do not
           # interpret these as missing bundled runtime DLLs.
           grep -i '=> not found' build/windows/dependencies.txt > dist/Xuper-TV-Desktop/ntldd-unresolved.txt || true
-          for required in SDL2.dll SDL3.dll SDL2_ttf.dll libmpv-2.dll libcurl-4.dll libstdc++-6.dll; do
+          for required in SDL2.dll SDL3.dll SDL2_ttf.dll libmpv-2.dll libcurl-4.dll libstdc++-6.dll libqrencode.dll; do
             if [[ ! -f "dist/Xuper-TV-Desktop/$required" ]]; then
               echo "Required portable runtime DLL missing: $required"
               exit 1
