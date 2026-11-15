@@ -161,6 +161,7 @@ bool authorized(const std::string& request,const std::string& secret){
 RemoteServer& RemoteServer::shared(){static RemoteServer instance;return instance;}
 bool RemoteServer::start(){
     if(running_)return true;
+    settings_.load();
     WSADATA ws{};
     if(WSAStartup(MAKEWORD(2,2),&ws)!=0)return false;
     std::ifstream stored("remote_secret.txt",std::ios::binary);
@@ -197,6 +198,7 @@ bool RemoteServer::start(){
 void RemoteServer::stop(){
     if(!running_.exchange(false))return;
     youtube_mode_=false;
+    browse_.stop();
     catalog_.stop();
     if(listener_!=static_cast<uintptr_t>(~uintptr_t{0})){
         shutdown(static_cast<SOCKET>(listener_),SD_BOTH);
@@ -299,7 +301,15 @@ void RemoteServer::handle(uintptr_t id){
     const bool catalog_search=request.rfind("POST /catalog/search HTTP/1.",0)==0;
     const bool catalog_results=request.rfind("POST /catalog/results HTTP/1.",0)==0;
     const bool catalog_open=request.rfind("POST /catalog/open HTTP/1.",0)==0;
-    if(!pairing&&!input&&!catalog_search&&!catalog_results&&!catalog_open){
+    const bool browse_start=request.rfind("POST /catalog/browse/start HTTP/1.",0)==0;
+    const bool browse_results=request.rfind("POST /catalog/browse/results HTTP/1.",0)==0;
+    const bool browse_select=request.rfind("POST /catalog/browse/select HTTP/1.",0)==0;
+    const bool browse_back=request.rfind("POST /catalog/browse/back HTTP/1.",0)==0;
+    const bool settings_get=request.rfind("POST /settings/get HTTP/1.",0)==0;
+    const bool settings_set=request.rfind("POST /settings/set HTTP/1.",0)==0;
+    if(!pairing&&!input&&!catalog_search&&!catalog_results&&!catalog_open&&
+       !browse_start&&!browse_results&&!browse_select&&!browse_back&&
+       !settings_get&&!settings_set){
         reply(client,400,{{"error","Unknown endpoint"}});return;
     }
     Json payload=Json::parse(body,nullptr,false);
@@ -320,6 +330,106 @@ void RemoteServer::handle(uintptr_t id){
         reply(client,200,{{"token",secret_},{"protocol",1}});return;
     }
     if(!authorized(request,secret_)){reply(client,401,{{"error","Pairing required"}});return;}
+    if(settings_get){
+        Json data=Json::array();
+        for(size_t i=0;i<kRemoteSettings.size();++i){
+            const auto& def=kRemoteSettings[i];
+            data.push_back({{"key",def.key},{"label",def.label},
+                {"category",def.category},{"min",def.low},{"max",def.high},
+                {"step",def.step},{"value",settings_.get(static_cast<int>(i))}});
+        }
+        reply(client,200,{{"settings",std::move(data)},
+            {"notice","Algunos ajustes se aplican al siguiente video."}});return;
+    }
+    if(settings_set){
+        const auto key=payload.find("key"),value=payload.find("value");
+        if(key==payload.end()||!key->is_string()||value==payload.end()||
+           !value->is_number_integer()){
+            reply(client,400,{{"error","Opcion o valor no validos."}});return;
+        }
+        const int id=remote_setting_index(key->get<std::string>());
+        const int64_t number=value->get<int64_t>();
+        if(number < -5000||number > 5000||
+           !valid_remote_setting(id,static_cast<int>(number))){
+            reply(client,400,{{"error","Este ajuste no admite ese valor."}});return;
+        }
+        SDL_Event ev{};ev.type=SDL_USEREVENT;ev.user.code=REMOTE_SETTING;
+        ev.user.data1=reinterpret_cast<void*>(static_cast<intptr_t>(id));
+        ev.user.data2=reinterpret_cast<void*>(static_cast<intptr_t>(number));
+        if(SDL_PushEvent(&ev)<0){
+            reply(client,400,{{"error","El reproductor no acepta este ajuste."}});return;
+        }
+        settings_.put(id,static_cast<int>(number));
+        if(id==remote_setting_index("volume"))volume_=static_cast<int>(number);
+        if(id==remote_setting_index("brightness"))brightness_=static_cast<int>(number);
+        active_at_=SDL_GetTicks();
+        reply(client,200,{{"ok",true},{"key",key->get<std::string>()},
+            {"value",number},{"applies","Ahora o al abrir el siguiente video"}});return;
+    }
+    const auto get_unsigned=[&](const char* name,uint64_t max_value,uint64_t fallback){
+        const auto it=payload.find(name);
+        if(it==payload.end()||!it->is_number_unsigned())return fallback;
+        const uint64_t value=it->get<uint64_t>();
+        return value>max_value?fallback:value;
+    };
+    if(browse_start){
+        uint32_t gen=0;std::string error;
+        if(!browse_.start(gen,error)){reply(client,400,{{"error",error}});return;}
+        reply(client,200,{{"generation",gen},{"state","ready"}});return;
+    }
+    if(browse_results||browse_select||browse_back){
+        const uint64_t raw_gen=get_unsigned("generation",UINT32_MAX,0);
+        if(raw_gen==0){reply(client,400,{{"error","Pagina invalida."}});return;}
+        const uint32_t gen=static_cast<uint32_t>(raw_gen);
+        if(browse_results){
+            const size_t offset=static_cast<size_t>(get_unsigned("offset",12000,0));
+            const size_t limit=static_cast<size_t>(get_unsigned("limit",60,48));
+            const auto view=browse_.snapshot(gen,offset,limit);
+            Json entries=Json::array();
+            for(const auto& item:view.items){
+                const Entry& entry=item.second;
+                const char* kind=entry.kind==EntryKind::LiveSection?"folder":
+                                 entry.kind==EntryKind::Channel?"tv":
+                                 entry.kind==EntryKind::Episode?"episode":
+                                 entry.kind==EntryKind::Asset?
+                                     (entry.program_type=="0"?"series":"movies"):"folder";
+                std::string picture=entry.artwork;
+                if(picture.rfind("https://",0)!=0||picture.size()>1800)picture.clear();
+                std::string description=entry.description;
+                if(description.size()>360)description.resize(360);
+                std::string title=entry.title;
+                if(title.size()>240)title.resize(240);
+                entries.push_back({{"index",item.first},{"title",title},
+                    {"kind",kind},{"description",description},
+                    {"image",picture}});
+            }
+            std::string cover=view.image;
+            if(cover.rfind("https://",0)!=0||cover.size()>1800)cover.clear();
+            reply(client,200,{{"generation",view.generation},{"state",view.state},
+                {"message",view.message},{"title",view.title},
+                {"description",view.description.substr(0,400)},
+                {"image",cover},{"total",view.total},{"offset",offset},
+                {"auto_played",view.auto_played},{"items",std::move(entries)}});return;
+        }
+        uint32_t next_gen=0;std::string error;
+        if(browse_back){
+            if(!browse_.back(gen,next_gen,error)){
+                reply(client,400,{{"error",error}});return;
+            }
+            reply(client,200,{{"generation",next_gen},{"state","ready"}});return;
+        }
+        const uint64_t index=get_unsigned("index",12000,UINT64_MAX);
+        if(index==UINT64_MAX){
+            reply(client,400,{{"error","Elemento invalido."}});return;
+        }
+        const auto action=browse_.select(gen,static_cast<size_t>(index),next_gen,error);
+        if(action==BrowseSelection::Invalid){
+            reply(client,400,{{"error",error}});return;
+        }
+        active_at_=SDL_GetTicks();
+        reply(client,200,{{"generation",next_gen},
+            {"state",action==BrowseSelection::Play?"playing":"loading"}});return;
+    }
     if(catalog_search){
         const auto q=payload.find("query");
         const std::string query=q!=payload.end()&&q->is_string()?q->get<std::string>():"";
