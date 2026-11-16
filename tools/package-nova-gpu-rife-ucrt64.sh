@@ -17,6 +17,9 @@ curl --fail --location --retry 3 --silent --show-error "$plugin_url" \
   -o "$gpu/librife_windows_x86-64.dll"
 echo "36a25b471be88e6f915320c818022dc8657dd9beac22a8c3158bd7f4260cc410  $gpu/librife_windows_x86-64.dll" | sha256sum -c -
 
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w tools/nova-rife-redist.ps1)" \
+  -Destination "$(cygpath -wa "$out")"
+
 # Pin the corresponding 4.6 model to a repository commit and Git blob SHA.
 repo="https://raw.githubusercontent.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan"
 commit="c3ec6aabc07c8fa37a4f58d7fed9e2ad1fc1b13f"

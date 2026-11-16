@@ -232,7 +232,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
     requested_motion_.store(activeMotion);
     int previousPreset=activePreset,previousMotion=activeMotion;
     bool switching=false, registered=false, reachedEnd=false;
-    double lastPosition=0.0;
+    bool recoveryAttempted=false;
+    double lastPosition=resumeSeconds;
     QString endMessage=QStringLiteral("Volviste al catálogo.");
     xs::NovaPlaybackRestartGate restartGate;
 
@@ -259,8 +260,10 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
             mpv_free(value);
             return copy;
         };
-        if(!live)restore.position=number("time-pos",restore.position);
-        else restore.position=0.0;
+        if(!live){
+            const double current=number("time-pos",lastPosition);
+            if(xs::nova_can_resume(false,current))restore.position=current;
+        }else restore.position=0.0;
         restore.volume=number("volume",restore.volume);
         restore.speed=number("speed",restore.speed);
         restore.audioDelay=number("audio-delay",restore.audioDelay);
@@ -288,7 +291,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
         const QString shader=QDir(QCoreApplication::applicationDirPath())
             .filePath(QStringLiteral("shaders/FSRCNNX_x2_8-0-4-1.glsl"));
         bool failed=missingRife||(gpuMode&&(!QFileInfo(shader).isFile()));
-        bool loaded=false, restart=false;
+        bool loaded=false, restart=false, streamError=false;
         auto gpuReadyAt=std::chrono::steady_clock::now();
         int badSyncSamples=0;
         QString baseDiagnostics;
@@ -307,7 +310,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
             const QStringList versions=lib.entryList(
                 QStringList{QStringLiteral("python3.*")},
                 QDir::Dirs|QDir::NoDotAndDotDot,QDir::Name);
-            if(versions.isEmpty()){
+            if(versions.isEmpty() || !QFileInfo(lib.filePath(versions.last()+
+                    QStringLiteral("/encodings/__init__.py"))).isFile()){
                 failed=true;
                 failure=QStringLiteral("Falta el runtime Python de VapourSynth.");
             }else{
@@ -315,7 +319,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                 const QByteArray pythonPath=QDir::toNativeSeparators(
                     lib.filePath(versions.last())).toUtf8();
                 qputenv("PYTHONHOME",folder);
-                qputenv("PYTHONPATH",pythonPath+";"+pythonPath+"/site-packages");
+                qputenv("PYTHONPATH",pythonPath+";"+pythonPath+"/lib-dynload;"+pythonPath+"/site-packages");
             }
         }
         if(!failed){
@@ -366,7 +370,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                         .filePath(QStringLiteral("nova-gpu/rife.vpy"));
                     const QByteArray bytes=QDir::toNativeSeparators(script).toUtf8();
                     const std::string spec="vapoursynth=file=%"+
-                        std::to_string(bytes.size())+"%"+bytes.toStdString();
+                        std::to_string(bytes.size())+"%"+bytes.toStdString()+
+                        ":concurrent-frames=2";
                     failed=!opt("vf",spec.c_str());
                 }
             }
@@ -423,7 +428,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                 }
                 for(size_t i=0;i<xs::kRemoteSettings.size();++i){
                     const int id=static_cast<int>(i);
-                    if(id!=presetId)applySetting(id,remote.setting_value(id));
+                    if(id!=presetId&&id!=motionId)applySetting(id,remote.setting_value(id));
                 }
                 // Restore values changed during playback, not just saved settings.
                 if(restore.captured){
@@ -437,6 +442,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     mpv_set_property_string(mpv,"video-aspect-override",restore.aspect.c_str());
                     mpv_set_property(mpv,"sub-visibility",MPV_FORMAT_FLAG,&restore.subVisible);
                 }
+                mpv_request_log_messages(mpv,"warn");
                 const char* load[]={"loadfile",result.source.c_str(),nullptr};
                 if(mpv_command(mpv,load)<0){
                     failed=true;failure=QStringLiteral("No pudo abrirse la transmisión.");
@@ -446,7 +452,6 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                         registered=true;
                     }
                     mpv_observe_property(mpv,41,"track-list",MPV_FORMAT_NONE);
-                    mpv_request_log_messages(mpv,"warn");
                 }
             }
         }
@@ -522,13 +527,12 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                        (gpuMode||gpuRife)){
                         const auto* log=static_cast<const mpv_event_log_message*>(event->data);
                         if(log&&log->text){
-                            std::string message(log->text);
+                            std::string message=std::string(log->prefix?log->prefix:"")+" "+log->text;
                             std::transform(message.begin(),message.end(),message.begin(),
                                 [](unsigned char c){return static_cast<char>(std::tolower(c));});
                             if(gpuRife &&
                                (message.find("vapoursynth")!=std::string::npos ||
-                                message.find("rife")!=std::string::npos ||
-                                message.find("filter")!=std::string::npos) &&
+                                message.find("rife")!=std::string::npos) &&
                                (message.find("failed")!=std::string::npos ||
                                 message.find("error")!=std::string::npos)){
                                 failed=true;
@@ -550,6 +554,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                         reachedEnd=end&&end->reason==MPV_END_FILE_REASON_EOF;
                         if(end&&end->reason==MPV_END_FILE_REASON_ERROR){
                             failed=true;
+                            streamError=true;
                             failure=QStringLiteral("Se cortó la reproducción.");
                         }
                         break;
@@ -566,7 +571,6 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                         ++badSyncSamples;
                     else badSyncSamples=0;
                     if(badSyncSamples>=3){
-                        capture(mpv);
                         failed=true;
                         failure=QStringLiteral(
                             "RIFE GPU no mantiene audio/video sincronizados. Volviendo a reproducción normal.");
@@ -603,6 +607,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     activePreset=wanted;
                     activeMotion=wantedMotion;
                     switching=true;
+                    recoveryAttempted=false;
                     restart=true;
                     publish(QStringLiteral("Aplicando imagen y movimiento..."),
                             QStringLiteral("Reiniciando MPV sin cerrar Nova"));
@@ -624,14 +629,22 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
         if(failed){
             // A network failure after a successfully loaded stream is not
             // evidence that its quality mode is unsupported.
-            if(loaded&&failure==QStringLiteral("Se cortó la reproducción.")){
+            if(recoveryAttempted || (loaded && streamError && !gpuRife)){
                 endMessage=failure;
                 break;
             }
             // Revert only once. Keep the same source and saved position.
-            const int fallback=switching?previousPreset:(activePreset!=1?1:0);
-            const int fallbackMotion=switching?previousMotion:0;
+            int fallback=switching?previousPreset:static_cast<int>(xs::VideoPreset::Balanced);
+            int fallbackMotion=switching?previousMotion:0;
+            if(gpuRife){
+                // Keep the picture preset and retry the same source without RIFE.
+                fallback=activePreset;
+                fallbackMotion=0;
+            }else if(!switching && fallback==activePreset){
+                fallback=static_cast<int>(xs::VideoPreset::Compatible);
+            }
             if(fallback!=activePreset||fallbackMotion!=activeMotion){
+                recoveryAttempted=true;
                 activePreset=fallback;
                 activeMotion=fallbackMotion;
                 previousPreset=fallback;

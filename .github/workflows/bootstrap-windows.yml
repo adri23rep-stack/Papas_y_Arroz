@@ -30,6 +30,8 @@ on:
       - 'source/**'
       - 'include/**'
       - 'tests/**'
+      - 'nova-gpu/**'
+      - 'tools/**'
       - 'ui/novaqt/**'
       - 'CMakeLists.txt'
   workflow_dispatch:
@@ -465,7 +467,9 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
+          pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-mesa
           bash tools/package-nova-gpu-rife-ucrt64.sh
+          bash tools/test-nova-rife-ucrt64.sh
           test -s dist/Xuper-TV-NovaQt-GPU-RIFE-Addon/Xuper-TV-NovaQt-Preview/nova-gpu/librife_windows_x86-64.dll
       - name: Publish temporary ZIP to isolated build-delivery branch
         if: github.ref_name == 'windows-desktop-preview' || github.ref_name == 'feature/nova-ui-from-scratch' || (github.event_name == 'pull_request' && (github.head_ref == 'feature/nova-ui-from-scratch' || github.head_ref == 'feature/nova-quality-presets-seamless-restart') && github.event.pull_request.head.repo.full_name == github.repository)
