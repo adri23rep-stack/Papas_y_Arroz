@@ -1,46 +1,69 @@
-# XuperTV Nova Qt — etapa 1 (solo Inicio)
+# XuperTV Nova Qt — diseño nuevo + compilación local
 
-Esta es una **vista previa nativa de Windows con Qt 6 Quick / QML**, no una
-reescritura del reproductor. El diseño anterior en SDL se mantiene para
-comprobar, comparar y reproducir contenido mientras terminamos las vistas.
+La rama `feature/nova-ui-from-scratch` contiene la nueva interfaz Qt Quick.
+**main y el reproductor SDL anterior siguen intactos.** El servidor del
+control del iPhone conserva el protocolo y el emparejamiento existente.
 
-## Cómo abrir Nova Qt
+## Cómo compilar Nova en tu PC Windows
 
-1. Descarga **XuperTV-NOVA-Qt-Preview.zip** y
-   **XuperTV-NOVA-Playback-Addon.zip** de `build/nova-ui-preview`.
-2. Extrae **ambos ZIP en la misma carpeta**, de modo que se combinen los
-   archivos de `Xuper-TV-NovaQt-Preview` (no dentro de dos carpetas separadas).
-3. Abre `XuperTVNovaQt.exe`. El complemento incluye las DLL necesarias para
-   reproducir video y enlazar el control del iPhone.
-4. Arriba a la derecha encontrarás **QR / PIN**. Abre Apple Controller,
-   escanea el QR o escribe IP y PIN, con ambos equipos en la misma red.
-5. Elige un canal o episodio para reproducir. El motor libmpv abre su propia
-   ventana de video mientras conservamos la interfaz Qt del catálogo.
+1. En GitHub, abre la rama `feature/nova-ui-from-scratch` y usa
+   **Code > Download ZIP** (o clona esa misma rama). Extrae el proyecto entero.
+2. Haz doble clic en **`COMPILAR_NOVA_WINDOWS.cmd`**, que está en la raíz.
+3. Si falta MSYS2, el asistente llama a **WinGet** para instalarlo desde el
+   catálogo oficial; después instala los paquetes de MSYS2 UCRT64 de Qt 6,
+   CMake, Ninja, C++, libmpv, SDL, FFmpeg, curl y qrencode.
+4. Compila `XuperTVNovaQt.exe`, reúne los componentes QML y DLL, prueba el
+   arranque en modo sin pantalla y abre el programa si todas las pruebas pasan.
 
-**XuperTV-NOVA-Windows-Preview.zip** es la versión clásica, con su propio
-reproductor. Se extrae **aparte** como respaldo, no encima de Nova Qt.
+**Ejecutable compilado:**
+`dist/Xuper-TV-NovaQt-Local/XuperTVNovaQt.exe`
 
-El token permanente de emparejamiento sigue protegido en el perfil local de
-Windows. Nunca se incluye en las descargas.
+El primer uso requiere conexión y descarga muchas dependencias. Si MSYS2
+actualiza su propio entorno y pide reiniciar, cierra la consola y ejecuta el
+mismo CMD otra vez. Si algo falla, la ventana permanece abierta con el mensaje
+para que puedas fotografiarlo.
 
+Alternativa en PowerShell, desde la raíz del proyecto:
 
-## Etapa de integración
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Compilar-Nova.ps1 -Run
+```
 
-- Conserva la interfaz Qt Quick de Inicio, sus animaciones y su degradado.
-- Los títulos reales, categorías y episodios pueden explorarse y buscarse
-  desde Qt. Los datos y URLs de streaming se resuelven mediante las funciones
-  existentes de servicio, sin exponer tokens en QML.
-- Reproducción real mediante libmpv en una ventana independiente de video.
-  El catálogo Qt permanece disponible durante el video.
-- El servidor del iPhone ya existente se ejecuta dentro de Nova Qt: mismo
-  protocolo, mismo PIN/QR, control por LAN, búsqueda y acciones de reproducción
-  compatibles con la navegación disponible en Qt.
-- El botón pequeño **QR / PIN** enseña el código QR y datos para conectar.
-- No migramos todavía controles avanzados del reproductor clásico (por ejemplo
-  su menú integrado de pistas y filtros). El viejo programa sigue disponible
-  como respaldo mientras terminamos la transición.
-- No se fusiona con `main` ni se publica release.
+El script solamente instala paquetes públicos, compila el repositorio local
+y prepara el ejecutable. **Nunca borra service.json, biblioteca, estado de
+reproducción, emparejamiento ni las claves del iPhone**. Solo la opción
+`-Clean` borra archivos intermedios de compilación, no datos personales.
 
+## Pantalla y controles
 
-La distribución de Qt requiere revisar y respetar su licencia y las
-obligaciones de redistribución antes de una publicación estable.
+- Banner del catálogo REAL: título, sinopsis proporcionada por el servicio,
+  botones **Reproducir** y **Más info**, fundido oscuro a la izquierda y abajo.
+- La imagen aprovecha su resolución original; en servidores de imágenes con
+  rutas TMDb admite la variante `original`. Si la fuente publica solo una
+  miniatura pequeña, Qt no puede inventar detalle real.
+- Primero **Continuar viendo** a partir de los episodios y minutos realmente
+  guardados en `playback_state.json` y `library_state.json`.
+- Canales **16:9** con el logo centrado sobre negro uniforme; series y películas
+  en carteles **2:3**, títulos debajo de la imagen.
+- Un único acento violeta, foco de **1.08×** en **185 ms**, sin marcos brillantes.
+- Secciones separadas y menú superior **Inicio, TV, Series, Películas, Buscar**.
+- Exploración de categorías y episodios en Qt; video en una ventana separada
+  mediante libmpv, mientras la interfaz sigue disponible.
+- **QR / PIN** arriba a la derecha para vincular el control ya existente del
+  iPhone, usando la misma red y el mismo servicio protegido de Windows.
+
+### Programación de TV
+
+La barra de progreso y el nombre «Ahora en vivo» están preparados para mostrarse
+solo si el servicio proporciona una guía de programación con horario auténtico.
+El modelo actual no incluye esos campos: **no se inventa ninguna emisión ni
+porcentajes de avance**.
+
+## Desarrollo
+
+Fuentes Qt Quick: `ui/novaqt/`, adaptador Qt C++: `source/nova_qt_home.cpp`,
+motor de video Qt: `source/nova_qt_player.cpp`.
+
+Los scripts no crean ramas, no fusionan `main` y no publican releases.
+Antes de distribuir públicamente una versión estable deben respetarse las
+licencias de Qt y las demás bibliotecas incluidas.
