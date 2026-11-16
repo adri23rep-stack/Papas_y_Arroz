@@ -12,6 +12,8 @@ inline bool nova_rife_files_present(const std::filesystem::path& root) {
     const auto dir=root/"nova-gpu";
     std::error_code ec;
     for(const auto& f : {
+        root/"libvapoursynth.dll",
+        root/"libvapoursynth-script-0.dll",
         dir/"rife.vpy",
         dir/"librife_windows_x86-64.dll",
         dir/"models"/"rife-v4.6_ensembleFalse"/"flownet.bin",
