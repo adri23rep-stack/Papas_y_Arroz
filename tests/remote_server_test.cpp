@@ -152,25 +152,25 @@ int main(){
     const auto track_json=nlohmann::json::parse(payload(post("/player/options",R"({})",token)));
     REQUIRE(track_json["active"]==true&&track_json["audio"].size()==2);
     REQUIRE(track_json["subtitles"].size()==3&&track_json["sources"].size()==2);
-    const auto generation=track_json["generation"].get<int>();
+    const auto track_generation=track_json["generation"].get<int>();
     const auto choose=[&](const std::string& kind,int id,int gen){
         return post("/player/select",nlohmann::json{
            {"kind",kind},{"id",id},{"generation",gen}}.dump(),token);
     };
-    REQUIRE(!okay(choose("audio",99,generation)));
-    REQUIRE(!okay(choose("audio",2,generation-1)));
-    REQUIRE(okay(choose("audio",2,generation)));
+    REQUIRE(!okay(choose("audio",99,track_generation)));
+    REQUIRE(!okay(choose("audio",2,track_generation-1)));
+    REQUIRE(okay(choose("audio",2,track_generation)));
     bool got_audio=false;SDL_Event track_event{};
     while(SDL_PollEvent(&track_event))
         if(track_event.type==SDL_USEREVENT&&track_event.user.code==xs::REMOTE_PLAYBACK_SELECT&&
            reinterpret_cast<intptr_t>(track_event.user.data1)==1&&
            reinterpret_cast<intptr_t>(track_event.user.data2)==2)got_audio=true;
     REQUIRE(got_audio);
-    REQUIRE(okay(choose("subtitle",-1,generation)));
-    REQUIRE(okay(choose("external_subtitle",0,generation)));
-    REQUIRE(okay(choose("source",1,generation)));
+    REQUIRE(okay(choose("subtitle",-1,track_generation)));
+    REQUIRE(okay(choose("external_subtitle",0,track_generation)));
+    REQUIRE(okay(choose("source",1,track_generation)));
     server.end_playback();
-    REQUIRE(!okay(choose("audio",2,generation)));
+    REQUIRE(!okay(choose("audio",2,track_generation)));
     REQUIRE(nlohmann::json::parse(payload(post("/player/options",R"({})",token)))["active"]==false);
 
     xs::Catalog mock_root;
