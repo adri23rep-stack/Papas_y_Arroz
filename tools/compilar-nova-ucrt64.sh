@@ -149,6 +149,11 @@ if [[ ! -s "$output/test.mp4" ]]; then
     echo "[NOVA] Falta test.mp4: no se puede verificar la reproduccion local." >&2
     exit 1
 fi
+echo "[NOVA] Verificando que libmpv decodifique el video de prueba..."
+if ! /ucrt64/bin/mpv.exe --no-config --no-audio --vo=null --frames=3     "$output/test.mp4"; then
+    echo "[NOVA] mpv no pudo leer test.mp4; comprueba el paquete multimedia." >&2
+    exit 1
+fi
 if [[ -d licenses ]]; then
     mkdir -p "$output/licenses"
     cp -a licenses/. "$output/licenses/"
