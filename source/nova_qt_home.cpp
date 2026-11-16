@@ -13,6 +13,7 @@
 #include <QCursor>
 #include <QFutureWatcher>
 #include <QGuiApplication>
+#include "nova_quality.hpp"
 #include <QImage>
 #include <QMetaObject>
 #include <QMouseEvent>
@@ -239,6 +240,19 @@ NovaQtHome::NovaQtHome(QObject* parent):QObject(parent),player_(this){
         brightness_=xs::RemoteServer::shared().setting_value(xs::remote_setting_index("brightness"));
         updateRemote();
     }else status_=QStringLiteral("Control remoto no disponible.");
+}
+int NovaQtHome::videoPreset()const{
+    return xs::RemoteServer::shared().setting_value(xs::remote_setting_index("video_preset"));
+}
+QString NovaQtHome::videoPresetLabel()const{
+    return QString::fromUtf8(xs::video_preset_label(xs::nova_video_preset(videoPreset())));
+}
+void NovaQtHome::setVideoPreset(int value){
+    const int id=xs::remote_setting_index("video_preset");
+    if(!xs::valid_remote_setting(id,value))return;
+    if(!xs::RemoteServer::shared().set_setting_value(id,value))return;
+    player_.requestQuality(value);
+    emit changed();
 }
 NovaQtHome::~NovaQtHome(){
     remote_timer_.stop();
@@ -648,6 +662,7 @@ void NovaQtHome::pollRemote(){
                 const int value=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data2));
                 if(id==xs::remote_setting_index("brightness")){brightness_=value;emit changed();}
                 player_.applySetting(id,value);
+                if(id==xs::remote_setting_index("video_preset"))emit changed();
             }
             if(event.user.code==xs::REMOTE_WHEEL)
                 navigate(0,-static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1)));
