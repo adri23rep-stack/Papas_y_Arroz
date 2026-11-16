@@ -127,6 +127,22 @@ jobs:
           test -x /ucrt64/bin/mpv.exe
           /ucrt64/bin/mpv.exe --no-config --no-audio --vo=null --frames=2             '--vf=lavfi=[scale=1920:1080:flags=lanczos,cas=strength=0.30]'             packaging/runtime/switch/xuperswitch/test.mp4
           echo 'CAS + Lanczos filter smoke test passed.'
+      - name: Validate real 60 FPS motion-compensated filter
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          /ucrt64/bin/ffmpeg -hide_banner -loglevel error -y \
+            -f lavfi -i 'testsrc2=size=320x180:rate=24:duration=1.5' \
+            -vf 'minterpolate=fps=60:mi_mode=mci:mc_mode=obmc:me_mode=bidir' \
+            -an -f framehash build/windows/motionboost-framehash.txt
+          # A 24 FPS input must produce new frame timestamps, not merely
+          # declare an output framerate in UI.
+          awk -F, '!/^#/ && NF >= 6 { count++ } END { if (count < 60) exit 1; print "MotionBoost actual frames:", count }' \
+            build/windows/motionboost-framehash.txt
+          /ucrt64/bin/mpv.exe --no-config --no-audio --vo=null --frames=6 \
+            '--vf=lavfi=[minterpolate=fps=60:mi_mode=mci:mc_mode=obmc:me_mode=bidir]' \
+            packaging/runtime/switch/xuperswitch/test.mp4
+          echo "FFmpeg motion compensation and mpv filter bridge verified."
       - name: Check native renderer orientation with synthetic two-color video
         shell: msys2 {0}
         run: |
