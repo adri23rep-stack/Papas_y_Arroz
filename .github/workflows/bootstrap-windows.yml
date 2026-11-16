@@ -191,7 +191,7 @@ jobs:
           test -s dist/Xuper-TV-Desktop/Qt6Qml.dll
           # Lock Qt's runtime paths to this portable ZIP. The Qt build
           # machine's hardcoded import directory will not exist on user PCs.
-          printf '[Paths]\\nPrefix = .\\nPlugins = .\\nQmlImports = qml\\n' > dist/Xuper-TV-Desktop/qt.conf
+          printf '[Paths]\nPrefix = .\nPlugins = .\nQmlImports = qml\n' > dist/Xuper-TV-Desktop/qt.conf
           for name in QtQuick QtQuick/Window QtQuick/Shapes QtQuick/Effects; do
             test -s "dist/Xuper-TV-Desktop/qml/$name/qmldir" || {
               echo "Missing deployed QML import module: $name" >&2
