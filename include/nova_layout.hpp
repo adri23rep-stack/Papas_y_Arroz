@@ -66,6 +66,12 @@ inline std::vector<NovaTile> nova_tiles(const Catalog& c,size_t selected,int las
     }
     return result;
 }
+// A left press on the first visible rail card opens the NOVA sidebar.
+inline bool nova_left_edge(const Catalog& c,size_t selected,int last_index){
+    for(const auto& tile:nova_tiles(c,selected,last_index))
+        if(tile.index==selected)return tile.x<=247;
+    return selected%6==0;
+}
 inline int nova_hit(const Catalog& c,size_t selected,int last_index,int x,int y){
     for(const auto& tile:nova_tiles(c,selected,last_index))
         if(tile.contains(x,y))return static_cast<int>(tile.index);
