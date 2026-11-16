@@ -1,6 +1,9 @@
 #include "nova_qt_home.hpp"
 #include <QCoreApplication>
 #include <QDir>
+#include <QFile>
+#include <QQmlError>
+#include <QQmlEngine>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -29,6 +32,19 @@ int main(int argc,char** argv){
     NovaQtHome home;
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("novaHome"),&home);
+    QObject::connect(&engine,&QQmlEngine::warnings,&engine,
+                     [smoke](const QList<QQmlError>& warnings){
+        for(const auto& warning:warnings){
+            const QByteArray message=warning.toString().toUtf8();
+            std::fprintf(stderr,"NOVA_QML: %s\n",message.constData());
+            if(smoke){
+                std::ofstream report("nova-qt-smoke.log",std::ios::app);
+                report<<"QML_ERROR "<<message.constData()<<'\n';
+            }
+        }
+    });
+    checkpoint(QFile::exists(QStringLiteral(":/ui/novaqt/Main.qml"))?
+               "qml_resource_present":"qml_resource_missing");
     checkpoint("qml_load_begin");
     engine.load(QUrl(QStringLiteral("qrc:/ui/novaqt/Main.qml")));
     checkpoint("qml_load_end");
