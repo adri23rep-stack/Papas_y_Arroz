@@ -13,6 +13,8 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPointer>
+#include <QRandomGenerator>
+#include <QRegularExpression>
 #include <QVariantMap>
 #include <QtConcurrent/QtConcurrentRun>
 #include <algorithm>
@@ -35,7 +37,8 @@ QVariantMap itemFor(const xs::Entry& e){
                       e.artwork.rfind("http://",0)==0)&&e.artwork.size()<1800;
     return {{QStringLiteral("title"),QString::fromStdString(e.title)},
             {QStringLiteral("artwork"),cover?QString::fromStdString(e.artwork):QString()},
-            {QStringLiteral("kind"),static_cast<int>(e.kind)}};
+            {QStringLiteral("kind"),static_cast<int>(e.kind)},
+            {QStringLiteral("description"),QString::fromStdString(e.description)}};
 }
 QVariantList listFor(const std::vector<xs::Entry>& entries){
     QVariantList items;
@@ -143,6 +146,15 @@ QString generatePairingQr(const std::string& address,const std::string& pin){
 
 NovaQtHome::NovaQtHome(QObject* parent):QObject(parent),player_(this){
     connect(&player_,&NovaQtPlayer::changed,this,&NovaQtHome::changed);
+    connect(&player_,&NovaQtPlayer::finishedPlayback,this,[this](double seconds,bool ended){
+        if(!active_entry_.content_id.empty()){
+            playback_history_.save(active_entry_.content_id,seconds,
+                playback_history_.speed,playback_history_.volume,
+                playback_history_.auto_next,ended);
+        }
+        refreshContinue();
+    });
+    refreshContinue();
     // SDL is used ONLY as the existing iPhone remote's event queue; Qt draws
     // every screen and mpv owns the actual playback window.
     sdl_started_=SDL_Init(SDL_INIT_EVENTS|SDL_INIT_TIMER)==0;
@@ -177,6 +189,75 @@ void NovaQtHome::updateRemote(){
     if(changedInfo)emit changed();
 }
 
+
+void NovaQtHome::refreshContinue(){
+    continue_entries_.clear();
+    for(const auto& recent:saved_.recent){
+        if(recent.kind!=xs::EntryKind::Episode||
+           playback_history_.position(recent.content_id)<=5.0)continue;
+        xs::Entry entry=recent;
+        // The saved library deliberately stores metadata, not authenticated
+        // streaming URLs. Reattach matching artwork from the active catalog.
+        for(const auto& candidate:series_entries_){
+            if(candidate.content_id==entry.content_id&&!candidate.artwork.empty()){
+                entry.artwork=candidate.artwork;break;
+            }
+        }
+        for(const auto& candidate:movie_entries_){
+            if(candidate.content_id==entry.content_id&&!candidate.artwork.empty()){
+                entry.artwork=candidate.artwork;break;
+            }
+        }
+        continue_entries_.push_back(entry);
+        if(continue_entries_.size()>=18)break;
+    }
+    continue_watching_=listFor(continue_entries_);
+    for(int i=0;i<continue_watching_.size();++i){
+        auto meta=continue_watching_[i].toMap();
+        meta.insert(QStringLiteral("resumeSeconds"),
+                    playback_history_.position(continue_entries_[static_cast<size_t>(i)].content_id));
+        continue_watching_[i]=meta;
+    }
+    emit changed();
+}
+
+void NovaQtHome::updateFeatured(){
+    std::vector<xs::Entry> choices;
+    // Prefer real titles with artwork + actual synopsis: both buttons
+    // refer to this same catalog object, never to an unrelated wallpaper.
+    for(const auto* group:{&movie_entries_,&series_entries_})
+        for(const auto& item:*group)
+            if(!item.artwork.empty()&&!item.description.empty())
+                choices.push_back(item);
+    if(choices.empty())
+        for(const auto* group:{&movie_entries_,&series_entries_})
+            for(const auto& item:*group)
+                if(!item.artwork.empty())choices.push_back(item);
+    featured_entry_=xs::Entry{};
+    featured_backdrop_.clear();
+    if(choices.empty()){emit changed();return;}
+    const int index=QRandomGenerator::global()->bounded(static_cast<int>(choices.size()));
+    featured_entry_=choices[static_cast<size_t>(index)];
+    featured_backdrop_=QString::fromStdString(featured_entry_.artwork);
+    // Request the original image on TMDb only when this provider URL
+    // explicitly supports size variants. Never upscale a low-res thumbnail.
+    if(featured_backdrop_.contains(QStringLiteral("image.tmdb.org/t/p/"))){
+        featured_backdrop_.replace(
+            QRegularExpression(QStringLiteral("/t/p/(w[0-9]+|original)/")),
+            QStringLiteral("/t/p/original/"));
+    }
+    featured_info_visible_=false;
+    emit changed();
+}
+
+void NovaQtHome::playFeatured(){
+    if(!featured_entry_.title.empty())activate(featured_entry_);
+}
+void NovaQtHome::openContinue(int index){
+    if(index<0||static_cast<size_t>(index)>=continue_entries_.size())return;
+    activate(continue_entries_[static_cast<size_t>(index)]);
+}
+
 void NovaQtHome::refresh(){
     if(loading_)return;
     loading_=true;
@@ -190,6 +271,8 @@ void NovaQtHome::refresh(){
         series_entries_=snap.series_entries;
         movie_entries_=snap.movie_entries;
         session_=snap.session;root_=snap.root;
+        updateFeatured();
+        refreshContinue();
         xs::RemoteServer::shared().set_session(session_,root_);
         status_=snap.status;
         loading_=false;
@@ -315,6 +398,9 @@ void NovaQtHome::browseEntry(const xs::Entry& e){
 }
 void NovaQtHome::playEntry(const xs::Entry& e){
     if(player_.playing()||loading_)return;
+    active_entry_=e;
+    saved_.remember(e);
+    refreshContinue();
     if(e.kind==xs::EntryKind::Media){
         xs::SourceResult source;
         source.ok=xs::valid_source(e.source);
