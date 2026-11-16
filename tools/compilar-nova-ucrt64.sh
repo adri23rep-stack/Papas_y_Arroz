@@ -161,7 +161,7 @@ fi
 
 # These are PUBLIC template / CA files. Never copy service.json, stored
 # PINs, tokens or a local device identity over from another installation.
-for name in catalog.m3u LICENSE DEPENDENCIAS.md README_NOVA_QT.md; do
+for name in catalog.m3u LICENSE DEPENDENCIAS.md README_NOVA_QT.md README_NOVA_QUALITY.md; do
     if [[ -f "$name" ]]; then cp "$name" "$output/"; fi
 done
 for name in cacert.pem service.template.json test.mp4; do
