@@ -125,6 +125,16 @@ for package in qt6-base qt6-declarative mpv qrencode; do
         cp -a "/ucrt64/share/licenses/$package/." "$output/licenses/$package/"
     fi
 done
+echo "[NOVA] Probando arranque Qt y distribución a 1920x1080..."
+if ! QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
+    timeout 30s "$output/XuperTVNovaQt.exe" --smoke-fullscreen; then
+    echo "[NOVA] FALLO el arranque de Qt. Diagnóstico:" >&2
+    if [[ -f "$output/nova-qt-smoke.log" ]]; then
+        cat "$output/nova-qt-smoke.log" >&2
+    fi
+    exit 1
+fi
+rm -f "$output/nova-qt-smoke.log"
 echo "[NOVA] Build local terminado:"
 ls -lh "$output/XuperTVNovaQt.exe"
 echo "[NOVA] Carpeta: $(cygpath -w "$(pwd)/$output")"
