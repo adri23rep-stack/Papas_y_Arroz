@@ -14,6 +14,7 @@ int main(){
     fs::create_directories(model);
     for(const auto& f:{
         root/"libvapoursynth.dll",root/"libvapoursynth-script-0.dll",
+        root/"VSScript.dll",
         gpu/"rife.vpy",gpu/"librife_windows_x86-64.dll",
         model/"flownet.bin",model/"flownet.param"
     }) {
