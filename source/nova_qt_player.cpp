@@ -53,6 +53,9 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
     }
     auto* screen=QGuiApplication::focusWindow()?QGuiApplication::focusWindow()->screen():QGuiApplication::primaryScreen();
     videoWindow_->setScreen(screen);
+    // Sample physical output pixels on Qt's UI thread, before the mpv worker.
+    displayWidth_=std::max(1,static_cast<int>(std::lround(screen->geometry().width()*screen->devicePixelRatio())));
+    displayHeight_=std::max(1,static_cast<int>(std::lround(screen->geometry().height()*screen->devicePixelRatio())));
     const QRect area=screen->availableGeometry();
     QRect bounds(QPoint(),QSize(960,540).boundedTo(area.size()));
     bounds.moveCenter(area.center());
@@ -183,7 +186,7 @@ static void publishTracks(mpv_handle* mpv,const QString& title){
 }
 
 void NovaQtPlayer::requestQuality(int value){
-    if(value<0||value>4)return;
+    if(value<0||value>5)return;
     // No restart, and no misleading status, when selecting the same mode.
     if(requested_quality_.exchange(value)==value)return;
     restart_revision_.fetch_add(1);
@@ -269,7 +272,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
     auto& remote=xs::RemoteServer::shared();
     const int presetId=xs::remote_setting_index("video_preset");
     int activePreset=remote.setting_value(presetId);
-    if(activePreset<0||activePreset>4)activePreset=1;
+    if(activePreset<0||activePreset>5)activePreset=1;
     requested_quality_.store(activePreset);
     const int motionId=xs::remote_setting_index("motion_mode");
     int activeMotion=remote.setting_value(motionId);
@@ -331,7 +334,10 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
         const auto preset=xs::nova_video_preset(activePreset);
         const auto motion=xs::nova_motion_mode(activeMotion);
         const bool gpuMode=xs::nova_needs_shader(preset);
+        const bool rtxVsr=xs::nova_rtx_vsr(preset);
         const bool gpuRife=xs::nova_motion_needs_gpu(motion);
+        bool vsrProblem=false,vsrRequested=false,vsrConfirmed=false;
+        double vsrScale=1.0;
         // Evaluate before touching libmpv: the previous CPU interpolator
         // must NEVER be used as an implicit fallback for a missing GPU.
         const bool missingRife=gpuRife&&!gpuRifeReady();
@@ -403,7 +409,13 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                 if(preset==xs::VideoPreset::Sharp ||
                    preset==xs::VideoPreset::ExtraDetail)
                     failed=failed||!opt("scale","lanczos");
-                else if(gpuMode){
+                else if(rtxVsr){
+                    // Native NVIDIA VSR uses Direct3D11, not the FSRCNNX shader.
+                    failed=!opt("gpu-api","d3d11") ||
+                           !opt("gpu-context","d3d11") ||
+                           !opt("scale","lanczos");
+                    if(failed)vsrProblem=true;
+                }else if(gpuMode){
                     const QByteArray shaderPath=QDir::toNativeSeparators(shader).toUtf8();
                     failed=failed||!opt("gpu-api",gpuRife?"d3d11":"opengl") ||
                            !opt("glsl-shaders",shaderPath.constData()) ||
@@ -483,7 +495,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     }
                 }
                 if(!failed&&mpv_initialize(mpv)<0){
-                    failed=true;failure=QStringLiteral("No pudo iniciarse la salida MPV.");
+                    failed=true;vsrProblem=rtxVsr;
+                    failure=QStringLiteral("No pudo iniciarse la salida MPV.");
                 }
             }
             if(!failed){
@@ -507,7 +520,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     mpv_set_property_string(mpv,"video-aspect-override",restore.aspect.c_str());
                     mpv_set_property(mpv,"sub-visibility",MPV_FORMAT_FLAG,&restore.subVisible);
                 }
-                mpv_request_log_messages(mpv,"warn");
+                // Detect real driver activation, instead of assuming it from a selected preset.
+                mpv_request_log_messages(mpv,rtxVsr?"info":"warn");
                 const char* load[]={"loadfile",result.source.c_str(),nullptr};
                 if(mpv_command(mpv,load)<0){
                     failed=true;failure=QStringLiteral("No pudo abrirse la transmisión.");
@@ -538,6 +552,25 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                                 mpv_set_property_string(mpv,"sid",restore.subtitleTrack.c_str());
                             mpv_set_property(mpv,"sub-visibility",MPV_FORMAT_FLAG,&restore.subVisible);
                         }
+                        if(rtxVsr){
+                            int64_t w=0,h=0;
+                            mpv_get_property(mpv,"video-params/w",MPV_FORMAT_INT64,&w);
+                            mpv_get_property(mpv,"video-params/h",MPV_FORMAT_INT64,&h);
+                            vsrScale=xs::nova_rtx_vsr_scale(int(w),int(h),displayWidth_,displayHeight_);
+                            if(vsrScale>1.0){
+                                // Append AFTER VapourSynth: preserve RIFE x2 and apply NVIDIA last.
+                                const std::string spec="d3d11vpp=scale="+
+                                    QString::number(vsrScale,'f',2).toStdString()+
+                                    ":scaling-mode=nvidia";
+                                const char* add[]={"vf","add",spec.c_str(),nullptr};
+                                if(mpv_command(mpv,add)<0){
+                                    failed=true;vsrProblem=true;
+                                    failure=QStringLiteral("RTX VSR rechazó el filtro D3D11.");
+                                    break;
+                                }
+                                vsrRequested=true;
+                            }
+                        }
                         std::string filter="Sin filtro";
                         if(preset==xs::VideoPreset::Sharp)filter="Lanczos";
                         if(preset==xs::VideoPreset::ExtraDetail){
@@ -559,6 +592,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                         }
                         if(gpuMode)
                             filter="FSRCNNX configurado (verificar GPU)";
+                        if(rtxVsr)
+                            filter=vsrRequested?"RTX VSR solicitado (verificar driver)":"RTX VSR omitido (fuente a tamaño nativo)";
                         int64_t sourceW=0,sourceH=0,outputW=0,outputH=0;
                         mpv_get_property(mpv,"video-params/w",MPV_FORMAT_INT64,&sourceW);
                         mpv_get_property(mpv,"video-params/h",MPV_FORMAT_INT64,&sourceH);
@@ -580,6 +615,9 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                                  gpuRife?QStringLiteral("GPU Vulkan RIFE (verificar FPS reales)"):
                                          QStringLiteral("MPV"));
                         baseDiagnostics=details;
+                        if(vsrRequested)baseDiagnostics+=QStringLiteral("\nRTX Video Super Resolution x%1 solicitado; confirmación pendiente del driver NVIDIA")
+                            .arg(vsrScale,0,'f',2);
+                        else if(rtxVsr)baseDiagnostics+=QStringLiteral("\nRTX VSR sin ampliar: el video ya alcanza la resolución del monitor");
                         if(gpuRife && (gpuMode||fastRife))baseDiagnostics+=QStringLiteral("\nResolución de cálculo RIFE: hasta %1 px de ancho").arg(fastRife?384:640);
                         if(!motionFallbackReason.isEmpty())baseDiagnostics+="\n"+motionFallbackReason;
                         publish(QStringLiteral("Reproduciendo · %1").arg(
@@ -591,12 +629,27 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     if(event->event_id==MPV_EVENT_FILE_LOADED)
                         publishTracks(mpv,title);
                     if(event->event_id==MPV_EVENT_LOG_MESSAGE&&
-                       (gpuMode||gpuRife)){
+                       (gpuMode||gpuRife||rtxVsr)){
                         const auto* log=static_cast<const mpv_event_log_message*>(event->data);
                         if(log&&log->text){
                             std::string message=std::string(log->prefix?log->prefix:"")+" "+log->text;
                             std::transform(message.begin(),message.end(),message.begin(),
                                 [](unsigned char c){return static_cast<char>(std::tolower(c));});
+                            if(rtxVsr && vsrRequested && !vsrConfirmed &&
+                               message.find("nvidia rtx super resolution enabled")!=std::string::npos){
+                                vsrConfirmed=true;
+                                baseDiagnostics+=QStringLiteral("\nNVIDIA RTX VSR activo (confirmado por MPV)");
+                            }
+                            if(rtxVsr &&
+                               ((message.find("d3d11vpp")!=std::string::npos &&
+                                 (message.find("failed")!=std::string::npos ||
+                                  message.find("error")!=std::string::npos)) ||
+                                message.find("cannot initialize video filters")!=std::string::npos ||
+                                message.find("could not initialize video chain")!=std::string::npos)){
+                                failed=true;vsrProblem=true;
+                                failure=QStringLiteral("RTX VSR no pudo procesar el video. Restaurando calidad.");
+                                break;
+                            }
                             if(gpuRife && message.find("vapoursynth")!=std::string::npos &&
                                (message.find("script evaluation failed")!=std::string::npos ||
                                 message.find("disabling filter")!=std::string::npos ||
@@ -637,7 +690,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     failure=QStringLiteral("RIFE no pudo iniciar Vulkan. Se reanuda el video normal.");
                     break;
                 }
-                if(loaded&&gpuRife&&std::chrono::steady_clock::now()-gpuReadyAt>=
+                if(loaded&&(gpuRife||(rtxVsr&&vsrRequested))&&std::chrono::steady_clock::now()-gpuReadyAt>=
                    std::chrono::seconds(8) &&
                    std::chrono::steady_clock::now()-lastFpsCheck>=std::chrono::seconds(2)){
                     // Stop RIFE if the video persistently falls behind audio.
@@ -647,6 +700,12 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                         ++badSyncSamples;
                     else badSyncSamples=0;
                     if(badSyncSamples>=3){
+                        if(rtxVsr && vsrRequested){
+                            // Drop the heavier VSR layer before dropping a working RIFE.
+                            failed=true;vsrProblem=true;
+                            failure=QStringLiteral("RTX VSR retrasó el video. Restaurando perfil anterior sin apagar RIFE.");
+                            break;
+                        }
                         if(!fastRife){
                             capture(mpv);
                             fastRife=true;
@@ -721,7 +780,12 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
             // Revert only once. Keep the same source and saved position.
             int fallback=switching?previousPreset:static_cast<int>(xs::VideoPreset::Balanced);
             int fallbackMotion=switching?previousMotion:0;
-            if(gpuRife){
+            if(vsrProblem){
+                // Keep RIFE x2 on RTX failures, instead of unnecessarily disabling it.
+                fallback=switching&&previousPreset!=static_cast<int>(xs::VideoPreset::RtxAiSuperResolution)
+                    ?previousPreset:static_cast<int>(xs::VideoPreset::Balanced);
+                fallbackMotion=activeMotion;
+            }else if(gpuRife){
                 // Keep the picture preset and retry the same source without RIFE.
                 fallback=activePreset;
                 fallbackMotion=0;
@@ -736,7 +800,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                 previousMotion=fallbackMotion;
                 switching=false;
                 remote.set_setting_value(presetId,fallback);
-                if(gpuRife)motionFallbackReason=failure;
+                if(gpuRife||vsrProblem)motionFallbackReason=failure;
                 else remote.set_setting_value(motionId,fallbackMotion);
                 requested_quality_.store(fallback);
                 requested_motion_.store(fallbackMotion);
