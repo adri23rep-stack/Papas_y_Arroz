@@ -136,12 +136,9 @@ static void publishTracks(mpv_handle* mpv,const QString& title){
 
 void NovaQtPlayer::requestQuality(int value){
     if(value<0||value>4)return;
-    requested_quality_.store(value);
+    // No restart, and no misleading status, when selecting the same mode.
+    if(requested_quality_.exchange(value)==value)return;
     quality_revision_.fetch_add(1);
-    if(playing_.load())QMetaObject::invokeMethod(this,[this]{
-        notice_=QStringLiteral("Preparando cambio de calidad...");
-        emit changed();
-    },Qt::QueuedConnection);
 }
 
 void NovaQtPlayer::applySetting(int id,int value){
@@ -470,7 +467,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     break;
                 }
             }
-            if(failed&&!stop_.load())capture(mpv);
+            // A failed startup has no valid media position/tracks to capture.
+            if(failed&&loaded&&!stop_.load())capture(mpv);
         }
         {
             QMutexLocker lock(&mutex_);
