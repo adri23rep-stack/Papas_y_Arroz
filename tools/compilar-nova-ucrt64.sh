@@ -3,6 +3,9 @@
 # The script installs trusted MSYS2 packages, builds from the working
 # checkout and deploys a portable EXE with all runtime DLLs/QML imports.
 set -euo pipefail
+# The launcher's login shell may start in $HOME. Locate the repository
+# relative to this script, not relative to the current working directory.
+cd -- "$(dirname -- "$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")")"
 if [[ "${MSYSTEM:-}" != "UCRT64" ]]; then
     echo "[NOVA] Error: abre el proyecto con Compilar-Nova.ps1 (MSYS2 UCRT64)." >&2
     exit 1
