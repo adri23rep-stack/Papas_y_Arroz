@@ -58,6 +58,9 @@ done
 for source in /ucrt64/bin/libvapoursynth-script-0.dll /ucrt64/bin/libvapoursynth.dll; do
   cp "$source" "$out/"
 done
+# On Windows, mpv loads VapourSynth by the official DLL name VSScript.dll.
+# MSYS2 uses libvapoursynth-script-0.dll for the same VSScript API.
+cp /ucrt64/bin/libvapoursynth-script-0.dll "$out/VSScript.dll"
 ntldd -R /ucrt64/bin/libvapoursynth-script-0.dll > "$gpu/vs-dependencies.txt" || true
 ntldd -R /ucrt64/bin/libvapoursynth.dll >> "$gpu/vs-dependencies.txt" || true
 while IFS= read -r dll; do
@@ -72,6 +75,7 @@ done
 rm "$gpu/vs-dependencies.txt"
 
 test -s "$out/libvapoursynth-script-0.dll"
+test -s "$out/VSScript.dll"
 test -s "$out/libvapoursynth.dll"
 test -s "$gpu/librife_windows_x86-64.dll"
 test -s "$gpu/rife.vpy"
