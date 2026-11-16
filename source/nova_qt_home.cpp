@@ -435,11 +435,13 @@ void NovaQtHome::pollRemote(){
         if(event.type==SDL_USEREVENT){
             if(event.user.code==xs::REMOTE_VOLUME)
                 player_.setVolume(static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1)));
+            if(event.user.code==xs::REMOTE_BRIGHTNESS)
+                player_.applySetting(xs::remote_setting_index("brightness"),
+                    static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1)));
             if(event.user.code==xs::REMOTE_SETTING){
                 const int id=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
                 const int value=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data2));
-                if(id==xs::remote_setting_index("volume"))player_.setVolume(value);
-                if(id==xs::remote_setting_index("speed"))player_.setSpeed(value);
+                player_.applySetting(id,value);
             }
             if(event.user.code==xs::REMOTE_WHEEL)
                 navigate(0,-static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1)));
@@ -479,7 +481,8 @@ void NovaQtHome::pollRemote(){
             case SDLK_F7:openSection(1);break;
             case SDLK_SPACE:player_.togglePause();break;
             case SDLK_F11:
-                if(window_)window_->setVisibility(window_->visibility()==QWindow::FullScreen?
+                if(player_.playing())player_.toggleFullscreen();
+                else if(window_)window_->setVisibility(window_->visibility()==QWindow::FullScreen?
                     QWindow::Windowed:QWindow::FullScreen);
                 break;
             case SDLK_PAGEDOWN:navigate(1,0);break;
