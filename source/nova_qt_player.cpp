@@ -1,10 +1,17 @@
 #include "nova_qt_player.hpp"
 #include "catalog.hpp"
 #include "remote_server.hpp"
+#include "nova_quality.hpp"
+#include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
 #include <mpv/client.h>
 #include <QMetaObject>
 #include <QMutexLocker>
 #include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -126,7 +133,21 @@ static void publishTracks(mpv_handle* mpv,const QString& title){
     xs::RemoteServer::shared().publish_playback_options(std::move(state));
 }
 
+void NovaQtPlayer::requestQuality(int value){
+    if(value<0||value>4)return;
+    requested_quality_.store(value);
+    quality_revision_.fetch_add(1);
+    if(playing_.load())QMetaObject::invokeMethod(this,[this]{
+        notice_=QStringLiteral("Preparando cambio de calidad...");
+        emit changed();
+    },Qt::QueuedConnection);
+}
+
 void NovaQtPlayer::applySetting(int id,int value){
+    if(id==xs::remote_setting_index("video_preset")){
+        requestQuality(value);
+        return;
+    }
     if(id==xs::remote_setting_index("volume")){setVolume(value);return;}
     if(id==xs::remote_setting_index("speed")){setSpeed(value);return;}
     QMutexLocker lock(&mutex_);
