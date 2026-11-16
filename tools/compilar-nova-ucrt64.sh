@@ -25,7 +25,7 @@ if [[ "${1:-}" == "--update-only" ]]; then
     echo "[NOVA] MSYS2 actualizado. Reiniciando Bash para compilar..."
     exit 0
 fi
-echo "[NOVA] Fase 2/2: instalando dependencias oficiales..."
+echo "[NOVA] Revisando dependencias locales sin modificar MSYS2..."
 # SDL2 is a virtual dependency provided by the installed SDL2-compat
 # or the legacy SDL2 package. Some versions of "pacman -Q SDL2" report
 # success for a provider (not just the exact installed name), so checking
@@ -53,7 +53,26 @@ packages=(
   mingw-w64-ucrt-x86_64-qt6-declarative
   mingw-w64-ucrt-x86_64-qt6-imageformats
 )
-pacman -S --needed --noconfirm "${packages[@]}"
+# Query the ALREADY INSTALLED packages first. pacman -Q is read-only,
+# so an unrelated MSYS2 install holding db.lck cannot block this build.
+missing_packages=()
+for package in "${packages[@]}"; do
+    if ! pacman -Q "$package" >/dev/null 2>&1; then
+        missing_packages+=("$package")
+    fi
+done
+if (( ${#missing_packages[@]} == 0 )); then
+    echo "[NOVA] Todas las dependencias ya estan instaladas. Omitiendo pacman."
+else
+    echo "[NOVA] Faltan ${#missing_packages[@]} paquetes de la herramienta."
+    # Never auto-delete /var/lib/pacman/db.lck: another pacman may be busy.
+    if [[ -e /var/lib/pacman/db.lck ]]; then
+        echo "[NOVA] La base de paquetes esta bloqueada (db.lck)." >&2
+        echo "[NOVA] Cierra instaladores MSYS2 activos y reintenta. No borres el bloqueo sin comprobar que no hay otro pacman trabajando." >&2
+        exit 1
+    fi
+    pacman -S --needed --noconfirm "${missing_packages[@]}"
+fi
 
 if [[ "${NOVA_CLEAN:-0}" == 1 ]]; then
     echo "[NOVA] Limpiando SOLO los resultados antiguos de compilación..."
