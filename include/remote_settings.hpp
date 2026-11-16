@@ -25,7 +25,7 @@ inline constexpr std::array<RemoteSettingDef,11> kRemoteSettings{{
     {"audio_delay","Sonido","Sincronia audio (ms)",-1000,1000,100,0},
     {"sub_delay","Subtitulos","Sincronia subtitulos (ms)",-5000,5000,250,0},
     {"sub_scale","Subtitulos","Tamano subtitulos (%)",50,300,10,100},
-    {"video_preset","Imagen","Calidad de video",0,4,1,1},
+    {"video_preset","Imagen","Calidad de video",0,5,1,1},
     {"motion_mode","Imagen","Movimiento / FPS",0,2,1,0}
 }};
 inline int remote_setting_index(const std::string& key){
