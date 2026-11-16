@@ -264,6 +264,11 @@ QString NovaQtHome::motionLabel()const{
 void NovaQtHome::setMotionMode(int value){
     const int id=xs::remote_setting_index("motion_mode");
     if(!xs::valid_remote_setting(id,value))return;
+    if(value==2 && !player_.gpuRifeReady()){
+        status_=QStringLiteral("RIFE GPU no instalado. Extrae el complemento RIFE de Nova.");
+        emit changed();
+        return;
+    }
     if(!xs::RemoteServer::shared().set_setting_value(id,value))return;
     player_.requestMotion(value);
     emit changed();
