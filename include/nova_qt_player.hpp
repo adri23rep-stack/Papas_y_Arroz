@@ -27,6 +27,8 @@ public:
     Q_INVOKABLE void setVolume(int value);
     Q_INVOKABLE void setSpeed(int percent);
     Q_INVOKABLE void seek(double seconds);
+    void applySetting(int id,int value);
+    void toggleFullscreen();
 signals:
     void changed();
 private:
