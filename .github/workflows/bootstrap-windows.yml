@@ -97,7 +97,6 @@ jobs:
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-pkgconf
-            mingw-w64-ucrt-x86_64-SDL2
             mingw-w64-ucrt-x86_64-SDL2_ttf
             mingw-w64-ucrt-x86_64-sdl3
             mingw-w64-ucrt-x86_64-mpv
@@ -192,7 +191,7 @@ jobs:
           # Lock Qt's runtime paths to this portable ZIP. The Qt build
           # machine's hardcoded import directory will not exist on user PCs.
           printf '[Paths]\nPrefix = .\nPlugins = .\nQmlImports = qml\n' > dist/Xuper-TV-Desktop/qt.conf
-          for name in QtQuick QtQuick/Window QtQuick/Shapes QtQuick/Effects; do
+          for name in QtQuick QtQuick/Window QtQuick/Effects; do
             test -s "dist/Xuper-TV-Desktop/qml/$name/qmldir" || {
               echo "Missing deployed QML import module: $name" >&2
               exit 1
@@ -354,7 +353,7 @@ jobs:
           # Qt preview does not run SDL, mpv, or FFmpeg. Leave shared curl,
           # crypto and compiler runtime dependencies untouched.
           rm -f "$qt"/XuperTVDesktop.exe "$qt"/XuperNativeProbe.exe \
-            "$qt"/XuperNativePlayer.exe "$qt"/test.mp4
+            "$qt"/XuperNativePlayer.exe
           rm -f "$qt"/SDL*.dll "$qt"/libmpv*.dll \
             "$qt"/avcodec*.dll "$qt"/avformat*.dll \
             "$qt"/avutil*.dll "$qt"/swscale*.dll \
@@ -364,8 +363,8 @@ jobs:
           rm -rf "$qt"/shaders
           rm -f "$qt"/font.ttf
           rm -rf "$qt"/qml/QtQml/DesignSupport             "$qt"/qml/QtQml/XmlListModel             "$qt"/qml/QtQuick/Shapes/DesignHelpers
-          # QML app imports only QtQuick, QtQuick.Window, QtQuick.Effects,
-          # QtQuick.Shapes and QtQml. Remove heavy unused UI styles.
+          # QML app imports QtQuick, QtQuick.Window and QtQuick.Effects.
+          # No QtQuick.Shapes dependency; remove heavy unused UI styles.
           rm -rf "$qt"/qml/QtQuick/Controls \
             "$qt"/qml/QtQuick/Dialogs \
             "$qt"/qml/QtQuick/LocalStorage \
@@ -375,7 +374,7 @@ jobs:
             "$qt"/qml/QtQuick/Layouts \
             "$qt"/qml/QtQuick/VectorImage
           test -s "$qt/XuperTVNovaQt.exe"
-          for name in QtQuick QtQuick/Window QtQuick/Effects QtQuick/Shapes; do
+          for name in QtQuick QtQuick/Window QtQuick/Effects; do
             test -s "$qt/qml/$name/qmldir" || {
               echo "Qt-only preview missing required QML module $name" >&2
               exit 1
