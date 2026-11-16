@@ -8,7 +8,8 @@ No releases, remote execution scripts, account secrets or git branches.
 [CmdletBinding()]
 param(
     [switch]$Clean,
-    [switch]$Run
+    [switch]$Run,
+    [switch]$UpdateDependencies
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -73,16 +74,19 @@ $driveLetter = $Matches[1].ToLowerInvariant()
 $relativePath = $Matches[2].Replace('\', '/')
 $msysScript = '/' + $driveLetter + '/' + $relativePath
 Write-Host ('[NOVA] Script local: ' + $msysScript) -ForegroundColor DarkCyan
-# Do a full upgrade first, in its OWN MSYS2 Bash process. After upgrading
-# msys2-runtime, reusing the same Bash can fail with "dofork errno 11".
-# No package removal or forced replacement is performed.
-Write-Host '[NOVA] Fase 1/2: actualizando MSYS2...' -ForegroundColor Cyan
-& $bash --login $msysScript '--update-only'
-$updateExit = $LASTEXITCODE
-if ($updateExit -ne 0) {
-    throw ("MSYS2 no termino la actualizacion (codigo $updateExit). Cierra todas las ventanas de MSYS2 y vuelve a ejecutar el CMD.")
+# The default build is OFFLINE-FIRST: do not run pacman -Syu every time.
+# Repeated updates can collide with another MSYS2 process (db.lck) even
+# though every package necessary for local compilation is already installed.
+# An explicit -UpdateDependencies performs an upgrade in a separate Bash.
+if ($UpdateDependencies) {
+    Write-Host '[NOVA] Actualizacion solicitada expresamente...' -ForegroundColor Cyan
+    & $bash --login $msysScript '--update-only'
+    $updateExit = $LASTEXITCODE
+    if ($updateExit -ne 0) {
+        throw ("MSYS2 no termino la actualizacion (codigo $updateExit). Puede haber otra instancia de pacman usando su base de datos; no borres db.lck mientras haya una instalacion activa.")
+    }
 }
-Write-Host '[NOVA] Fase 2/2: iniciando una nueva sesion Bash para compilar...' -ForegroundColor Cyan
+Write-Host '[NOVA] Compilando con las dependencias ya instaladas...' -ForegroundColor Cyan
 & $bash --login $msysScript
 $exit = $LASTEXITCODE
 if ($exit -ne 0) {
