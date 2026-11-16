@@ -10,7 +10,6 @@
 #include <QQuickWindow>
 #include <QTimer>
 #include <QRegularExpression>
-#include "remote_server.hpp"
 #include <QScreen>
 #include <QImage>
 #include <QPixmap>
@@ -64,7 +63,6 @@ int main(int argc,char** argv){
             if(!image.isNull() && !previous.isNull() && image!=previous)++moving;
             previous=image;
             if(testRife && moving>=3 && !requested){
-                xs::RemoteServer::shared().set_setting_value(xs::remote_setting_index("motion_mode"),2);
                 if(!player.requestMotion(2)){app.exit(6);return;}
                 requested=true;
                 moving=0;
