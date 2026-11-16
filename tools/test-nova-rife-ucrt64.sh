@@ -14,29 +14,44 @@ stdlib=(nova-gpu/python/lib/python3.*)
 export PYTHONHOME="$(cygpath -wa nova-gpu/python)"
 python_lib="$(cygpath -wa "${stdlib[0]}")"
 export PYTHONPATH="$python_lib;$python_lib/lib-dynload;$python_lib/site-packages"
-export VK_DRIVER_FILES="$(cygpath -wa /ucrt64/share/vulkan/icd.d/lvp_icd.x86_64.json)"
-test -s /ucrt64/share/vulkan/icd.d/lvp_icd.x86_64.json
-for fps in 60 24; do
-  rm -f frame-*.txt
-  # The 60fps pass-through also checks embedded Python with no MSYS DLL path.
-  # Lavapipe's LLVM runtime is needed only by the 24fps Vulkan test.
+# Explicit registration also works on elevated Windows runners where the loader
+# ignores environment overrides. This job runs on a disposable hosted VM.
+driver_manifest="$(cygpath -wa /ucrt64/share/vulkan/icd.d/lvp_icd.x86_64.json)"
+export VK_DRIVER_FILES="$driver_manifest" VK_ICD_FILENAMES="$driver_manifest"
+export VK_LOADER_DEBUG=error,warn
+registry_key='HKLM\SOFTWARE\Khronos\Vulkan\Drivers'
+MSYS2_ARG_CONV_EXCL='*' reg.exe add "$registry_key" /v "$driver_manifest" /t REG_DWORD /d 0 /f
+trap 'MSYS2_ARG_CONV_EXCL="*" reg.exe delete "$registry_key" /v "$driver_manifest" /f >/dev/null' EXIT
+for mode in 60 24 unavailable; do
+  fps="$mode"
+  rm -f frame-*.txt rife-status.txt
   runtime_path=/c/Windows/System32
-  [[ "$fps" == 24 ]] && runtime_path="$runtime_path:/ucrt64/bin"
-  echo "Checking $fps fps input in packaged mpv"
+  if [[ "$mode" == unavailable ]]; then
+    fps=24
+    # Simulate an incomplete add-on independently of the runner's actual GPUs.
+    mv nova-gpu/librife_windows_x86-64.dll nova-gpu/plugin-disabled.dll
+  elif [[ "$mode" == 24 ]]; then
+    runtime_path="$runtime_path:/ucrt64/bin"
+  fi
+  echo "Checking $mode in packaged mpv"
   PATH="$runtime_path" /usr/bin/timeout --kill-after=10s 150s ./mpv.exe \
     --msg-level=vapoursynth=debug --no-config --no-audio --vo=null --frames=5 \
-    '--vf=vapoursynth=file=nova_rife_frames.vpy:concurrent-frames=2' "input-$fps.mkv"
-  /ucrt64/bin/python.exe - "$fps" <<'PY'
+    '--vf=vapoursynth=file=nova_rife_frames.vpy:concurrent-frames=2:user-data=rife-status.txt' "input-$fps.mkv"
+  /ucrt64/bin/python.exe - "$mode" <<'PYTEST'
 from fractions import Fraction
 from pathlib import Path
 import sys
-fps = int(sys.argv[1])
+mode = sys.argv[1]
 frames = [Path(f"frame-{n}.txt").read_text().split() for n in range(5)]
-# Matroska timestamps are rounded to milliseconds.
-expected = 1 / (48 if fps == 24 else 60)
-assert all(abs(float(Fraction(t)) - expected) <= 0.0011 for t, _ in frames), frames
-if fps == 24:
+expected_fps = {"24": 48, "60": 60, "unavailable": 24}[mode]
+assert all(abs(float(Fraction(t)) - 1 / expected_fps) <= 0.0011 for t, _ in frames), frames
+status = Path("rife-status.txt")
+if mode == "unavailable":
+    assert status.read_bytes() == b"unavailable"
+else:
+    assert not status.exists()
+if mode == "24":
     assert len({digest for _, digest in frames[:3]}) == 3, frames
-print(f"{fps} fps input: {frames}")
-PY
+print(f"{mode} -> {expected_fps} fps: {frames}")
+PYTEST
 done

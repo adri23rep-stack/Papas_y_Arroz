@@ -5,7 +5,7 @@ import runpy
 import vapoursynth as vs
 
 runpy.run_path(os.path.join(os.path.dirname(__file__), "nova-gpu", "rife.vpy"),
-               init_globals={"video_in": video_in, "container_fps": container_fps})
+               init_globals={"video_in": video_in, "container_fps": container_fps, "user_data": user_data})
 output = vs.get_output().clip
 
 def record(n, f):
@@ -17,3 +17,4 @@ def record(n, f):
     return f
 
 vs.core.std.ModifyFrame(output, clips=output, selector=record).set_output()
+del output, video_in

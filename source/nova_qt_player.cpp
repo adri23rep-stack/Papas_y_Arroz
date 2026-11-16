@@ -7,6 +7,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QTemporaryDir>
 #include <QByteArray>
 #include <mpv/client.h>
 #include <QMetaObject>
@@ -291,6 +292,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
         const QString shader=QDir(QCoreApplication::applicationDirPath())
             .filePath(QStringLiteral("shaders/FSRCNNX_x2_8-0-4-1.glsl"));
         bool failed=missingRife||(gpuMode&&(!QFileInfo(shader).isFile()));
+        std::unique_ptr<QTemporaryDir> rifeSession;
+        QString rifeStatusPath;
         bool loaded=false, restart=false, streamError=false;
         auto gpuReadyAt=std::chrono::steady_clock::now();
         int badSyncSamples=0;
@@ -369,10 +372,19 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     const QString script=QDir(QCoreApplication::applicationDirPath())
                         .filePath(QStringLiteral("nova-gpu/rife.vpy"));
                     const QByteArray bytes=QDir::toNativeSeparators(script).toUtf8();
-                    const std::string spec="vapoursynth=file=%"+
-                        std::to_string(bytes.size())+"%"+bytes.toStdString()+
-                        ":concurrent-frames=2";
-                    failed=!opt("vf",spec.c_str());
+                    rifeSession=std::make_unique<QTemporaryDir>();
+                    if(rifeSession->isValid()){
+                        rifeStatusPath=rifeSession->filePath(QStringLiteral("rife-status"));
+                        const QByteArray statusPath=QDir::toNativeSeparators(rifeStatusPath).toUtf8();
+                        const std::string spec="vapoursynth=file=%"+
+                            std::to_string(bytes.size())+"%"+bytes.toStdString()+
+                            ":concurrent-frames=2:user-data=%"+
+                            std::to_string(statusPath.size())+"%"+statusPath.toStdString();
+                        failed=!opt("vf",spec.c_str());
+                    }else{
+                        failed=true;
+                        failure=QStringLiteral("No se pudo preparar el estado de RIFE.");
+                    }
                 }
             }
             if(!failed&&live)failed=!opt("demuxer-readahead-secs","3");
@@ -560,6 +572,12 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                         break;
                     }
                     if(event->event_id==MPV_EVENT_SHUTDOWN)break;
+                }
+                if(loaded && gpuRife && std::chrono::steady_clock::now()-lastFpsCheck>=
+                   std::chrono::seconds(2) && QFileInfo(rifeStatusPath).size()>0){
+                    failed=true;
+                    failure=QStringLiteral("RIFE no pudo iniciar Vulkan. Se reanuda el video normal.");
+                    break;
                 }
                 if(loaded&&gpuRife&&std::chrono::steady_clock::now()-gpuReadyAt>=
                    std::chrono::seconds(8) &&
