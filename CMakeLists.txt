@@ -277,7 +277,7 @@ if(WIN32)
   set_target_properties(XuperTVNovaQt PROPERTIES AUTOMOC ON)
   qt_add_resources(XuperTVNovaQt "nova_qt_qml"
     PREFIX "/"
-    FILES ui/novaqt/Main.qml
+    FILES ui/novaqt/Main.qml ui/novaqt/NovaQtOverlay.qml
   )
   target_include_directories(XuperTVNovaQt PRIVATE include include/vendor)
   target_link_libraries(XuperTVNovaQt PRIVATE
