@@ -35,7 +35,7 @@ public:
     }
     bool ready(int quality,int motion,int activeQuality,int activeMotion,
                Clock::time_point now)const {
-        return revision_>0 && quality>=0 && quality<=4 &&
+        return revision_>0 && quality>=0 && quality<=5 &&
                motion>=0 && motion<=2 &&
                (quality!=activeQuality || motion!=activeMotion) &&
                now-last_change_>=std::chrono::milliseconds(450);
