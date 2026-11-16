@@ -42,9 +42,21 @@ if(WIN32 AND MINGW)
           if(NOT _convert_status EQUAL 0)
             message(FATAL_ERROR "Cannot convert pkg-config path: ${_inc_dir}")
           endif()
-          list(APPEND _fixed_dirs "${_win_dir}")
+          set(_resolved_dir "${_win_dir}")
         else()
-          list(APPEND _fixed_dirs "${_inc_dir}")
+          set(_resolved_dir "${_inc_dir}")
+        endif()
+        if(EXISTS "${_resolved_dir}")
+          list(APPEND _fixed_dirs "${_resolved_dir}")
+        elseif(_pkg_target STREQUAL "PkgConfig::MPV" AND
+               _resolved_dir MATCHES "[/\\\\]lua5[.]1$")
+          # Some MSYS2 libmpv .pc metadata mentions legacy Lua 5.1 even
+          # without its optional headers installed. The public libmpv API
+          # uses mpv/client.h, not lua5.1/*.h; keep the real MPV paths.
+          message(STATUS "Skipping missing optional mpv Lua include: ${_resolved_dir}")
+        else()
+          message(FATAL_ERROR
+            "${_pkg_target} reports a missing required include directory: ${_resolved_dir}")
         endif()
       endforeach()
       set_property(TARGET "${_pkg_target}" PROPERTY INTERFACE_INCLUDE_DIRECTORIES "${_fixed_dirs}")
