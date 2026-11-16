@@ -16,6 +16,7 @@ int main(int argc,char** argv){
         std::ofstream report("nova-qt-smoke.log",std::ios::app);
         report<<message<<'\n';
     };
+    checkpoint("main_entered");
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
         Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
     QGuiApplication app(argc,argv);
