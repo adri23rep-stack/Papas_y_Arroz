@@ -8,7 +8,7 @@ Item {
     property int sectionId: -1
     property bool showBrowse: sectionId >= 0
     readonly property bool empty: !entries || entries.length === 0
-    height: empty ? 90 : (channel ? 214 : 329)
+    height: empty ? 90 : (channel ? 265 : 380)
     width: parent ? parent.width : 1280
 
     Text {
@@ -60,7 +60,7 @@ Item {
         x: 43
         y: 44
         width: Math.max(0,rail.width - 58)
-        height: rail.channel ? 177 : 282
+        height: rail.channel ? 204 : 314
         model: rail.entries
         orientation: ListView.Horizontal
         spacing: rail.channel ? 4 : 5
