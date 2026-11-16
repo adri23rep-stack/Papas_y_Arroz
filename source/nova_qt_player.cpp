@@ -227,8 +227,10 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
         handle_=nullptr;
     }
     mpv_terminate_destroy(mpv);
+    // Clear the active-player state BEFORE notifying the catalog so a new
+    // selection from iPhone can start immediately after this stream ends.
+    finish(endMessage);
     QMetaObject::invokeMethod(this,[this,lastPosition,reachedEnd](){
         emit finishedPlayback(lastPosition,reachedEnd);
     },Qt::QueuedConnection);
-    finish(endMessage);
 }
