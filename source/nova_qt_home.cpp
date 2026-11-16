@@ -61,6 +61,17 @@ void addAssets(const xs::Catalog& page,const std::string& type,
 }
 HomeSnapshot loadHome(){
     HomeSnapshot out;
+    // Always provide a separate OFFLINE test player. It must never be
+    // presented as a live TV channel from the authenticated service.
+    {
+        std::ifstream local_file("catalog.m3u");
+        if(local_file){
+            const auto local=xs::read_m3u(local_file);
+            for(const auto& e:local.entries)
+                if(e.kind==xs::EntryKind::Media)addEntry(out.demo_entries,e,80);
+        }
+        out.demo_items=listFor(out.demo_entries);
+    }
     auto login=xs::service_bootstrap("service.json");
     out.session=login.session;
     out.root=std::move(login.catalog);
@@ -70,13 +81,6 @@ HomeSnapshot loadHome(){
         else out.status=QString::fromStdString(response.status);
     }
     if(!out.session){
-        std::ifstream file("catalog.m3u");
-        if(file){
-            const auto local=xs::read_m3u(file);
-            for(const auto& e:local.entries)
-                if(e.kind==xs::EntryKind::Media)addEntry(out.demo_entries,e,80);
-        }
-        out.demo_items=listFor(out.demo_entries);
         out.status=QString::fromStdString(login.status);
         if(out.status.isEmpty())out.status=QStringLiteral("Sin conexión al servicio.");
         return out;
@@ -320,7 +324,9 @@ void NovaQtHome::refresh(){
         const auto snap=watcher->result();
         channels_=snap.channels;series_=snap.series;movies_=snap.movies;
         demo_items_=snap.demo_items;demo_entries_=snap.demo_entries;
-        catalog_connected_=snap.session!=nullptr;
+        catalog_connected_=snap.session!=nullptr && (
+            !snap.root.entries.empty() || !snap.channels.isEmpty() ||
+            !snap.series.isEmpty() || !snap.movies.isEmpty());
         channel_entries_=snap.tv_entries;
         series_entries_=snap.series_entries;
         movie_entries_=snap.movie_entries;
