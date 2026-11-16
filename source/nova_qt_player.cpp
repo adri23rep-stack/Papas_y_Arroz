@@ -452,7 +452,17 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     }
                 }
             }
-            if(!failed&&live)failed=!opt("demuxer-readahead-secs","3");
+            if(!failed&&live){
+                // Reserve ~15 s for live TV. cache-secs is needed because
+                // cache=yes overrides demuxer-readahead-secs in MPV.
+                failed=!opt("cache-pause","yes") ||
+                       !opt("cache-pause-initial","yes") ||
+                       !opt("cache-pause-wait","15") ||
+                       !opt("cache-secs","30") ||
+                       !opt("demuxer-readahead-secs","30") ||
+                       !opt("demuxer-max-bytes","128MiB") ||
+                       !opt("demuxer-max-back-bytes","4MiB");
+            }
             if(!failed&&xs::nova_can_resume(live,restore.position)){
                 const std::string start=std::to_string(restore.position);
                 failed=!opt("hr-seek","yes") || !opt("start",start.c_str());
@@ -615,6 +625,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                                  gpuRife?QStringLiteral("GPU Vulkan RIFE (verificar FPS reales)"):
                                          QStringLiteral("MPV"));
                         baseDiagnostics=details;
+                        if(live)baseDiagnostics+=QStringLiteral("\nTV en vivo: búfer inicial objetivo 15 s · reserva hasta 30 s");
                         if(vsrRequested)baseDiagnostics+=QStringLiteral("\nRTX Video Super Resolution x%1 solicitado; confirmación pendiente del driver NVIDIA")
                             .arg(vsrScale,0,'f',2);
                         else if(rtxVsr)baseDiagnostics+=QStringLiteral("\nRTX VSR sin ampliar: el video ya alcanza la resolución del monitor");
@@ -690,7 +701,16 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     failure=QStringLiteral("RIFE no pudo iniciar Vulkan. Se reanuda el video normal.");
                     break;
                 }
-                if(loaded&&(gpuRife||(rtxVsr&&vsrRequested))&&std::chrono::steady_clock::now()-gpuReadyAt>=
+                int cachePaused=0;
+                const bool bufferingLive=live&&loaded&&
+                    mpv_get_property(mpv,"paused-for-cache",MPV_FORMAT_FLAG,&cachePaused)>=0&&
+                    cachePaused!=0;
+                // Intentional network prebuffering must not trigger a RIFE GPU fallback.
+                if(bufferingLive){
+                    badSyncSamples=0;
+                    gpuReadyAt=std::chrono::steady_clock::now();
+                }
+                if(loaded&&!bufferingLive&&(gpuRife||(rtxVsr&&vsrRequested))&&std::chrono::steady_clock::now()-gpuReadyAt>=
                    std::chrono::seconds(8) &&
                    std::chrono::steady_clock::now()-lastFpsCheck>=std::chrono::seconds(2)){
                     // Stop RIFE if the video persistently falls behind audio.
@@ -734,8 +754,16 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                             .arg(estimated,0,'f',1);
                     else
                         info+=QStringLiteral("\nFPS tras filtro: sin datos todavía");
-                    publish(QStringLiteral("Reproduciendo · %1").arg(
-                        QString::fromUtf8(xs::video_preset_label(preset))),info);
+                    if(live){
+                        double buffered=0.0;
+                        const bool known=mpv_get_property(mpv,"demuxer-cache-duration",
+                            MPV_FORMAT_DOUBLE,&buffered)>=0&&std::isfinite(buffered)&&buffered>=0.0;
+                        if(known)info+=QStringLiteral("\nEn reserva: %1 s (estimados)")
+                            .arg(buffered,0,'f',1);
+                    }
+                    publish(bufferingLive?QStringLiteral("TV en vivo · cargando búfer..."):
+                        QStringLiteral("Reproduciendo · %1").arg(
+                            QString::fromUtf8(xs::video_preset_label(preset))),info);
                 }
                 const auto revision=restart_revision_.load();
                 restartGate.observe(revision,xs::NovaPlaybackRestartGate::Clock::now());
