@@ -27,7 +27,7 @@ void NovaQtPlayer::finish(const QString& message){
     },Qt::QueuedConnection);
 }
 
-void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool live){
+void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool live,double resumeSeconds){
     if(playing_.load()||!result.ok||!xs::valid_source(result.source))return;
     if(thread_.joinable())thread_.join();
     stop_.store(false);
@@ -35,7 +35,9 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
     notice_=QStringLiteral("Abriendo reproductor...");
     playing_.store(true);
     emit changed();
-    thread_=std::thread([this,result,title,live](){playWorker(result,title,live);});
+    thread_=std::thread([this,result,title,live,resumeSeconds](){
+        playWorker(result,title,live,resumeSeconds);
+    });
 }
 
 void NovaQtPlayer::command(const char* name,const char* argument){
@@ -114,7 +116,7 @@ void NovaQtPlayer::seek(double seconds){
     mpv_command_async(handle_,0,args);
 }
 
-void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live){
+void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,double resumeSeconds){
     mpv_handle* mpv=mpv_create();
     if(!mpv){finish(QStringLiteral("No se pudo iniciar el motor de video."));return;}
     auto opt=[&](const char* key,const char* val){return mpv_set_option_string(mpv,key,val)>=0;};
@@ -133,6 +135,10 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live){
     opt("sub-auto","no");
     opt("tls-verify","yes");
     if(live)opt("demuxer-readahead-secs","3");
+    if(!live&&resumeSeconds>5&&resumeSeconds<86400){
+        const std::string start=std::to_string(resumeSeconds);
+        opt("start",start.c_str());
+    }
 
     // Preserve the exact protocol's authenticated header allowlist. Never
     // print or expose the source URL, header values, or session tokens.
