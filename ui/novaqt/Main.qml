@@ -15,20 +15,37 @@ Window {
 
     // Curated wide-format 2026 film/series stills. Never upscale tiny
     // channel icons as a full-screen wallpaper.
+    // A backdrop and its title must be selected together. On a failed URL
+    // the next image AND its own title are selected, never a mismatched title.
     property var backdropSources: [
-        "https://assets.eyefilm.nl/images/production/_1920x1080_crop_center-center_none/1632957/still_The-Odyssey-Christopher-Nolan-US-GB-2026-1.webp",
-        "https://d32qys9a6wm9no.cloudfront.net/images/movies/backdrop/ZVofAle5TZmIEieUj7WVjT2NYNyBAux8_1920x1080.jpg?t=1778746400",
-        "https://www.mensjournal.com/.image/c_fill%2Cg_faces%3Acenter/NDI6MDAwMDAwMDAxMTE2OTA4/project-hail-mary-1-header.jpg",
-        "https://cdn.observatoriodocinema.com.br/2025/10/vision-quest-1536x646.jpeg"
+        {
+            title: "La Odisea",
+            url: "https://assets.eyefilm.nl/images/production/_1920x1080_crop_center-center_none/1632957/still_The-Odyssey-Christopher-Nolan-US-GB-2026-1.webp"
+        },
+        {
+            title: "Wildwood",
+            url: "https://d32qys9a6wm9no.cloudfront.net/images/movies/backdrop/ZVofAle5TZmIEieUj7WVjT2NYNyBAux8_1920x1080.jpg?t=1778746400"
+        },
+        {
+            title: "Proyecto Fin del Mundo",
+            url: "https://www.mensjournal.com/.image/c_fill%2Cg_faces%3Acenter/NDI6MDAwMDAwMDAxMTE2OTA4/project-hail-mary-1-header.jpg"
+        },
+        {
+            title: "VisionQuest",
+            url: "https://cdn.observatoriodocinema.com.br/2025/10/vision-quest-1536x646.jpeg"
+        }
     ]
     property int backdropStart: Math.floor(Math.random() * backdropSources.length)
     property int backdropAttempt: 0
+    readonly property int featuredIndex: backdropAttempt < backdropSources.length
+        ? (backdropStart + backdropAttempt) % backdropSources.length : -1
+    readonly property string featuredTitle: featuredIndex >= 0
+        ? backdropSources[featuredIndex].title : "DESTACADOS"
     property string toast: ""
-    // Keep the compact 1280x800 composition as-is, but use extra vertical
-    // space on maximized / fullscreen windows for the artwork and rows.
-    // All three sections move together; their tiles and gaps stay identical.
-    readonly property real homeRowsTop: 230 + Math.max(0, height - 800) * 0.52
-    // The black fade ends exactly where the first carousel cards begin.
+    // Larger cinematic hero while keeping all three browse rails together.
+    // Shorter windows can scroll down; fullscreen uses its extra real height.
+    readonly property real homeRowsTop:
+        Math.max(306, Math.min(height * 0.44, height - 595))
     readonly property real backdropBottom: homeRowsTop + 43
 
     function notifyPreview(subject) {
@@ -72,9 +89,9 @@ Window {
                 asynchronous: true
                 cache: true
                 smooth: true
-                source: root.backdropAttempt < root.backdropSources.length
-                    ? root.backdropSources[(root.backdropStart + root.backdropAttempt) % root.backdropSources.length]
-                    : ""
+                mipmap: true
+                source: root.featuredIndex >= 0
+                    ? root.backdropSources[root.featuredIndex].url : ""
                 onStatusChanged: {
                     if (status === Image.Error && root.backdropAttempt < root.backdropSources.length)
                         root.backdropAttempt += 1
@@ -84,26 +101,38 @@ Window {
             Rectangle {
                 anchors.fill: parent
                 gradient: Gradient {
-                    GradientStop { position: 0.0; color: "#36000000" }
-                    GradientStop { position: 0.30; color: "#57000000" }
-                    GradientStop { position: 0.61; color: "#C0000000" }
-                    GradientStop { position: 0.85; color: "#F6000000" }
+                    GradientStop { position: 0.0; color: "#10000000" }
+                    GradientStop { position: 0.30; color: "#1A000000" }
+                    GradientStop { position: 0.55; color: "#44000000" }
+                    GradientStop { position: 0.78; color: "#AB000000" }
+                    GradientStop { position: 0.94; color: "#F1000000" }
                     GradientStop { position: 1.0; color: "#FF000000" }
                 }
             }
         }
 
         Text {
-            id: brand
+            id: featuredTitle
+            objectName: "novaFeaturedTitle"
             x: 48
-            y: 29
-            text: "XUPER TV"
+            y: Math.max(72, rows.y - 181)
+            width: Math.max(270, page.width - 96)
+            text: root.featuredTitle
             color: "#FFFFFF"
             font.family: "Segoe UI"
-            font.pixelSize: 32
-            font.weight: Font.DemiBold
-            font.letterSpacing: 1.5
+            font.pixelSize: page.width >= 1600 ? 52 : 43
+            font.weight: Font.Bold
+            font.letterSpacing: 0.3
+            elide: Text.ElideRight
+            maximumLineCount: 2
+            wrapMode: Text.WordWrap
             renderType: Text.QtRendering
+            style: Text.Raised
+            styleColor: "#B8000000"
+            opacity: wallpaper.status === Image.Ready ? 1 : 0.92
+            Behavior on opacity {
+                NumberAnimation { duration: 280; easing.type: Easing.OutCubic }
+            }
         }
 
         Column {
@@ -124,7 +153,7 @@ Window {
                     property var sectionModel: sectionId === 0 ? novaHome.channels :
                                                sectionId === 1 ? novaHome.series : novaHome.movies
                     width: rows.width
-                    height: 164
+                    height: 176
 
                     Item {
                         id: heading
@@ -132,6 +161,11 @@ Window {
                         y: 0
                         width: 300
                         height: 32
+                        transformOrigin: Item.Left
+                        scale: headingMouse.containsMouse ? 1.035 : 1.0
+                        Behavior on scale {
+                            NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
+                        }
 
                         Shape {
                             id: vectorIcon
@@ -140,6 +174,10 @@ Window {
                             width: 27
                             height: 27
                             preferredRendererType: Shape.CurveRenderer
+                            opacity: headingMouse.containsMouse ? 1 : 0.82
+                            Behavior on opacity {
+                                NumberAnimation { duration: 160 }
+                            }
                             ShapePath {
                                 strokeColor: "#F5F5F7"
                                 strokeWidth: 1.9
@@ -159,14 +197,19 @@ Window {
                             x: 40
                             anchors.verticalCenter: parent.verticalCenter
                             text: section.sectionTitle
-                            color: "#FFFFFF"
+                            color: headingMouse.containsMouse ? "#E7D7FF" : "#FFFFFF"
+                            Behavior on color {
+                                ColorAnimation { duration: 170 }
+                            }
                             font.family: "Segoe UI"
                             font.pixelSize: 22
                             font.weight: Font.DemiBold
                             renderType: Text.QtRendering
                         }
                         MouseArea {
+                            id: headingMouse
                             anchors.fill: parent
+                            hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: root.notifyPreview(section.sectionTitle)
                         }
@@ -175,12 +218,12 @@ Window {
                     ListView {
                         id: carousel
                         x: 46
-                        y: 43
+                        y: 40
                         width: Math.max(0, section.width - 64)
-                        height: 119
+                        height: 132
                         orientation: ListView.Horizontal
                         model: section.sectionModel
-                        spacing: 14
+                        spacing: 8
                         clip: true
                         boundsBehavior: Flickable.StopAtBounds
                         interactive: true
@@ -191,20 +234,39 @@ Window {
                         delegate: Item {
                             id: tile
                             required property var modelData
-                            width: 190
-                            height: 112
+                            width: 196
+                            height: 128
                             property bool hovered: tileMouse.containsMouse
+                            z: hovered ? 10 : 0
 
-                            Rectangle {
+                            // Animate the entire card inside a slightly larger
+                            // delegate, so the raised edges are never clipped.
+                            Item {
+                                id: tileSurface
+                                x: 3
+                                y: hovered ? 4 : 8
+                                width: 190
+                                height: 112
+                                transformOrigin: Item.Center
+                                scale: tile.hovered ? 1.045 : 1.0
+                                Behavior on y {
+                                    NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
+                                }
+                                Behavior on scale {
+                                    NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
+                                }
+
+                                Rectangle {
                                 id: border
                                 anchors.fill: parent
                                 radius: 15
                                 antialiasing: true
                                 color: "#17171b"
-                                border.color: tile.hovered ? "#D5C5FF" : "#303038"
+                                border.color: tile.hovered ? "#CFB6FF" : "#383841"
                                 border.width: tile.hovered ? 2 : 1
+                                border.pixelAligned: false
                                 Behavior on border.color {
-                                    ColorAnimation { duration: 140 }
+                                    ColorAnimation { duration: 170 }
                                 }
                             }
 
@@ -218,6 +280,8 @@ Window {
                                 sourceSize.width: 520
                                 asynchronous: true
                                 cache: true
+                                smooth: true
+                                mipmap: true
                                 visible: false
                             }
                             Rectangle {
@@ -229,6 +293,8 @@ Window {
                                 color: "#FFFFFF"
                                 visible: false
                                 layer.enabled: true
+                                layer.smooth: true
+                                layer.samples: 4
                             }
                             MultiEffect {
                                 anchors.fill: parent
@@ -246,7 +312,11 @@ Window {
                                 anchors.margins: 7
                                 height: 32
                                 radius: 8
-                                color: "#B6000000"
+                                antialiasing: true
+                                color: tile.hovered ? "#D4000000" : "#B6000000"
+                                Behavior on color {
+                                    ColorAnimation { duration: 170 }
+                                }
                             }
                             Text {
                                 anchors.left: parent.left
@@ -272,6 +342,7 @@ Window {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: root.notifyPreview(tile.modelData.title)
                             }
+                            } // tileSurface
                         }
 
                         WheelHandler {
