@@ -33,6 +33,7 @@ struct PlaybackOptions {
 };
 struct PlaybackOutcome {
     int next_item=-1,next_variant=-1;
+    int requested_navigation=-1; // 0 home, 1 TV, 2 movies, 3 series
     double position=0,speed=1,volume=100;
     double audio_delay=0,sub_delay=0,sub_scale=1,aspect=-1;
     int64_t audio=-1,subtitle=-1;

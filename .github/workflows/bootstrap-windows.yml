@@ -2,7 +2,7 @@ name: Xuper TV Desktop | Windows preview
 
 on:
   push:
-    branches: [windows-desktop-preview, feature/ui-cinematic-tv]
+    branches: [windows-desktop-preview, feature/ui-cinematic-tv, feature/apple-controller-server]
     paths:
       - '.github/workflows/bootstrap-windows.yml'
       - 'patches/**'

@@ -34,3 +34,6 @@ cacert.pem
 !packaging/runtime/switch/xuperswitch/font.ttf
 !packaging/runtime/switch/xuperswitch/cacert.pem
 /dist/
+
+# iPhone controller pairing token: local-only, never commit
+remote_secret.txt

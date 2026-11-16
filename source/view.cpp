@@ -1,4 +1,7 @@
 #include "view.hpp"
+#if defined(_WIN32)
+#include "remote_server.hpp"
+#endif
 #include "display_tools.hpp"
 #include "trace.hpp"
 #include "donation_qr.hpp"
@@ -139,8 +142,14 @@ void View::draw(const Catalog& c,size_t selected,const std::string& status,bool 
     }
     if(!has)text(36,465,c.title=="Favoritos"?"Aún no tienes canales favoritos.":"Sin contenido. Revisa el estado de conexión.",muted,980,font,80);
     rect({20,679,1240,1},{48,52,65,255});
-    text(26,686,status,muted,1225,small,27);
+    text(26,686,status,muted,747,small,27);
+    const auto remote=RemoteServer::shared().info();
+    const std::string connection=!remote.running?"Control iPhone: no disponible":
+        remote.connected?"iPhone conectado  |  "+remote.address+":47831":
+        "iPhone: "+remote.address+":47831  |  PIN: "+remote.pin;
+    text(772,685,connection,remote.connected?SDL_Color{108,234,184,255}:white,477,small,30);
     SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
+    RemoteServer::shared().draw_cursor(renderer);
     SDL_RenderPresent(renderer);
     return;
 #else

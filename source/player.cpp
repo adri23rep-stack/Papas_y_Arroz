@@ -1,4 +1,7 @@
 #include "player.hpp"
+#if defined(_WIN32)
+#include "remote_server.hpp"
+#endif
 #include "channel_rail.hpp"
 #if defined(_WIN32)
 #include "live_preview.hpp"
@@ -219,6 +222,18 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
         int horizontal=0,vertical=0,jump=0,item_delta=0;SDL_Event event;
         while(SDL_PollEvent(&event)){
             if(event.type==SDL_QUIT)running=false;
+#ifdef _WIN32
+            if(event.type==SDL_USEREVENT){
+                if(event.user.code==REMOTE_VOLUME){
+                    const int v=std::clamp(static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1)),0,100);
+                    set_number("volume",v);notice="Volumen: "+std::to_string(v)+"%";show();
+                }
+                if(event.user.code==REMOTE_BRIGHTNESS){
+                    const int v=std::clamp(static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1)),0,100);
+                    set_number("brightness",v*2-100);notice="Brillo del video: "+std::to_string(v)+"%";show();
+                }
+            }
+#endif
             if(live_channels&&!menu){
                 if(event.type==SDL_MOUSEMOTION){
                     if(rail.pressed())rail.motion(event.motion.x);
@@ -264,7 +279,13 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
                     continue;
                 }
                 switch(event.key.keysym.sym){
-                case SDLK_ESCAPE:back=true;break;case SDLK_SPACE:activate=true;break;case SDLK_RETURN:activate=true;break;
+#ifdef _WIN32
+                case SDLK_F4:result.requested_navigation=0;running=false;break;
+                case SDLK_F5:result.requested_navigation=1;running=false;break;
+                case SDLK_F6:result.requested_navigation=2;running=false;break;
+                case SDLK_F7:result.requested_navigation=3;running=false;break;
+#endif
+                case SDLK_b:case SDLK_ESCAPE:back=true;break;case SDLK_SPACE:activate=true;break;case SDLK_RETURN:activate=true;break;
                 case SDLK_x:case SDLK_TAB:settings=true;break;case SDLK_y:audio=true;break;case SDLK_s:subs=true;break;
                 case SDLK_LEFT:horizontal-=1;break;case SDLK_RIGHT:horizontal+=1;break;case SDLK_UP:vertical-=1;break;case SDLK_DOWN:vertical+=1;break;
                 case SDLK_PAGEUP:item_delta=-1;break;case SDLK_PAGEDOWN:item_delta=1;break;
@@ -500,6 +521,9 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
                 }
                 SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
             }
+#ifdef _WIN32
+            RemoteServer::shared().draw_cursor(renderer);
+#endif
             SDL_RenderPresent(renderer);
         }else SDL_Delay(5);
     }

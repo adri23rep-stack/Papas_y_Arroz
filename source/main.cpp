@@ -17,6 +17,7 @@
 #if defined(_WIN32)
 #include <windows.h>
 #include <filesystem>
+#include "remote_server.hpp"
 #endif
 #ifdef __SWITCH__
 #include <switch.h>
@@ -88,6 +89,10 @@ int main(int argc,char** argv){
 #endif
         return 1;
     }
+#ifdef _WIN32
+    if(!xs::RemoteServer::shared().start())
+        status="El control de iPhone no pudo iniciar. Comprueba firewall o puerto 47831.";
+#endif
     xs::PlaybackHistory playback_history;
     xs::SavedCatalog saved(
 #ifdef __SWITCH__
@@ -97,6 +102,7 @@ int main(int argc,char** argv){
 #endif
     );
     size_t selected=0;bool running=true,redraw=true,autoload=true,donating=false;
+    int pending_remote_navigation=-1;
     xs::Catalog root_catalog;
     std::atomic<bool> cancel_task{false};std::atomic<size_t> task_done{0},task_total{0};
     std::shared_ptr<xs::ServiceSession> session;
@@ -131,10 +137,15 @@ int main(int argc,char** argv){
 #endif
         if(view.poll_images())redraw=true;
         if(redraw){view.favorite=!catalog.entries.empty()&&saved.contains(catalog.entries[std::min(selected,catalog.entries.size()-1)]);if(donating)view.donation();else view.draw(catalog,selected,status,full_memory);redraw=false;}
-        bool up=false,down=false,left=false,right=false,play=false,reload=false,login=autoload,search=false,back=false,next=false,previous=false,toggle_favorite=false;int nav_action=-1;autoload=false;SDL_Event event;
+        bool up=false,down=false,left=false,right=false,play=false,reload=false,login=autoload,search=false,back=false,next=false,previous=false,toggle_favorite=false;int nav_action=pending_remote_navigation;pending_remote_navigation=-1;autoload=false;SDL_Event event;
         while(SDL_PollEvent(&event)){
             if(event.type==SDL_QUIT)running=false;
             if(event.type==SDL_WINDOWEVENT)redraw=true;
+#ifdef _WIN32
+            if(event.type==SDL_MOUSEMOTION)redraw=true;
+            if(event.type==SDL_USEREVENT&&event.user.code==xs::REMOTE_VOLUME)
+                playback_history.volume=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
+#endif
             if(event.type==SDL_MOUSEWHEEL){previous|=event.wheel.y>0;next|=event.wheel.y<0;}
             if(event.type==SDL_MOUSEBUTTONDOWN||event.type==SDL_FINGERDOWN){
                 const int x=event.type==SDL_FINGERDOWN?int(event.tfinger.x*1280):event.button.x,y=event.type==SDL_FINGERDOWN?int(event.tfinger.y*720):event.button.y;
@@ -144,6 +155,12 @@ int main(int argc,char** argv){
             if(event.type==SDL_KEYDOWN){
                 switch(event.key.keysym.sym){
                     case SDLK_ESCAPE:if(!history.empty()||donating||view.nav_focus>=0)back=true;else running=false;break;
+#ifdef _WIN32
+                    case SDLK_F4:nav_action=0;break;
+                    case SDLK_F5:nav_action=1;break;
+                    case SDLK_F6:nav_action=2;break;
+                    case SDLK_F7:nav_action=3;break;
+#endif
                     case SDLK_F11:view.toggle_fullscreen();redraw=true;break;
                     case SDLK_F10:view.move_to_next_display();redraw=true;break;
                     case SDLK_RETURN:if(event.key.keysym.mod&KMOD_ALT){view.toggle_fullscreen();redraw=true;}else play=true;break;
@@ -331,6 +348,9 @@ int main(int argc,char** argv){
                         if(!source.empty()){
                             xs::PlaybackOutcome outcome;status=xs::play(source,view.renderer,headers,options,&outcome);xs::trace("main:video_returned");
                             speed=outcome.speed;volume=outcome.volume;auto_next=outcome.auto_next;
+#ifdef _WIN32
+                            if(outcome.requested_navigation>=0)pending_remote_navigation=outcome.requested_navigation;
+#endif
                             if(status.empty()&&(outcome.position>3||outcome.ended)&&!saved.remember(current))xs::trace("catalog:recent_save_failed");
                             if(status.empty()&&!playback_history.save(current.kind==xs::EntryKind::Episode?current.content_id:"",outcome.position,outcome.speed,outcome.volume,outcome.auto_next,outcome.ended))xs::trace((std::string("play:history_save_failed stage=")+playback_history.last_error).c_str());
                             if(outcome.ended&&auto_next&&!current.series_id.empty()&&static_cast<size_t>(options.item+1)<queue.size())outcome.next_item=options.item+1;
@@ -350,6 +370,9 @@ int main(int argc,char** argv){
             status=file.is_open()?"Lista local recargada.":"No se pudo abrir catalog.m3u.";redraw=true;}
         SDL_Delay(10);
     }
+#ifdef _WIN32
+    xs::RemoteServer::shared().stop();
+#endif
     xs::trace("main:close_view");view.close();
 #ifdef __SWITCH__
     if(network)socketExit();

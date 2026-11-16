@@ -62,7 +62,8 @@ target_sources(XuperTVDesktop PRIVATE
 )
 # Muted secondary decoder is a Windows-only experimental UI feature.
 if(WIN32)
-  target_sources(XuperTVDesktop PRIVATE source/live_preview.cpp)
+  target_sources(XuperTVDesktop PRIVATE source/live_preview.cpp source/remote_server.cpp)
+  target_link_libraries(XuperTVDesktop PRIVATE ws2_32 bcrypt)
 endif()
 target_include_directories(XuperTVDesktop PRIVATE include include/vendor)
 target_link_libraries(XuperTVDesktop PRIVATE
@@ -99,6 +100,17 @@ if(BUILD_TESTING)
   add_executable(channel_rail_test tests/channel_rail_test.cpp)
   target_include_directories(channel_rail_test PRIVATE include)
   add_test(NAME channel_rail_test COMMAND channel_rail_test)
+  if(WIN32)
+    add_executable(remote_server_test tests/remote_server_test.cpp source/remote_server.cpp)
+    target_include_directories(remote_server_test PRIVATE include include/vendor)
+    target_link_libraries(remote_server_test PRIVATE SDL2::SDL2 ws2_32 bcrypt)
+    add_test(NAME remote_server_test COMMAND remote_server_test)
+    if(MSVC)
+      target_compile_options(remote_server_test PRIVATE /UNDEBUG)
+    else()
+      target_compile_options(remote_server_test PRIVATE -UNDEBUG)
+    endif()
+  endif()
 
   # Test cases use assert() for both checks and setup/side effects.
   # Release adds -DNDEBUG, which otherwise skips their setup and crashes
