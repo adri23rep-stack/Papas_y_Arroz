@@ -35,6 +35,7 @@ const char* category(const Entry& e) {
 // Entirely new layout and visual hierarchy, sharing only existing catalogue,
 // artwork cache, player controls and the already-paired remote infrastructure.
 void View::draw_nova(const Catalog& c,size_t selected,const std::string& status){
+    if(nova_is_home(c)){draw_nova_home(c,selected);return;}
     poll_images();
     SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
     rect({0,0,1280,720},ink);
@@ -175,6 +176,15 @@ void View::draw_nova(const Catalog& c,size_t selected,const std::string& status)
 
 int View::hit_nova(const Catalog& c,size_t selected,int x,int y)const{
     if(pairing_visible)return -13;
+    if(nova_is_home(c)){
+        // The icon AND the adjacent section heading open the full catalogue.
+        for(int row=0;row<3;++row){
+            const int top=nova_row_y(row)-37;
+            if(x>=28&&x<340&&y>=top&&y<top+34)
+                return row==0?-3:row==1?-5:-4;
+        }
+        return nova_hit(c,selected,home_last_index,x,y,nova_row_pixels);
+    }
     if(x>=13&&x<203&&y>=149&&y<149+6*67){
         const int i=(y-149)/67;
         if((y-149)%67<49)return -2-i;
