@@ -453,15 +453,14 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                 }
             }
             if(!failed&&live){
-                // Reserve ~15 s for live TV. cache-secs is needed because
-                // cache=yes overrides demuxer-readahead-secs in MPV.
-                failed=!opt("cache-pause","yes") ||
-                       !opt("cache-pause-initial","yes") ||
-                       !opt("cache-pause-wait","15") ||
-                       !opt("cache-secs","30") ||
-                       !opt("demuxer-readahead-secs","30") ||
-                       !opt("demuxer-max-bytes","128MiB") ||
-                       !opt("demuxer-max-back-bytes","4MiB");
+                // cache-secs and readahead must both be set: cache=yes
+                // overrides readahead on network TV streams in mpv.
+                for(const auto& setting:xs::kNovaLiveCacheOptions){
+                    if(!opt(setting.first,setting.second)){
+                        failed=true;
+                        break;
+                    }
+                }
             }
             if(!failed&&xs::nova_can_resume(live,restore.position)){
                 const std::string start=std::to_string(restore.position);
