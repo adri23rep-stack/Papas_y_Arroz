@@ -3,17 +3,78 @@
 #include "nova_layout.hpp"
 #include "remote_server.hpp"
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <random>
-#include <vector>
+#include <string>
 
 namespace xs {
 namespace {
-constexpr SDL_Color canvas{12,15,25,255};
-constexpr SDL_Color white{249,248,251,255};
+constexpr SDL_Color black{0,0,0,255};
+constexpr SDL_Color white{247,248,251,255};
 constexpr SDL_Color muted{193,198,211,255};
-constexpr SDL_Color card{28,31,45,255};
 constexpr SDL_Color focus{181,143,255,255};
-constexpr SDL_Color icon_fill{45,47,67,238};
+constexpr SDL_Color card{15,16,20,255};
+constexpr SDL_Color icon_fill{26,27,32,245};
+
+// A small curated snapshot from Rotten Tomatoes' 2026 best film/TV
+// collections (November 2026). MetaHub serves landscape backdrops, not
+// low-resolution portrait posters. The list is only visual wallpaper;
+// it never modifies service catalogue titles or playback availability.
+constexpr std::array<const char*,6> best_of_2026{{
+    "tt12042730", // Project Hail Mary
+    "tt33764258", // The Odyssey
+    "tt2056785",  // Wildwood
+    "tt34384661", // Godzilla Minus Zero
+    "tt35538033", // Resident Evil
+    "tt23112594"  // VisionQuest (series)
+}};
+// Landscape-still fallbacks from film sites, not screenshots from our
+// service's tiny cover thumbnails. They are loaded remotely, not bundled.
+constexpr std::array<const char*,3> verified_still_urls{{
+    "https://assets.eyefilm.nl/images/production/_1920x1080_crop_center-center_none/1632957/still_The-Odyssey-Christopher-Nolan-US-GB-2026-1.webp",
+    "https://img.kinobaza.com.ua/t/p/original/sl5NJ1vtyhP9Vr88bB4blULsJYp.jpg",
+    "https://cdn.observatoriodocinema.com.br/2025/10/vision-quest-1536x646.jpeg"
+}};
+constexpr int wallpaper_count=static_cast<int>(best_of_2026.size()+verified_still_urls.size());
+
+std::string wallpaper_url(int n){
+    const int index=(n%wallpaper_count+wallpaper_count)%wallpaper_count;
+    if(index<static_cast<int>(best_of_2026.size()))
+        return "https://images.metahub.space/background/original/"+
+               std::string(best_of_2026[static_cast<size_t>(index)])+"/img";
+    return verified_still_urls[static_cast<size_t>(index-best_of_2026.size())];
+}
+
+int corner_inset(int y,int height,int radius){
+    const int near=std::min(y,height-1-y);
+    if(near>=radius)return 0;
+    const int dy=radius-1-near;
+    return radius-static_cast<int>(std::sqrt(static_cast<double>(radius*radius-dy*dy)));
+}
+void round_fill(SDL_Renderer* renderer,SDL_Rect b,int radius,SDL_Color color){
+    if(b.w<1||b.h<1)return;
+    radius=std::min(radius,std::min(b.w,b.h)/2);
+    SDL_SetRenderDrawColor(renderer,color.r,color.g,color.b,color.a);
+    for(int y=0;y<b.h;++y){
+        const int edge=corner_inset(y,b.h,radius);
+        SDL_RenderDrawLine(renderer,b.x+edge,b.y+y,b.x+b.w-1-edge,b.y+y);
+    }
+}
+// Crop the actual artwork to the rounded tile without relying on
+// OpenGL, SDL3 or new dependencies. The surrounding rows are solid black.
+void round_mask(SDL_Renderer* renderer,SDL_Rect b,int radius){
+    SDL_SetRenderDrawColor(renderer,0,0,0,255);
+    for(int y=0;y<radius;++y){
+        const int edge=corner_inset(y,b.h,radius);
+        for(int x=0;x<edge;++x){
+            SDL_RenderDrawPoint(renderer,b.x+x,b.y+y);
+            SDL_RenderDrawPoint(renderer,b.x+b.w-1-x,b.y+y);
+            SDL_RenderDrawPoint(renderer,b.x+x,b.y+b.h-1-y);
+            SDL_RenderDrawPoint(renderer,b.x+b.w-1-x,b.y+b.h-1-y);
+        }
+    }
+}
 
 void heading_symbol(SDL_Renderer* renderer,int row,int x,int y){
     SDL_SetRenderDrawColor(renderer,237,230,255,255);
@@ -28,8 +89,6 @@ void heading_symbol(SDL_Renderer* renderer,int row,int x,int y){
         SDL_RenderDrawLine(renderer,x+10,y+9,x+19,y+9);
         SDL_RenderDrawLine(renderer,x+10,y+13,x+19,y+13);
         SDL_RenderDrawLine(renderer,x+10,y+17,x+17,y+17);
-        SDL_RenderDrawLine(renderer,x+24,y+7,x+27,y+7);
-        SDL_RenderDrawLine(renderer,x+24,y+22,x+27,y+22);
     }else{
         SDL_Rect screen{x+5,y+12,22,14};
         SDL_RenderDrawRect(renderer,&screen);
@@ -66,68 +125,90 @@ void View::ensure_nova_visible(const Catalog& c,size_t selected){
 void View::draw_nova_home(const Catalog& c,size_t selected){
     poll_images();
     SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
-    rect({0,0,1280,720},canvas);
+    rect({0,0,1280,720},black);
 
-    // Pick one ACTUAL series/movie poster at random per app session.
-    // Do not reshuffle when navigating a card or polling image downloads.
-    if(nova_backdrop_key.empty()){
-        std::vector<const Entry*> covers;
-        for(const auto& e:c.entries){
-            if(e.kind==EntryKind::Asset&&!e.artwork.empty()&&
-               !e.artwork_cache.empty())covers.push_back(&e);
-        }
-        if(!covers.empty()){
-            std::mt19937 generator(std::random_device{}());
-            const auto* chosen=covers[std::uniform_int_distribution<size_t>(
-                0,covers.size()-1)(generator)];
-            nova_backdrop_url=chosen->artwork;
-            nova_backdrop_key=chosen->artwork_cache;
-        }
+    if(nova_backdrop_url.empty()){
+        std::mt19937 random(std::random_device{}());
+        nova_backdrop_choice=std::uniform_int_distribution<int>(0,wallpaper_count-1)(random);
+        nova_backdrop_attempt=0;
     }
-    if(!nova_backdrop_key.empty())
-        image_cover(nova_backdrop_url,nova_backdrop_key,{0,0,1280,315});
 
-    // The backdrop fades into the app background exactly at the TV row.
-    // It never darkens or obscures the series and movies below.
-    for(int y=105;y<300;y+=3){
-        const int alpha=std::min(255,(y-105)*255/195);
-        rect({0,y,1280,3},{canvas.r,canvas.g,canvas.b,
-             static_cast<Uint8>(alpha)});
+    // On a missing/offline wallpaper try another 2026 title; don't
+    // accidentally enlarge catalogue thumbnails as the backdrop.
+    SDL_Texture* wallpaper=nullptr;
+    for(;nova_backdrop_attempt<wallpaper_count;++nova_backdrop_attempt){
+        const std::string candidate=wallpaper_url(nova_backdrop_choice+nova_backdrop_attempt);
+        const std::string key=artwork_key(candidate);
+        if(images->failed(key))continue;
+        nova_backdrop_url=candidate;
+        nova_backdrop_key=key;
+        wallpaper=images->get(candidate,key,true);
+        if(!wallpaper)break; // Async artwork download is still underway.
+        int width=0,height=0;
+        SDL_QueryTexture(wallpaper,nullptr,nullptr,&width,&height);
+        if(width>=900&&height>=450)break;
+        wallpaper=nullptr; // Skip tiny images even if the server returns one.
     }
-    rect({0,300,1280,420},canvas);
+    if(wallpaper){
+        int width=0,height=0;
+        SDL_QueryTexture(wallpaper,nullptr,nullptr,&width,&height);
+        SDL_Rect from{0,0,width,height};
+        const double dst_ratio=1280.0/315.0;
+        const double image_ratio=static_cast<double>(width)/height;
+        if(image_ratio>dst_ratio){
+            from.w=std::max(1,static_cast<int>(height*dst_ratio));
+            from.x=(width-from.w)/2;
+        }else{
+            from.h=std::max(1,static_cast<int>(width/dst_ratio));
+            from.y=(height-from.h)/2;
+        }
+        const SDL_Rect to{0,0,1280,315};
+        SDL_RenderCopy(renderer,wallpaper,&from,&to);
+    }
 
-    rect({24,21,5,43},focus);
+    // True black fade. Reaches fully opaque black BEFORE first TV cards.
+    for(int y=96;y<297;y+=3){
+        const int opacity=std::min(255,(y-96)*255/198);
+        rect({0,y,1280,3},{0,0,0,static_cast<Uint8>(opacity)});
+    }
+    rect({0,297,1280,423},black);
+    round_fill(renderer,{24,20,5,44},2,focus);
     text(42,25,"XUPER TV",white,320,heading,44);
 
     const char* names[]={"TV en vivo","Series","Películas"};
+    const auto tiles=nova_tiles(c,selected,home_last_index,nova_row_pixels);
     for(int row=0;row<3;++row){
         const int y=nova_row_y(row)-37;
-        rect({30,y,34,31},icon_fill);
+        round_fill(renderer,{30,y,34,31},8,icon_fill);
         heading_symbol(renderer,row,32,y);
         text(75,y-2,names[row],white,278,font,34);
-        const SDL_Rect clip{28,nova_row_y(row)-3,1214,nova_card_h+6};
+
+        const SDL_Rect clip{28,nova_row_y(row)-4,1214,nova_card_h+8};
         SDL_RenderSetClipRect(renderer,&clip);
-        for(const auto& tile:nova_tiles(c,selected,home_last_index,nova_row_pixels)){
+        for(const auto& tile:tiles){
             if(nova_row_of(c.entries[tile.index])!=row)continue;
             const Entry& e=c.entries[tile.index];
-            const bool is_focused=nav_focus<0&&selected==tile.index;
-            rect({tile.x-3,tile.y-3,tile.w+6,tile.h+6},
-                 is_focused?focus:SDL_Color{43,47,65,255});
-            rect({tile.x,tile.y,tile.w,tile.h},card);
-            const SDL_Rect artwork{tile.x+2,tile.y+2,tile.w-4,76};
-            rect(artwork,{35,39,57,255});
+            const bool selected_tile=nav_focus<0&&selected==tile.index;
+            if(selected_tile)
+                round_fill(renderer,{tile.x-2,tile.y-2,tile.w+4,tile.h+4},15,focus);
+            round_fill(renderer,{tile.x,tile.y,tile.w,tile.h},13,card);
+            const SDL_Rect artwork{tile.x+1,tile.y+1,tile.w-2,tile.h-2};
             const bool drawn=row==0
                 ?image(e.artwork,e.artwork_cache,artwork)
                 :image_cover(e.artwork,e.artwork_cache,artwork);
-            if(!drawn)text(tile.x+9,tile.y+22,row==0?"TV":row==1?"SERIE":"PELÍCULA",
-                           muted,tile.w-17,small,31);
-            rect({tile.x+2,tile.y+78,tile.w-4,tile.h-80},{17,19,30,255});
-            text(tile.x+8,tile.y+80,e.title,white,tile.w-16,small,23);
+            if(!drawn)
+                text(tile.x+11,tile.y+18,row==0?"TV":row==1?"SERIE":"PELÍCULA",
+                     muted,tile.w-20,small,31);
+            // Minimal translucent label rather than a heavy framed box.
+            for(int j=0;j<35;j+=5)
+                rect({tile.x+1,tile.y+tile.h-35+j,tile.w-2,5},
+                     {0,0,0,static_cast<Uint8>(150+j*2)});
+            text(tile.x+9,tile.y+tile.h-28,e.title,white,tile.w-18,small,24);
+            round_mask(renderer,{tile.x,tile.y,tile.w,tile.h},13);
         }
         SDL_RenderSetClipRect(renderer,nullptr);
-        if(nova_row_indices(c,row).empty()){
+        if(nova_row_indices(c,row).empty())
             text(34,nova_row_y(row)+28,"Sin contenido disponible",muted,450,small,31);
-        }
     }
     SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
     RemoteServer::shared().draw_cursor(renderer);
