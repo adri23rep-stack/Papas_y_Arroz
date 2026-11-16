@@ -199,11 +199,17 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live){
         emit changed();
     },Qt::QueuedConnection);
     QString endMessage=QStringLiteral("Volviste al catálogo.");
+    double lastPosition=0.0;
+    bool reachedEnd=false;
     while(!stop_.load()){
         const mpv_event* event=mpv_wait_event(mpv,0.2);
+        double now=0.0;
+        if(mpv_get_property(mpv,"time-pos",MPV_FORMAT_DOUBLE,&now)>=0&&
+           now>=0.0&&now<86400.0)lastPosition=now;
         if(!event)continue;
         if(event->event_id==MPV_EVENT_END_FILE){
             const auto* end=static_cast<const mpv_event_end_file*>(event->data);
+            reachedEnd=end&&end->reason==MPV_END_FILE_REASON_EOF;
             if(end&&end->reason==MPV_END_FILE_REASON_ERROR)
                 endMessage=QStringLiteral("Se cortó la reproducción.");
             break;
@@ -215,5 +221,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live){
         handle_=nullptr;
     }
     mpv_terminate_destroy(mpv);
+    QMetaObject::invokeMethod(this,[this,lastPosition,reachedEnd](){
+        emit finishedPlayback(lastPosition,reachedEnd);
+    },Qt::QueuedConnection);
     finish(endMessage);
 }
