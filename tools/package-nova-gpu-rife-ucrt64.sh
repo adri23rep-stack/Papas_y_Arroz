@@ -24,8 +24,10 @@ for f in flownet.bin flownet.param; do
   curl --fail --location --retry 3 --silent --show-error \
     "$repo/$commit/models/rife-v4.6_ensembleFalse/$f" -o "$models/$f"
 done
-[[ "$(git hash-object "$models/flownet.bin")" == "5e16e8112ec5213348cc8928705f1cd8dd19e8f9" ]]
-[[ "$(git hash-object "$models/flownet.param")" == "609feeed0ac8b446de68deb9a5e3e272b6b52be2" ]]
+# MSYS2's build shell does not ship git. Compute Git blob SHA-1 with Python.
+blobhash='import hashlib,pathlib,sys; b=pathlib.Path(sys.argv[1]).read_bytes(); h=hashlib.sha1(b"blob "+str(len(b)).encode()+bytes([0])+b).hexdigest(); assert h==sys.argv[2], "model hash mismatch: "+h'
+/ucrt64/bin/python.exe -c "$blobhash" "$models/flownet.bin" "5e16e8112ec5213348cc8928705f1cd8dd19e8f9"
+/ucrt64/bin/python.exe -c "$blobhash" "$models/flownet.param" "609feeed0ac8b446de68deb9a5e3e272b6b52be2"
 test "$(wc -c < "$models/flownet.bin")" -eq 10629680
 test "$(wc -c < "$models/flownet.param")" -eq 26915
 
@@ -39,11 +41,13 @@ test -s /ucrt64/bin/libvapoursynth-script-0.dll
 test -s /ucrt64/bin/libvapoursynth.dll
 mkdir -p "$gpu/python/lib/python$python_version/site-packages"
 # Copy stdlib without optional development/tests to reduce the ZIP size.
-rsync -a "$python_root/" "$gpu/python/lib/python$python_version/" \
-  --exclude='site-packages/' --exclude='test/' --exclude='tests/' \
-  --exclude='__pycache__/' --exclude='tkinter/' --exclude='idlelib/' \
-  --exclude='turtledemo/' --exclude='ensurepip/' --exclude='venv/' \
-  --exclude='pydoc_data/' --exclude='lib2to3/'
+# tar ships with the MSYS2 base runtime; rsync is not guaranteed.
+tar -C "$python_root" \
+  --exclude='./site-packages' --exclude='./test' --exclude='./tests' \
+  --exclude='*/__pycache__' --exclude='./tkinter' --exclude='./idlelib' \
+  --exclude='./turtledemo' --exclude='./ensurepip' --exclude='./venv' \
+  --exclude='./pydoc_data' --exclude='./lib2to3' -cf - . |
+  tar -C "$gpu/python/lib/python$python_version" -xf -
 # MSYS2 VapourSynth has a platform-tagged .pyd, not generic MSVC .pyd.
 for module in "$python_root"/site-packages/vapoursynth*.pyd; do
   test -s "$module"
