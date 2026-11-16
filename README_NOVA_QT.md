@@ -67,3 +67,25 @@ motor de video Qt: `source/nova_qt_player.cpp`.
 Los scripts no crean ramas, no fusionan `main` y no publican releases.
 Antes de distribuir públicamente una versión estable deben respetarse las
 licencias de Qt y las demás bibliotecas incluidas.
+
+## Correcciones de conexión y reproducción local
+
+Si Nova muestra «Catálogo desconectado», verás **el error de conexión
+directamente bajo el título**, junto al botón «Reintentar». La app nunca
+presenta el contenido de prueba como si fuera un canal real. Al fallar la
+conexión, aparece una fila independiente de **Prueba local del reproductor
+(no es TV en vivo)**, que utiliza el archivo real `test.mp4` que ahora se
+incluye en el paquete Windows.
+
+Las primeras compilaciones copiaban `service.template.json` con la ruta
+de certificado de Nintendo Switch (`sdmc:/...`). La versión corregida
+empaqueta la ruta relativa `cacert.pem`. También interpreta en memoria la
+ruta antigua de `service.json` generados previamente, **sin modificar
+la identidad de instalación ni tus datos privados**. Ya no hace falta
+borrar tus archivos de configuración para probar el arreglo.
+
+La conexión real depende de que el servidor acepte la activación, permisos
+y acceso regional. El reproductor no fabrica canales ni evade restricciones
+del proveedor. Si la pantalla presenta un error de red o permiso, ese texto
+es el diagnóstico que debemos revisar antes de asegurar que el catálogo
+está conectado.
