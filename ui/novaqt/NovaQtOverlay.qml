@@ -255,7 +255,9 @@ Item {
             Text {
                 x: 26; y: 443
                 width: parent.width - 52
-                text: "RIFE usa GPU Vulkan. Requiere complemento opcional. 24→48 / 30→60 FPS; puede no alcanzar tiempo real."
+                text: novaHome.gpuRifeReady
+                    ? "GPU RIFE preparado. 24→48 / 30→60 FPS; monitorea la sincronización."
+                    : "RIFE GPU no instalado. Extrae el ZIP GPU RIFE adicional; el video normal sigue disponible."
                 color: "#E9BC89"
                 font.family: "Segoe UI"
                 font.pixelSize: 12
