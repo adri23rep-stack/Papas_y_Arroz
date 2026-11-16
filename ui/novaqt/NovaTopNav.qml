@@ -8,6 +8,7 @@ Item {
     z: 18
 
     signal pairRequested()
+    signal settingsRequested()
     property int selected: -1
     signal tabChosen(int index)
     function submitSearch() {
@@ -43,8 +44,8 @@ Item {
         width: 42
         height: 42
         radius: 12
-        color: pairMouse.containsMouse || nav.selected === 5 ? "#37313F" : "#222227"
-        border.width: nav.selected === 5 ? 2 : 0
+        color: pairMouse.containsMouse || nav.selected === 6 ? "#37313F" : "#222227"
+        border.width: nav.selected === 6 ? 2 : 0
         border.color: "#A78BFA"
         Accessible.role: Accessible.Button
         Accessible.name: "Vincular iPhone por QR o PIN"
@@ -71,6 +72,34 @@ Item {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: nav.pairRequested()
+        }
+    }
+    Rectangle {
+        id: settingsButton
+        anchors.right: parent.right
+        anchors.rightMargin: 82
+        y: 13
+        width: 42
+        height: 42
+        radius: 12
+        color: settingsMouse.containsMouse || nav.selected === 5 ? "#37313F" : "#222227"
+        border.width: nav.selected === 5 ? 2 : 0
+        border.color: "#A78BFA"
+        Accessible.role: Accessible.Button
+        Accessible.name: "Ajustes de calidad de video"
+        Accessible.onPressAction: nav.settingsRequested()
+        Text {
+            anchors.centerIn: parent
+            text: "⚙"
+            color: "#F4F3F7"
+            font.pixelSize: 24
+        }
+        MouseArea {
+            id: settingsMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: nav.settingsRequested()
         }
     }
     Row {
