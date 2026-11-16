@@ -32,7 +32,8 @@ public:
     void applySetting(int id,int value);
     // Quality requests are picked up and debounced by the running mpv worker.
     void requestQuality(int value);
-    void requestMotion(int value);
+    bool requestMotion(int value);
+    static bool gpuRifeReady();
     void toggleFullscreen();
     void selectTrack(int kind,int id,uint32_t generation);
 signals:
