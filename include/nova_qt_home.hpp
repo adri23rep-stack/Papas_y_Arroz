@@ -24,6 +24,7 @@ class NovaQtHome : public QObject {
     Q_PROPERTY(bool browsing READ browsing NOTIFY changed)
     Q_PROPERTY(int selectedItem READ selectedItem NOTIFY changed)
     Q_PROPERTY(int selectedSection READ selectedSection NOTIFY changed)
+    Q_PROPERTY(int selectedHomeCard READ selectedHomeCard NOTIFY changed)
     Q_PROPERTY(QString pairingAddress READ pairingAddress NOTIFY changed)
     Q_PROPERTY(QString pairingPin READ pairingPin NOTIFY changed)
     Q_PROPERTY(QString pairingQr READ pairingQr NOTIFY changed)
@@ -45,6 +46,7 @@ public:
     bool browsing() const{return browsing_;}
     int selectedItem() const{return selected_item_;}
     int selectedSection() const{return selected_section_;}
+    int selectedHomeCard() const{return selected_home_card_;}
     QString pairingAddress() const{return address_;}
     QString pairingPin() const{return pin_;}
     QString pairingQr() const{return qr_;}
