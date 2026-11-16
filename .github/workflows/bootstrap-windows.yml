@@ -238,9 +238,21 @@ jobs:
             # Start-Process gives the real exit code and captures QML errors.
             $logOut = Join-Path $env:RUNNER_TEMP 'nova-qt-smoke-out.txt'
             $logErr = Join-Path $env:RUNNER_TEMP 'nova-qt-smoke-err.txt'
-            $qt = Start-Process -FilePath ".\XuperTVNovaQt.exe" -ArgumentList @("--smoke") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $logOut -RedirectStandardError $logErr
+            Remove-Item ".\nova-qt-smoke.log" -ErrorAction SilentlyContinue
+            $qt = Start-Process -FilePath ".\XuperTVNovaQt.exe" -ArgumentList @("--smoke") -PassThru -NoNewWindow -RedirectStandardOutput $logOut -RedirectStandardError $logErr
+            $finished = $qt.WaitForExit(20000)
+            if (-not $finished) {
+              Stop-Process -Id $qt.Id -Force -ErrorAction SilentlyContinue
+            }
             if (Test-Path $logOut) { Get-Content $logOut }
             if (Test-Path $logErr) { Get-Content $logErr }
+            if (Test-Path ".\nova-qt-smoke.log") {
+              Get-Content ".\nova-qt-smoke.log"
+              Remove-Item ".\nova-qt-smoke.log" -ErrorAction SilentlyContinue
+            }
+            if (-not $finished) {
+              throw "Qt Quick preview did not exit after 20 seconds; see startup checkpoints."
+            }
             if ($qt.ExitCode -ne 0) {
               throw "Standalone Qt Quick QML preview failed outside MSYS2 PATH (exit $($qt.ExitCode))."
             }
