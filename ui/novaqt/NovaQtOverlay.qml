@@ -119,91 +119,29 @@ Item {
         }
         GridView {
             id: entries
-            x: 31
-            y: 110
-            width: Math.max(200, parent.width - 62)
-            height: Math.max(220, parent.height - 158)
+            x: 34
+            y: 112
+            width: Math.max(200, parent.width - 66)
+            height: Math.max(220, parent.height - 161)
             model: novaHome.items
             currentIndex: novaHome.selectedItem
-            cellWidth: 206
-            cellHeight: 164
+            cellWidth: 224
+            cellHeight: novaHome.pageTitle === "TV en vivo" ? 205 : 314
             clip: true
-            cacheBuffer: 330
+            cacheBuffer: 450
             boundsBehavior: Flickable.StopAtBounds
 
-            delegate: Item {
-                id: tile
+            delegate: NovaCard {
                 required property var modelData
                 required property int index
-                width: 198
-                height: 150
-                property bool hovered: mouse.containsMouse
-                Rectangle {
-                    anchors.fill: parent
-                    radius: 15
-                    antialiasing: true
-                    color: "#23222C"
-                    border.width: tile.hovered || entries.currentIndex === tile.index ? 2 : 1
-                    border.color: tile.hovered || entries.currentIndex === tile.index
-                        ? "#CAB3FF" : "#413E4C"
-                    scale: tile.hovered ? 1.025 : 1
-                    Behavior on scale {
-                        NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
-                    }
-                    Image {
-                        id: art
-                        x: 2
-                        y: 2
-                        width: parent.width - 4
-                        height: 111
-                        source: tile.modelData.artwork || ""
-                        fillMode: Image.PreserveAspectCrop
-                        sourceSize.width: 480
-                        asynchronous: true
-                        smooth: true
-                        mipmap: true
-                        visible: false
-                    }
-                    Rectangle {
-                        id: mask
-                        x: 2
-                        y: 2
-                        width: parent.width - 4
-                        height: 111
-                        radius: 13
-                        visible: false
-                        layer.enabled: true
-                        layer.samples: 4
-                    }
-                    MultiEffect {
-                        x: 2
-                        y: 2
-                        width: parent.width - 4
-                        height: 111
-                        source: art
-                        maskEnabled: true
-                        maskSource: mask
-                        visible: art.status === Image.Ready
-                    }
-                    Text {
-                        x: 11
-                        y: 119
-                        width: parent.width - 22
-                        text: tile.modelData.title || ""
-                        color: "white"
-                        font.family: "Segoe UI"
-                        font.pixelSize: 14
-                        font.weight: Font.DemiBold
-                        elide: Text.ElideRight
-                    }
-                    MouseArea {
-                        id: mouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: novaHome.openItem(tile.index)
-                    }
-                }
+                entry: modelData
+                channel: modelData.kind === 2
+                focused: entries.currentIndex === index
+                onActivated: novaHome.openItem(index)
+            }
+            onCurrentIndexChanged: {
+                if(currentIndex >= 0 && count > 0)
+                    positionViewAtIndex(currentIndex,GridView.Contain)
             }
         }
         Text {
@@ -353,6 +291,7 @@ Item {
         sequence: "Escape"
         onActivated: {
             if(overlay.pairingVisible) overlay.pairingVisible = false
+            else if(novaHome.featuredInfoVisible) novaHome.closeFeaturedInfo()
             else novaHome.back()
         }
     }
