@@ -387,7 +387,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
 #ifdef Q_OS_WIN
                      // Keep presentation composed by Windows during monitor-sized resizes.
                      opt("d3d11-exclusive-fs","no") &&
-                     opt("d3d11-flip","yes") &&
+                     opt("d3d11-flip","no") &&
 #endif
                      opt("network-timeout",live?"25":"15") &&
                      opt("cache","yes") &&
