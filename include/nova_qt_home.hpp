@@ -18,6 +18,8 @@
 class NovaQtHome : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantList channels READ channels NOTIFY changed)
+    Q_PROPERTY(QVariantList demoItems READ demoItems NOTIFY changed)
+    Q_PROPERTY(bool catalogConnected READ catalogConnected NOTIFY changed)
     Q_PROPERTY(QVariantList series READ series NOTIFY changed)
     Q_PROPERTY(QVariantList movies READ movies NOTIFY changed)
     Q_PROPERTY(QVariantList items READ items NOTIFY changed)
@@ -46,6 +48,8 @@ public:
     explicit NovaQtHome(QObject* parent=nullptr);
     ~NovaQtHome() override;
     const QVariantList& channels() const{return channels_;}
+    const QVariantList& demoItems() const{return demo_items_;}
+    bool catalogConnected() const{return catalog_connected_;}
     const QVariantList& series() const{return series_;}
     const QVariantList& movies() const{return movies_;}
     const QVariantList& items() const{return items_;}
@@ -75,6 +79,7 @@ public:
     Q_INVOKABLE void moreInfoFeatured(){featured_info_visible_=true;emit changed();}
     Q_INVOKABLE void closeFeaturedInfo(){featured_info_visible_=false;emit changed();}
     Q_INVOKABLE void openContinue(int index);
+    Q_INVOKABLE void openDemo(int index);
     Q_INVOKABLE void openSection(int row);
     Q_INVOKABLE void openHomeCard(int row,int index);
     Q_INVOKABLE void openItem(int index);
@@ -98,12 +103,12 @@ private:
     void showCatalog(xs::Catalog catalog,bool pushHistory);
     void navigate(int dx,int dy);
     void clickPointer(bool down);
-    QVariantList channels_,series_,movies_,items_,continue_watching_;
+    QVariantList channels_,series_,movies_,items_,continue_watching_,demo_items_;
     std::vector<xs::Entry> continue_entries_;
     xs::Entry featured_entry_,active_entry_;
     std::optional<xs::Entry> queued_remote_entry_;
     QString featured_backdrop_;
-    std::vector<xs::Entry> channel_entries_,series_entries_,movie_entries_;
+    std::vector<xs::Entry> channel_entries_,series_entries_,movie_entries_,demo_entries_;
     xs::Catalog page_,root_;
     std::vector<History> history_;
     std::shared_ptr<xs::ServiceSession> session_;
@@ -115,6 +120,7 @@ private:
     QString page_title_,status_=QStringLiteral("Preparando catálogo...");
     QString address_,pin_,qr_;
     bool loading_=false,browsing_=false,remote_ready_=false,remote_connected_=false;
+    bool catalog_connected_=false;
     bool featured_info_visible_=false;
     int selected_item_=0,selected_section_=0,selected_home_card_=0;
     bool sdl_started_=false;
