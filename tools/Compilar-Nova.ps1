@@ -73,11 +73,20 @@ $driveLetter = $Matches[1].ToLowerInvariant()
 $relativePath = $Matches[2].Replace('\', '/')
 $msysScript = '/' + $driveLetter + '/' + $relativePath
 Write-Host ('[NOVA] Script local: ' + $msysScript) -ForegroundColor DarkCyan
-# Bash login loads /ucrt64/bin before compiling; no string is evaluated.
+# Do a full upgrade first, in its OWN MSYS2 Bash process. After upgrading
+# msys2-runtime, reusing the same Bash can fail with "dofork errno 11".
+# No package removal or forced replacement is performed.
+Write-Host '[NOVA] Fase 1/2: actualizando MSYS2...' -ForegroundColor Cyan
+& $bash --login $msysScript '--update-only'
+$updateExit = $LASTEXITCODE
+if ($updateExit -ne 0) {
+    throw ("MSYS2 no termino la actualizacion (codigo $updateExit). Cierra todas las ventanas de MSYS2 y vuelve a ejecutar el CMD.")
+}
+Write-Host '[NOVA] Fase 2/2: iniciando una nueva sesion Bash para compilar...' -ForegroundColor Cyan
 & $bash --login $msysScript
 $exit = $LASTEXITCODE
 if ($exit -ne 0) {
-    throw ("La compilacion termino con error $exit. El texto de la consola indica el paso que fallo.")
+    throw ("La compilacion termino con error $exit. Si dice dofork/fork, cierra MSYS2, reinicia Windows y vuelve a intentar.")
 }
 $folder = Join-Path $root 'dist\Xuper-TV-NovaQt-Local'
 $exe = Join-Path $folder 'XuperTVNovaQt.exe'
