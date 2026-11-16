@@ -4,6 +4,7 @@ import QtQuick.Window
 Item {
     id: overlay
     property bool pairingVisible: false
+    property bool qualityVisible: false
 
     property double now: 0
     property bool gridFocused: false
@@ -132,6 +133,106 @@ Item {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
             onClicked: novaHome.stopPlayback()
+        }
+    }
+
+
+    // Uses the same quality setting the paired iPhone reads via /settings/get.
+    Item {
+        anchors.fill: parent
+        visible: overlay.qualityVisible
+        z: 32
+        Rectangle {
+            anchors.fill: parent
+            color: "#DE000000"
+            MouseArea {
+                anchors.fill: parent
+                onClicked: overlay.qualityVisible = false
+            }
+        }
+        Rectangle {
+            id: qualityPanel
+            anchors.centerIn: parent
+            width: Math.min(520,overlay.width - 70)
+            height: 528
+            radius: 20
+            color: "#191821"
+            border.color: "#595067"
+            border.width: 1
+            Text {
+                x: 26; y: 18
+                text: "Calidad de video"
+                color: "white"
+                font.family: "Segoe UI"
+                font.pixelSize: 24
+                font.weight: Font.DemiBold
+            }
+            Text {
+                x: parent.width - 40
+                y: 12
+                text: "×"
+                color: "white"
+                font.pixelSize: 27
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: overlay.qualityVisible = false
+                }
+            }
+            Repeater {
+                model: ["Compatible (CPU)", "Equilibrado", "Nitidez alta (Lanczos)",
+                        "Detalle extra (CAS)", "GPU FSRCNNX"]
+                delegate: Rectangle {
+                    required property int index
+                    required property string modelData
+                    x: 24; y: 75 + index * 53
+                    width: qualityPanel.width - 48
+                    height: 46
+                    radius: 10
+                    color: novaHome.videoPreset === index ? "#463366" :
+                           qualityMouse.containsMouse ? "#302B3D" : "#24222D"
+                    border.color: novaHome.videoPreset === index ? "#A78BFA" : "#403A4D"
+                    Accessible.role: Accessible.RadioButton
+                    Accessible.name: modelData
+                    Accessible.onPressAction: novaHome.setVideoPreset(index)
+                    Text {
+                        x: 15
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: (novaHome.videoPreset === index ? "◉  " : "○  ") + modelData
+                        color: "white"
+                        font.family: "Segoe UI"
+                        font.pixelSize: 15
+                    }
+                    MouseArea {
+                        id: qualityMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: novaHome.setVideoPreset(index)
+                    }
+                }
+            }
+            Text {
+                x: 26; y: 350
+                width: parent.width - 52
+                color: "#C4B4F8"
+                font.pixelSize: 13
+                font.family: "Segoe UI"
+                text: novaHome.playing ? novaHome.playbackNotice :
+                    "Se guardará para el próximo video."
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                x: 26; y: 403
+                width: parent.width - 52
+                height: 92
+                color: "#B9B4C5"
+                font.family: "Segoe UI"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                text: novaHome.playing ? novaHome.playbackDiagnostics :
+                    "Al cambiar de modo, Nova reinicia solo MPV y recupera la posición. " +
+                    "En TV en vivo se reconecta al canal."
+            }
         }
     }
 
