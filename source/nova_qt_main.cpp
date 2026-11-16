@@ -7,6 +7,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQuickWindow>
 #include <QTimer>
 #include <QSurfaceFormat>
 #include <cstdio>
@@ -68,6 +69,12 @@ int main(int argc,char** argv){
         std::fputs("NOVA_QT: Could not load QML home.\n",stderr);
         return 2;
     }
+    auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().first());
+    if(!window){
+        std::fputs("NOVA_QT: QML did not create a native Qt Quick window.\n",stderr);
+        return 2;
+    }
+    home.setWindow(window);
     if(smokeFullscreen){
         // Test responsive maximized-window layout without any real display.
         // The Qt offscreen platform provides a deterministic scene geometry.
