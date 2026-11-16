@@ -630,8 +630,9 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                         else if(rtxVsr)baseDiagnostics+=QStringLiteral("\nRTX VSR sin ampliar: el video ya alcanza la resolución del monitor");
                         if(gpuRife && (gpuMode||fastRife))baseDiagnostics+=QStringLiteral("\nResolución de cálculo RIFE: hasta %1 px de ancho").arg(fastRife?384:640);
                         if(!motionFallbackReason.isEmpty())baseDiagnostics+="\n"+motionFallbackReason;
-                        publish(QStringLiteral("Reproduciendo · %1").arg(
-                            QString::fromUtf8(xs::video_preset_label(preset))),details);
+                        publish(live?QStringLiteral("TV en vivo · preparando búfer de 15 s..."):
+                            QStringLiteral("Reproduciendo · %1").arg(
+                                QString::fromUtf8(xs::video_preset_label(preset))),details);
                         lastFpsCheck=std::chrono::steady_clock::now();
                     }
                     if(event->event_id==MPV_EVENT_PROPERTY_CHANGE&&event->reply_userdata==41)
