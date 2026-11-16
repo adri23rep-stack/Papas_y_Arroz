@@ -40,6 +40,16 @@ int main() {
     assert(nova_rtx_vsr(VideoPreset::RtxAiSuperResolution));
     assert(!nova_rtx_vsr(VideoPreset::GpuFsrcnnx));
     assert(nova_rtx_vsr_scale(1280,720,1920,1080)==1.5);
+    assert(nova_rtx_vsr_scale(640,360,3840,2160,0)==2.0); // legacy default
+    assert(nova_rtx_vsr_scale(640,360,3840,2160,1)==1.5);
+    assert(nova_rtx_vsr_scale(640,360,3840,2160,2)==2.0);
+    assert(nova_rtx_vsr_scale(640,360,3840,2160,3)==3.0);
+    assert(nova_rtx_vsr_scale(640,360,3840,2160,4)==4.0);
+    assert(nova_rtx_vsr_scale(640,360,1280,720,4)==2.0); // avoid oversampling
+    assert(nova_rtx_vsr_scale(1920,1080,1920,1080,4)==1.0);
+    assert(nova_rtx_vsr_scale(720,480,3840,2160,4)==4.0);
+    assert(nova_rtx_vsr_scale(640,360,3840,2160,9)==2.0); // reject unknown mode
+    assert(std::string(nova_rtx_scale_label(4)).find("4x")!=std::string::npos);
     assert(nova_rtx_vsr_scale(640,360,3840,2160)==2.0);
     assert(nova_rtx_vsr_scale(1920,1080,1920,1080)==1.0);
     assert(nova_rtx_vsr_scale(0,1080,1920,1080)==1.0);
