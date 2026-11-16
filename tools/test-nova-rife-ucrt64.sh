@@ -25,6 +25,9 @@ export VK_LOADER_DEBUG=error,warn
 registry_key='HKLM\SOFTWARE\Khronos\Vulkan\Drivers'
 MSYS2_ARG_CONV_EXCL='*' reg.exe add "$registry_key" /v "$driver_manifest" /t REG_DWORD /d 0 /f
 trap 'MSYS2_ARG_CONV_EXCL="*" reg.exe delete "$registry_key" /v "$driver_manifest" /f >/dev/null' EXIT
+/ucrt64/bin/ffmpeg.exe -hide_banner -loglevel error -y -f lavfi \
+  -i "testsrc2=size=160x96:rate=24" -t 90 -c:v mpeg4 test.mp4
+env -u PYTHONHOME -u PYTHONPATH /usr/bin/timeout --kill-after=5s 100s ./XuperTVNovaQt.exe --smoke-rife-fullscreen
 for mode in 60 24 unavailable; do
   fps="$mode"
   rm -f frame-*.txt rife-status.txt

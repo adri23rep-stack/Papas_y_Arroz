@@ -9,6 +9,8 @@
 #include <QQmlContext>
 #include <QQuickWindow>
 #include <QTimer>
+#include <QRegularExpression>
+#include "remote_server.hpp"
 #include <QScreen>
 #include <QImage>
 #include <QPixmap>
@@ -41,7 +43,8 @@ int main(int argc,char** argv){
     QDir::setCurrent(QCoreApplication::applicationDirPath());
 
     checkpoint("application_ready");
-    if(argc>1 && std::strcmp(argv[1],"--smoke-video-fullscreen")==0){
+    const bool testRife=argc>1 && std::strcmp(argv[1],"--smoke-rife-fullscreen")==0;
+    if(testRife || (argc>1 && std::strcmp(argv[1],"--smoke-video-fullscreen")==0)){
         NovaQtPlayer player;
         xs::SourceResult source;
         source.ok=true;
@@ -49,6 +52,7 @@ int main(int argc,char** argv){
         player.play(source,QStringLiteral("Nova fullscreen test"),false);
         QTimer poll;
         int stage=0, moving=0;
+        bool requested=false;
         QImage previous;
         QObject::connect(&poll,&QTimer::timeout,&app,[&]{
             auto* window=player.videoWindow();
@@ -59,6 +63,18 @@ int main(int argc,char** argv){
                 size.height()/2-48,128,96).toImage();
             if(!image.isNull() && !previous.isNull() && image!=previous)++moving;
             previous=image;
+            if(testRife && moving>=3 && !requested){
+                xs::RemoteServer::shared().set_setting_value(xs::remote_setting_index("motion_mode"),2);
+                if(!player.requestMotion(2)){app.exit(6);return;}
+                requested=true;
+                moving=0;
+                return;
+            }
+            if(testRife){
+                const QRegularExpression fps(QStringLiteral("FPS estimados tras filtro: ([0-9.]+)"));
+                const double rate=fps.match(player.diagnostics()).captured(1).toDouble();
+                if(rate<46 || rate>50)return;
+            }
             if(moving<3)return;
             std::fprintf(stderr,"Moving video verified in stage %d\\n",stage);
             if(++stage==3){app.quit();return;}
@@ -67,7 +83,7 @@ int main(int argc,char** argv){
             moving=0;
         });
         poll.start(250);
-        QTimer::singleShot(25000,&app,[&]{app.exit(5);});
+        QTimer::singleShot(testRife?90000:25000,&app,[&]{std::fprintf(stderr,"%s\\n",player.diagnostics().toUtf8().constData());app.exit(5);});
         return app.exec();
     }
     NovaQtHome home;

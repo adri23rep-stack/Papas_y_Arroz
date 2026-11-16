@@ -276,6 +276,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
     if(activeMotion<0||activeMotion>2)activeMotion=0;
     requested_motion_.store(activeMotion);
     int previousPreset=activePreset,previousMotion=activeMotion;
+    QString motionFallbackReason;
     bool switching=false, registered=false, reachedEnd=false;
     bool recoveryAttempted=false;
     double lastPosition=resumeSeconds;
@@ -386,7 +387,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
 #ifdef Q_OS_WIN
                      // Keep presentation composed by Windows during monitor-sized resizes.
                      opt("d3d11-exclusive-fs","no") &&
-                     opt("d3d11-flip","no") &&
+                     opt("d3d11-flip","yes") &&
 #endif
                      opt("network-timeout",live?"25":"15") &&
                      opt("cache","yes") &&
@@ -577,6 +578,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                                  gpuRife?QStringLiteral("GPU Vulkan RIFE (verificar FPS reales)"):
                                          QStringLiteral("MPV"));
                         baseDiagnostics=details;
+                        if(!motionFallbackReason.isEmpty())baseDiagnostics+="\n"+motionFallbackReason;
                         publish(QStringLiteral("Reproduciendo · %1").arg(
                             QString::fromUtf8(xs::video_preset_label(preset))),details);
                         lastFpsCheck=std::chrono::steady_clock::now();
@@ -592,11 +594,10 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                             std::string message=std::string(log->prefix?log->prefix:"")+" "+log->text;
                             std::transform(message.begin(),message.end(),message.begin(),
                                 [](unsigned char c){return static_cast<char>(std::tolower(c));});
-                            if(gpuRife &&
-                               (message.find("vapoursynth")!=std::string::npos ||
-                                message.find("rife")!=std::string::npos) &&
-                               (message.find("failed")!=std::string::npos ||
-                                message.find("error")!=std::string::npos)){
+                            if(gpuRife && message.find("vapoursynth")!=std::string::npos &&
+                               (message.find("script evaluation failed")!=std::string::npos ||
+                                message.find("disabling filter")!=std::string::npos ||
+                                message.find("filter error at frame")!=std::string::npos)){
                                 failed=true;
                                 failure=QStringLiteral("RIFE GPU no pudo cargar el filtro.");
                                 break;
@@ -610,6 +611,10 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                                 break;
                             }
                         }
+                    }
+                    if(event->event_id==MPV_EVENT_PLAYBACK_RESTART || event->event_id==MPV_EVENT_VIDEO_RECONFIG){
+                        gpuReadyAt=std::chrono::steady_clock::now();
+                        badSyncSamples=0;
                     }
                     if(event->event_id==MPV_EVENT_END_FILE){
                         const auto* end=static_cast<const mpv_event_end_file*>(event->data);
@@ -674,6 +679,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     previousMotion=activeMotion;
                     activePreset=wanted;
                     activeMotion=wantedMotion;
+                    motionFallbackReason.clear();
                     switching=true;
                     recoveryAttempted=false;
                     restart=true;
@@ -719,7 +725,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                 previousMotion=fallbackMotion;
                 switching=false;
                 remote.set_setting_value(presetId,fallback);
-                remote.set_setting_value(motionId,fallbackMotion);
+                if(gpuRife)motionFallbackReason=failure;
+                else remote.set_setting_value(motionId,fallbackMotion);
                 requested_quality_.store(fallback);
                 requested_motion_.store(fallbackMotion);
                 restart_revision_.fetch_add(1);
