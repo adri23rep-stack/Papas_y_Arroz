@@ -39,10 +39,21 @@ Window {
 
             NovaRail {
                 width: rows.width
+                heading: "Prueba local del reproductor (no es TV en vivo)"
+                entries: novaHome.demoItems
+                sectionId: -1
+                demo: true
+                channel: true
+                visible: !novaHome.catalogConnected && !novaHome.loading &&
+                         novaHome.demoItems.length > 0
+            }
+            NovaRail {
+                width: rows.width
                 heading: "Continuar viendo"
                 entries: novaHome.continueWatching
                 sectionId: -1
                 channel: false
+                visible: novaHome.catalogConnected
             }
             NovaRail {
                 width: rows.width
@@ -50,6 +61,7 @@ Window {
                 entries: novaHome.channels
                 sectionId: 0
                 channel: true
+                visible: novaHome.catalogConnected
             }
             NovaRail {
                 width: rows.width
@@ -57,6 +69,7 @@ Window {
                 entries: novaHome.series
                 sectionId: 1
                 channel: false
+                visible: novaHome.catalogConnected
             }
             NovaRail {
                 width: rows.width
@@ -64,6 +77,7 @@ Window {
                 entries: novaHome.movies
                 sectionId: 2
                 channel: false
+                visible: novaHome.catalogConnected
             }
             Text {
                 x: 54
