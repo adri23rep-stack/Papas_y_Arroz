@@ -221,7 +221,7 @@ Item {
             }
             Repeater {
                 model: ["Desactivado", "Suavizado ligero (MPV)",
-                        "Interpolación real 60 FPS (experimental, CPU)"]
+                        "RIFE GPU Vulkan · 2x (experimental)"]
                 delegate: Rectangle {
                     required property int index
                     required property string modelData
@@ -255,7 +255,7 @@ Item {
             Text {
                 x: 26; y: 443
                 width: parent.width - 52
-                text: "60 FPS usa FFmpeg y puede sobrecargar el CPU. No es generación por GPU."
+                text: "RIFE usa GPU Vulkan. Requiere complemento opcional. 24→48 / 30→60 FPS; puede no alcanzar tiempo real."
                 color: "#E9BC89"
                 font.family: "Segoe UI"
                 font.pixelSize: 12
@@ -267,7 +267,7 @@ Item {
                 color: "#C4B4F8"
                 font.pixelSize: 13
                 font.family: "Segoe UI"
-                text: novaHome.playing ? novaHome.playbackNotice :
+                text: novaHome.playbackNotice.length > 0 ? novaHome.playbackNotice :
                     "Se guardará para el próximo video."
                 wrapMode: Text.WordWrap
             }
