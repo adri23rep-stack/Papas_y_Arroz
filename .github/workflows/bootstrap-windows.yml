@@ -189,6 +189,12 @@ jobs:
             dist/Xuper-TV-Desktop/XuperTVNovaQt.exe
           test -s dist/Xuper-TV-Desktop/Qt6Quick.dll
           test -s dist/Xuper-TV-Desktop/Qt6Qml.dll
+          # windeployqt normally deploys qwindows only. Our CI smoke test
+          # selects the headless 'offscreen' platform; include its plugin so
+          # Qt doesn't open an invisible modal missing-plugin error dialog.
+          test -s /ucrt64/share/qt6/plugins/platforms/qoffscreen.dll
+          mkdir -p dist/Xuper-TV-Desktop/platforms
+          cp /ucrt64/share/qt6/plugins/platforms/qoffscreen.dll dist/Xuper-TV-Desktop/platforms/
           cp build/windows/XuperNativeProbe.exe dist/Xuper-TV-Desktop/
           cp build/windows/XuperNativePlayer.exe dist/Xuper-TV-Desktop/
           cp packaging/runtime/switch/xuperswitch/{font.ttf,cacert.pem,test.mp4} dist/Xuper-TV-Desktop/
