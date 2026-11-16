@@ -57,7 +57,7 @@ void View::draw_nova(const Catalog& c,size_t selected,const std::string& status)
         text(32,y+10,navigation[i],focused?ink:(active?white:muted),162,font,39);
     }
     rect({18,631,178,1},{53,62,87,255});
-    text(25,647,"Tu TV. Tus reglas.",muted,180,small,29);
+    text(25,647,"by Jona Ruacho",muted,180,small,29);
     text(25,676,"Windows  •  Vista NOVA",cyan,185,small,30);
 
     // Top bar always leaves search and pairing accessible.
