@@ -32,6 +32,7 @@ public:
     void applySetting(int id,int value);
     // Quality requests are picked up and debounced by the running mpv worker.
     void requestQuality(int value);
+    void requestMotion(int value);
     void toggleFullscreen();
     void selectTrack(int kind,int id,uint32_t generation);
 signals:
@@ -45,7 +46,7 @@ private:
     mutable QMutex mutex_;
     mpv_handle* handle_=nullptr;
     std::atomic<bool> playing_{false},stop_{false};
-    std::atomic<int> requested_quality_{1};
-    std::atomic<std::uint64_t> quality_revision_{0};
+    std::atomic<int> requested_quality_{1}, requested_motion_{0};
+    std::atomic<std::uint64_t> restart_revision_{0};
     QString title_,notice_,diagnostics_;
 };
