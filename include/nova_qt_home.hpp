@@ -45,6 +45,9 @@ class NovaQtHome : public QObject {
     Q_PROPERTY(bool playing READ playing NOTIFY changed)
     Q_PROPERTY(QString playbackTitle READ playbackTitle NOTIFY changed)
     Q_PROPERTY(QString playbackNotice READ playbackNotice NOTIFY changed)
+    Q_PROPERTY(QString playbackDiagnostics READ playbackDiagnostics NOTIFY changed)
+    Q_PROPERTY(int videoPreset READ videoPreset NOTIFY changed)
+    Q_PROPERTY(QString videoPresetLabel READ videoPresetLabel NOTIFY changed)
 public:
     explicit NovaQtHome(QObject* parent=nullptr);
     ~NovaQtHome() override;
@@ -76,6 +79,9 @@ public:
     bool playing() const{return player_.playing();}
     QString playbackTitle() const{return player_.title();}
     QString playbackNotice() const{return player_.notice();}
+    QString playbackDiagnostics() const{return player_.diagnostics();}
+    int videoPreset() const;
+    QString videoPresetLabel() const;
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void playFeatured();
     Q_INVOKABLE void moreInfoFeatured(){featured_info_visible_=true;emit changed();}
@@ -91,6 +97,7 @@ public:
     Q_INVOKABLE void search(const QString& query);
     Q_INVOKABLE void stopPlayback(){player_.stop();}
     Q_INVOKABLE void togglePlayback(){player_.togglePause();}
+    Q_INVOKABLE void setVideoPreset(int value);
     void setWindow(QQuickWindow* window){window_=window;}
 signals:
     void changed();
