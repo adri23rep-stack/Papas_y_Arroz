@@ -48,6 +48,7 @@ class NovaQtHome : public QObject {
     Q_PROPERTY(QString playbackDiagnostics READ playbackDiagnostics NOTIFY changed)
     Q_PROPERTY(int videoPreset READ videoPreset NOTIFY changed)
     Q_PROPERTY(QString videoPresetLabel READ videoPresetLabel NOTIFY changed)
+    Q_PROPERTY(int rtxScaleMode READ rtxScaleMode NOTIFY changed)
     Q_PROPERTY(int motionMode READ motionMode NOTIFY changed)
     Q_PROPERTY(QString motionLabel READ motionLabel NOTIFY changed)
     Q_PROPERTY(bool gpuRifeReady READ gpuRifeReady NOTIFY changed)
@@ -85,6 +86,7 @@ public:
     QString playbackDiagnostics() const{return player_.diagnostics();}
     int videoPreset() const;
     QString videoPresetLabel() const;
+    int rtxScaleMode() const;
     int motionMode() const;
     QString motionLabel() const;
     bool gpuRifeReady() const{return NovaQtPlayer::gpuRifeReady();}
@@ -104,6 +106,7 @@ public:
     Q_INVOKABLE void stopPlayback(){player_.stop();}
     Q_INVOKABLE void togglePlayback(){player_.togglePause();}
     Q_INVOKABLE void setVideoPreset(int value);
+    Q_INVOKABLE void setRtxScaleMode(int value);
     Q_INVOKABLE void setMotionMode(int value);
     void setWindow(QQuickWindow* window){window_=window;}
 signals:
