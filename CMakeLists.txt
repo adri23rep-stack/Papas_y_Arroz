@@ -254,8 +254,8 @@ if(BUILD_TESTING)
   endforeach()
 endif()
 
-# Qt Quick is an isolated first-screen preview. The proven SDL application,
-# player, iPhone control and Switch build are not changed or linked against Qt.
+# Qt Quick now owns the new Windows interface, catalog and pairing UI.
+# The classic SDL desktop and Switch builds remain separate, untouched.
 if(WIN32)
   find_package(Qt6 6.5 REQUIRED COMPONENTS Quick Concurrent)
   add_executable(XuperTVNovaQt WIN32
@@ -277,7 +277,13 @@ if(WIN32)
   set_target_properties(XuperTVNovaQt PROPERTIES AUTOMOC ON)
   qt_add_resources(XuperTVNovaQt "nova_qt_qml"
     PREFIX "/"
-    FILES ui/novaqt/Main.qml ui/novaqt/NovaQtOverlay.qml
+    FILES
+      ui/novaqt/Main.qml
+      ui/novaqt/NovaQtOverlay.qml
+      ui/novaqt/NovaHero.qml
+      ui/novaqt/NovaCard.qml
+      ui/novaqt/NovaRail.qml
+      ui/novaqt/NovaTopNav.qml
   )
   target_include_directories(XuperTVNovaQt PRIVATE include include/vendor)
   target_link_libraries(XuperTVNovaQt PRIVATE
