@@ -1,11 +1,25 @@
 #pragma once
 #include "video_enhanced.hpp"
 #include <algorithm>
+#include <array>
+#include <utility>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 
 namespace xs {
+// MPV live-stream policy: 15 seconds of packets before initial playback,
+// then retain up to 30 seconds for brief provider/network stalls. Values
+// intentionally apply only to live TV, not films or local playback.
+inline constexpr std::array<std::pair<const char*,const char*>,7> kNovaLiveCacheOptions{{
+    {"cache-pause","yes"},
+    {"cache-pause-initial","yes"},
+    {"cache-pause-wait","15"},
+    {"cache-secs","30"},
+    {"demuxer-readahead-secs","30"},
+    {"demuxer-max-bytes","128MiB"},
+    {"demuxer-max-back-bytes","4MiB"}
+}};
 // Pure policy used by Nova's mpv worker. Rapid requests collapse into a single
 // restart, while selecting the already-active preset does not restart anything.
 class NovaQualityRestartGate {
