@@ -42,6 +42,7 @@ Window {
     readonly property string featuredTitle: featuredIndex >= 0
         ? backdropSources[featuredIndex].title : "DESTACADOS"
     property string toast: ""
+    property bool pairingVisible: false
     // Larger cinematic hero while keeping all three browse rails together.
     // Shorter windows can scroll down; fullscreen uses its extra real height.
     readonly property real homeRowsTop:
@@ -211,12 +212,14 @@ Window {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.notifyPreview(section.sectionTitle)
+                            onClicked: novaHome.openSection(section.sectionId)
                         }
                     }
 
                     ListView {
                         id: carousel
+                        currentIndex: section.sectionId === novaHome.selectedSection
+                            ? novaHome.selectedHomeCard : -1
                         x: 46
                         y: 40
                         width: Math.max(0, section.width - 64)
@@ -234,9 +237,12 @@ Window {
                         delegate: Item {
                             id: tile
                             required property var modelData
+                            required property int index
                             width: 196
                             height: 128
                             property bool hovered: tileMouse.containsMouse
+                            property bool remoteFocused: section.sectionId === novaHome.selectedSection
+                                && tile.index === novaHome.selectedHomeCard
                             z: hovered ? 10 : 0
 
                             // Animate the entire card inside a slightly larger
@@ -248,7 +254,7 @@ Window {
                                 width: 190
                                 height: 112
                                 transformOrigin: Item.Center
-                                scale: tile.hovered ? 1.045 : 1.0
+                                scale: tile.hovered || tile.remoteFocused ? 1.045 : 1.0
                                 Behavior on y {
                                     NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
                                 }
@@ -262,8 +268,8 @@ Window {
                                 radius: 15
                                 antialiasing: true
                                 color: "#17171b"
-                                border.color: tile.hovered ? "#CFB6FF" : "#383841"
-                                border.width: tile.hovered ? 2 : 1
+                                border.color: tile.hovered || tile.remoteFocused ? "#CFB6FF" : "#383841"
+                                border.width: tile.hovered || tile.remoteFocused ? 2 : 1
                                 border.pixelAligned: false
                                 Behavior on border.color {
                                     ColorAnimation { duration: 170 }
@@ -340,7 +346,7 @@ Window {
                                 hoverEnabled: true
                                 preventStealing: false
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: root.notifyPreview(tile.modelData.title)
+                                onClicked: novaHome.openHomeCard(section.sectionId,tile.index)
                             }
                             } // tileSurface
                         }
@@ -381,6 +387,11 @@ Window {
             font.pixelSize: 12
             opacity: novaHome.loading || novaHome.channels.length === 0 ? 1 : 0.5
         }
+    }
+
+    NovaQtOverlay {
+        anchors.fill: parent
+        z: 32
     }
 
     Rectangle {
