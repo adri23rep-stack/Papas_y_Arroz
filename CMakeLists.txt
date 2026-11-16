@@ -261,7 +261,13 @@ if(WIN32)
   add_executable(XuperTVNovaQt WIN32
     source/nova_qt_main.cpp
     source/nova_qt_home.cpp
+    source/nova_qt_player.cpp
     include/nova_qt_home.hpp
+    include/nova_qt_player.hpp
+    source/remote_server.cpp
+    source/remote_catalog.cpp
+    source/remote_browse.cpp
+    source/youtube_remote.cpp
     source/catalog.cpp
     source/service.cpp
     source/codec.cpp
@@ -275,8 +281,9 @@ if(WIN32)
   )
   target_include_directories(XuperTVNovaQt PRIVATE include include/vendor)
   target_link_libraries(XuperTVNovaQt PRIVATE
-    Qt6::Quick Qt6::Concurrent
-    PkgConfig::CURL ${MBEDCRYPTO_LIBRARY}
-    ws2_32 bcrypt crypt32 shell32
+    Qt6::Quick Qt6::Concurrent SDL2::SDL2
+    PkgConfig::CURL PkgConfig::MPV PkgConfig::QRENCODE
+    ${MBEDCRYPTO_LIBRARY}
+    ws2_32 bcrypt crypt32 shell32 ole32 user32
   )
 endif()
