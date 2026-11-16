@@ -13,6 +13,7 @@ int main(){
     const auto model=gpu/"models"/"rife-v4.6_ensembleFalse";
     fs::create_directories(model);
     for(const auto& f:{
+        root/"libvapoursynth.dll",root/"libvapoursynth-script-0.dll",
         gpu/"rife.vpy",gpu/"librife_windows_x86-64.dll",
         model/"flownet.bin",model/"flownet.param"
     }) {
