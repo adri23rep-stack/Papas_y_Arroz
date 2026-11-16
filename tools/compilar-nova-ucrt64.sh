@@ -53,25 +53,38 @@ packages=(
   mingw-w64-ucrt-x86_64-qt6-declarative
   mingw-w64-ucrt-x86_64-qt6-imageformats
 )
-# Query the ALREADY INSTALLED packages first. pacman -Q is read-only,
-# so an unrelated MSYS2 install holding db.lck cannot block this build.
-missing_packages=()
-for package in "${packages[@]}"; do
-    if ! pacman -Q "$package" >/dev/null 2>&1; then
-        missing_packages+=("$package")
-    fi
+# Fast path for local rebuilds: essential tools and headers exist.
+# No pacman command touches the database, even if another process owns
+# /var/lib/pacman/db.lck. On this Windows PC they were already used to
+# compile Nova successfully, so updating them again is unnecessary.
+ready=true
+for path in /ucrt64/bin/cmake.exe /ucrt64/bin/ninja.exe \
+    /ucrt64/bin/g++.exe /ucrt64/bin/mpv.exe \
+    /ucrt64/bin/windeployqt6.exe /ucrt64/bin/ntldd.exe \
+    /ucrt64/include/mpv/client.h /ucrt64/include/SDL2/SDL.h; do
+    if [[ ! -e "$path" ]]; then ready=false; break; fi
 done
-if (( ${#missing_packages[@]} == 0 )); then
-    echo "[NOVA] Todas las dependencias ya estan instaladas. Omitiendo pacman."
+if [[ "$ready" == true ]]; then
+    echo "[NOVA] Entorno de compilacion existente detectado: omitiendo pacman."
 else
-    echo "[NOVA] Faltan ${#missing_packages[@]} paquetes de la herramienta."
-    # Never auto-delete /var/lib/pacman/db.lck: another pacman may be busy.
-    if [[ -e /var/lib/pacman/db.lck ]]; then
-        echo "[NOVA] La base de paquetes esta bloqueada (db.lck)." >&2
-        echo "[NOVA] Cierra instaladores MSYS2 activos y reintenta. No borres el bloqueo sin comprobar que no hay otro pacman trabajando." >&2
-        exit 1
+    # pacman -Q is read-only; install ONLY missing packages when necessary.
+    missing_packages=()
+    for package in "${packages[@]}"; do
+        if ! pacman -Q "$package" >/dev/null 2>&1; then
+            missing_packages+=("$package")
+        fi
+    done
+    if (( ${#missing_packages[@]} == 0 )); then
+        echo "[NOVA] Dependencias instaladas: omitiendo pacman."
+    else
+        echo "[NOVA] Faltan ${#missing_packages[@]} paquetes de desarrollo."
+        # NEVER remove db.lck automatically: another pacman may be running.
+        if [[ -e /var/lib/pacman/db.lck ]]; then
+            echo "[NOVA] MSYS2 tiene la base bloqueada (db.lck). Cierra instalaciones activas e intenta otra vez." >&2
+            exit 1
+        fi
+        pacman -S --needed --noconfirm "${missing_packages[@]}"
     fi
-    pacman -S --needed --noconfirm "${missing_packages[@]}"
 fi
 
 if [[ "${NOVA_CLEAN:-0}" == 1 ]]; then
