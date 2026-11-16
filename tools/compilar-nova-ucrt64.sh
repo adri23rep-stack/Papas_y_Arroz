@@ -102,6 +102,18 @@ cmake --build build/nova-local --target XuperTVNovaQt --parallel 4
 output="dist/Xuper-TV-NovaQt-Local"
 mkdir -p "$output"
 cp build/nova-local/XuperTVNovaQt.exe "$output/"
+# The GPU quality mode needs the real FSRCNNX shader next to the player.
+mkdir -p "$output/shaders"
+cp shaders/FSRCNNX_x2_8-0-4-1.glsl "$output/shaders/"
+test -s "$output/shaders/FSRCNNX_x2_8-0-4-1.glsl"
+mkdir -p "$output/nova-gpu"
+cp nova-gpu/rife.vpy "$output/nova-gpu/"
+# Explicit opt-in only: do not download third-party RIFE code during a
+# regular, offline-first local build.
+if [[ "${NOVA_GPU_RIFE_ADDON:-0}" == 1 ]]; then
+    bash tools/package-nova-gpu-rife-ucrt64.sh
+    cp -a dist/Xuper-TV-NovaQt-GPU-RIFE-Addon/Xuper-TV-NovaQt-Preview/. "$output/"
+fi
 
 # Qt's Windows deployment tool collects Qt DLLs, modules and plugins.
 echo "[NOVA] Empaquetando Qt Quick..."
@@ -157,7 +169,7 @@ fi
 
 # These are PUBLIC template / CA files. Never copy service.json, stored
 # PINs, tokens or a local device identity over from another installation.
-for name in catalog.m3u LICENSE DEPENDENCIAS.md README_NOVA_QT.md; do
+for name in catalog.m3u LICENSE DEPENDENCIAS.md README_NOVA_QT.md README_NOVA_QUALITY.md; do
     if [[ -f "$name" ]]; then cp "$name" "$output/"; fi
 done
 for name in cacert.pem service.template.json test.mp4; do

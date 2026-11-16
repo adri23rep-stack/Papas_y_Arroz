@@ -58,9 +58,9 @@ Window {
         if (step < 0) { zone = "hero"; page.contentY = 0 }
     }
     function move(dx, dy) {
-        if (overlay.pairingVisible || novaHome.featuredInfoVisible || editingSearch) return
+        if (overlay.pairingVisible || overlay.qualityVisible || novaHome.featuredInfoVisible || editingSearch) return
         if (zone === "nav") {
-            tabIndex = Math.max(0, Math.min(5, tabIndex + dx))
+            tabIndex = Math.max(0, Math.min(6, tabIndex + dx))
             if (dy > 0) zone = inCatalog ? "grid" : "hero"
         } else if (inCatalog) {
             if (dy < 0 && overlay.atFirstRow) zone = "nav"
@@ -76,12 +76,14 @@ Window {
     }
     function choose() {
         if (overlay.pairingVisible) { overlay.pairingVisible = false; return }
+        if (overlay.qualityVisible) { overlay.qualityVisible = false; return }
         if (novaHome.featuredInfoVisible) {
             novaHome.closeFeaturedInfo()
             novaHome.playFeatured()
         } else if (editingSearch) nav.submitSearch()
         else if (zone === "nav") {
-            if (tabIndex === 5) overlay.pairingVisible = true
+            if (tabIndex === 6) overlay.pairingVisible = true
+            else if (tabIndex === 5) overlay.qualityVisible = true
             else nav.activateTab(tabIndex)
         } else if (inCatalog) novaHome.openItem(novaHome.selectedItem)
         else if (zone === "hero") hero.activate(heroIndex)
@@ -89,6 +91,7 @@ Window {
     }
     function goBack() {
         if (overlay.pairingVisible) overlay.pairingVisible = false
+        else if (overlay.qualityVisible) overlay.qualityVisible = false
         else if (novaHome.featuredInfoVisible) novaHome.closeFeaturedInfo()
         else if (editingSearch) nav.searchOpen = false
         else { novaHome.back(); if (!inCatalog) { zone = "hero"; page.contentY = 0 } }
@@ -106,6 +109,7 @@ Window {
     Shortcut { sequence: "Return"; enabled: !root.editingSearch; onActivated: root.choose() }
     Shortcut { sequence: "Enter"; enabled: !root.editingSearch; onActivated: root.choose() }
     Shortcut { sequence: "Escape"; onActivated: root.goBack() }
+    Shortcut { sequence: "F9"; onActivated: overlay.qualityVisible = !overlay.qualityVisible }
 
     Flickable {
         id: page
@@ -203,20 +207,21 @@ Window {
         id: overlay
         now: root.clockMs
         gridFocused: root.zone === "grid"
-        z: pairingVisible ? 48 : 33
+        z: pairingVisible || qualityVisible ? 48 : 33
     }
     NovaTopNav {
         anchors.top: parent.top
         width: parent.width
         id: nav
         onPairRequested: { searchOpen = false; overlay.pairingVisible = true }
+        onSettingsRequested: { searchOpen = false; overlay.qualityVisible = true }
         selected: root.zone === "nav" ? root.tabIndex : -1
         onTabChosen: (index) => {
             root.tabIndex = index
             if (index === 0) { root.zone = "hero"; page.contentY = 0 }
             else if (index < 4) root.zone = "grid"
         }
-        visible: !overlay.pairingVisible && !novaHome.featuredInfoVisible
+        visible: !overlay.pairingVisible && !overlay.qualityVisible && !novaHome.featuredInfoVisible
         z: 36
     }
 

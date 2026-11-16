@@ -13,6 +13,8 @@
 #include <QCursor>
 #include <QFutureWatcher>
 #include <QGuiApplication>
+#include "nova_quality.hpp"
+#include "nova_motion.hpp"
 #include <QImage>
 #include <QMetaObject>
 #include <QMouseEvent>
@@ -239,6 +241,37 @@ NovaQtHome::NovaQtHome(QObject* parent):QObject(parent),player_(this){
         brightness_=xs::RemoteServer::shared().setting_value(xs::remote_setting_index("brightness"));
         updateRemote();
     }else status_=QStringLiteral("Control remoto no disponible.");
+}
+int NovaQtHome::videoPreset()const{
+    return xs::RemoteServer::shared().setting_value(xs::remote_setting_index("video_preset"));
+}
+QString NovaQtHome::videoPresetLabel()const{
+    return QString::fromUtf8(xs::video_preset_label(xs::nova_video_preset(videoPreset())));
+}
+void NovaQtHome::setVideoPreset(int value){
+    const int id=xs::remote_setting_index("video_preset");
+    if(!xs::valid_remote_setting(id,value))return;
+    if(!xs::RemoteServer::shared().set_setting_value(id,value))return;
+    player_.requestQuality(value);
+    emit changed();
+}
+int NovaQtHome::motionMode()const{
+    return xs::RemoteServer::shared().setting_value(xs::remote_setting_index("motion_mode"));
+}
+QString NovaQtHome::motionLabel()const{
+    return QString::fromUtf8(xs::nova_motion_label(xs::nova_motion_mode(motionMode())));
+}
+void NovaQtHome::setMotionMode(int value){
+    const int id=xs::remote_setting_index("motion_mode");
+    if(!xs::valid_remote_setting(id,value))return;
+    if(value==2 && !player_.gpuRifeReady()){
+        status_=QStringLiteral("RIFE GPU no instalado. Extrae el complemento RIFE de Nova.");
+        emit changed();
+        return;
+    }
+    if(!xs::RemoteServer::shared().set_setting_value(id,value))return;
+    player_.requestMotion(value);
+    emit changed();
 }
 NovaQtHome::~NovaQtHome(){
     remote_timer_.stop();
@@ -648,6 +681,8 @@ void NovaQtHome::pollRemote(){
                 const int value=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data2));
                 if(id==xs::remote_setting_index("brightness")){brightness_=value;emit changed();}
                 player_.applySetting(id,value);
+                if(id==xs::remote_setting_index("video_preset")||
+                   id==xs::remote_setting_index("motion_mode"))emit changed();
             }
             if(event.user.code==xs::REMOTE_WHEEL)
                 navigate(0,-static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1)));
