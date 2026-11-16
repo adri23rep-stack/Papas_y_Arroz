@@ -6,14 +6,17 @@ comprobar, comparar y reproducir contenido mientras terminamos las vistas.
 
 ## Cómo abrirla
 
-1. Descarga el ZIP de la rama `build/nova-ui-preview` y extráelo completo.
-2. Ejecuta **XuperTVNovaQt.exe** para ver el nuevo Inicio con Qt Quick.
-3. Ejecuta **XuperTVDesktop.exe** para seguir utilizando el reproductor y el
-   control del iPhone. Ahí, F8 sigue alternando entre las dos vistas SDL.
+1. Descarga **XuperTV-NOVA-Qt-Preview.zip** de `build/nova-ui-preview`.
+2. Extráelo en una carpeta nueva y ejecuta **XuperTVNovaQt.exe**. Es la nueva
+   pantalla Inicio de Qt Quick, únicamente para evaluar diseño y catálogo.
+3. Si quieres comparar con el programa anterior, descarga por separado
+   **XuperTV-NOVA-Windows-Preview.zip**, extráelo en **otra** carpeta
+   y ejecuta **XuperTVDesktop.exe**. El reproductor e iPhone siguen ahí.
 
-Ambos ejecutables utilizan los mismos archivos de instalación existentes y
-deben permanecer en la misma carpeta. No copies DLL individuales de versiones
-antiguas.
+Los dos ZIP son independientes. No mezcles DLL ni carpetas `qml` entre ellos.
+Si ya tienes una configuración local activada en otro directorio, conserva tus
+archivos `service.json` y `device_state.json`; son datos locales privados
+y no vienen incluidos en estos ZIP.
 
 ## Qué tiene exactamente la etapa 1
 
