@@ -289,6 +289,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
             .filePath(QStringLiteral("shaders/FSRCNNX_x2_8-0-4-1.glsl"));
         bool failed=missingRife||(gpuMode&&(!QFileInfo(shader).isFile()));
         bool loaded=false, restart=false;
+        auto gpuReadyAt=std::chrono::steady_clock::now();
+        int badSyncSamples=0;
         QString baseDiagnostics;
         auto lastFpsCheck=std::chrono::steady_clock::now();
         QString failure=missingRife?QStringLiteral("Falta el complemento GPU RIFE Vulkan."):
@@ -297,6 +299,24 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
         if(!failed&&!mpv){
             failed=true;
             failure=QStringLiteral("No se pudo iniciar el motor MPV.");
+        }
+        if(!failed && gpuRife){
+            const QDir app(QCoreApplication::applicationDirPath());
+            const QString home=app.filePath(QStringLiteral("nova-gpu/python"));
+            QDir lib(home+QStringLiteral("/lib"));
+            const QStringList versions=lib.entryList(
+                QStringList{QStringLiteral("python3.*")},
+                QDir::Dirs|QDir::NoDotAndDotDot,QDir::Name);
+            if(versions.isEmpty()){
+                failed=true;
+                failure=QStringLiteral("Falta el runtime Python de VapourSynth.");
+            }else{
+                const QByteArray folder=QDir::toNativeSeparators(home).toUtf8();
+                const QByteArray pythonPath=QDir::toNativeSeparators(
+                    lib.filePath(versions.last())).toUtf8();
+                qputenv("PYTHONHOME",folder);
+                qputenv("PYTHONPATH",pythonPath+";"+pythonPath+"/site-packages");
+            }
         }
         if(!failed){
             auto opt=[&](const char* key,const char* val){
@@ -439,6 +459,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                 if(event){
                     if(event->event_id==MPV_EVENT_FILE_LOADED){
                         loaded=true;
+                        gpuReadyAt=std::chrono::steady_clock::now();
+                        badSyncSamples=0;
                         if(restore.captured){
                             if(!restore.audioTrack.empty())
                                 mpv_set_property_string(mpv,"aid",restore.audioTrack.c_str());
@@ -533,6 +555,23 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                         break;
                     }
                     if(event->event_id==MPV_EVENT_SHUTDOWN)break;
+                }
+                if(loaded&&gpuRife&&std::chrono::steady_clock::now()-gpuReadyAt>=
+                   std::chrono::seconds(8) &&
+                   std::chrono::steady_clock::now()-lastFpsCheck>=std::chrono::seconds(2)){
+                    // Stop RIFE if the video persistently falls behind audio.
+                    double avsync=0.0;
+                    if(mpv_get_property(mpv,"avsync",MPV_FORMAT_DOUBLE,&avsync)>=0 &&
+                       std::isfinite(avsync)&&std::abs(avsync)>0.75)
+                        ++badSyncSamples;
+                    else badSyncSamples=0;
+                    if(badSyncSamples>=3){
+                        capture(mpv);
+                        failed=true;
+                        failure=QStringLiteral(
+                            "RIFE GPU no mantiene audio/video sincronizados. Volviendo a reproducción normal.");
+                        break;
+                    }
                 }
                 // The filter's requested output (60) is NOT proof of 60
                 // rendered FPS. Expose the estimated post-filter output,
