@@ -120,6 +120,11 @@ int main(int argc,char** argv){
 #endif
     );
     size_t selected=0;bool running=true,redraw=true,autoload=true,donating=false;
+#ifdef _WIN32
+    // Dragging a home card scrolls its row; a short click opens it.
+    bool nova_drag_pending=false,nova_drag_touch=false,nova_drag_moved=false;
+    int nova_drag_row=-1,nova_drag_start_x=0,nova_drag_start_y=0,nova_drag_last_x=0;
+#endif
     int pending_remote_navigation=-1;
     int pending_remote_result=-1;
     uint32_t pending_remote_generation=0;
@@ -135,7 +140,9 @@ int main(int argc,char** argv){
     auto home=[&]{
 #ifdef _WIN32
         xs::remember_last_channel(home_data,saved.recent);
-        return xs::make_cinematic_home(home_data,root_catalog.entries,view.home_last_index);
+        return view.nova_enabled?
+            xs::make_nova_home(home_data,root_catalog.entries,view.home_last_index):
+            xs::make_cinematic_home(home_data,root_catalog.entries,view.home_last_index);
 #else
         xs::Catalog c;c.title="Inicio";
         xs::Entry tv;tv.title="TV en vivo";tv.kind=xs::EntryKind::LiveSection;c.entries.push_back(tv);
@@ -156,7 +163,7 @@ int main(int argc,char** argv){
             if(result.ok)for(const auto& e:result.catalog.entries)
                 if(e.kind==xs::EntryKind::Channel){
                     home_data.channels.push_back(e);
-                    if(home_data.channels.size()>=7)break;
+                    if(home_data.channels.size()>=24)break;
                 }
         }
         auto fetch_titles=[&](const char* type,std::vector<xs::Entry>& target){
@@ -169,7 +176,7 @@ int main(int argc,char** argv){
             // Probe at most two categories; unavailable ones are skipped.
             int visited=0;
             for(const auto& category:categories.catalog.entries){
-                if(target.size()>=4||visited>=2||cancel_task.load())break;
+                if(target.size()>=20||visited>=3||cancel_task.load())break;
                 if(category.kind==xs::EntryKind::Asset){
                     target.push_back(category);continue;
                 }
@@ -180,7 +187,7 @@ int main(int argc,char** argv){
                 for(const auto& e:page.catalog.entries){
                     if(e.kind!=xs::EntryKind::Asset||e.program_type!=type)continue;
                     target.push_back(e);
-                    if(target.size()>=4)break;
+                    if(target.size()>=20)break;
                 }
             }
         };
@@ -212,6 +219,9 @@ int main(int argc,char** argv){
         if(view.poll_images())redraw=true;
         if(redraw){view.favorite=!catalog.entries.empty()&&saved.contains(catalog.entries[std::min(selected,catalog.entries.size()-1)]);if(donating)view.donation();else view.draw(catalog,selected,status,full_memory);redraw=false;}
         bool up=false,down=false,left=false,right=false,play=false,reload=false,login=autoload,search=false,back=false,next=false,previous=false,toggle_favorite=false;int nav_action=pending_remote_navigation;pending_remote_navigation=-1;autoload=false;SDL_Event event;
+#ifdef _WIN32
+        bool nova_heading_catalog=false;
+#endif
         while(SDL_PollEvent(&event)){
             if(event.type==SDL_QUIT)running=false;
             if(event.type==SDL_WINDOWEVENT)redraw=true;
@@ -277,6 +287,8 @@ int main(int argc,char** argv){
                         break;
 #ifdef _WIN32
                     case SDLK_F8:view.toggle_ui_mode();view.nav_focus=-1;view.show_details=false;
+                        if(xs::nova_is_home(catalog)){catalog=home();selected=0;}
+                        nova_drag_pending=false;
                         status=view.nova_enabled?"NOVA activada. F8: regresar a la vista anterior.":"Vista original activada. F8: probar NOVA.";
                         redraw=true;break;
                     case SDLK_F9:view.pairing_visible=!view.pairing_visible;redraw=true;break;
@@ -353,7 +365,7 @@ int main(int argc,char** argv){
             up=down=left=right=false;
         }
 #ifdef _WIN32
-        else if(left&&(view.nova_enabled?
+        else if(left&&!(view.nova_enabled&&xs::nova_is_home(catalog))&&(view.nova_enabled?
                  xs::nova_left_edge(catalog,selected,xs::is_home(catalog)?view.home_last_index:-1):
                  selected%static_cast<size_t>(view.columns(catalog))==0)){
             view.nav_focus=std::max(0,view.active_nav);left=false;redraw=true;
@@ -417,7 +429,7 @@ int main(int argc,char** argv){
                     selected=0;
 #ifdef _WIN32
                     // TV opens the actual last-watched channel, not a random category.
-                    if(home_data.has_last)play=true;
+                    if(home_data.has_last&&!nova_heading_catalog)play=true;
 #endif
                 }
                 else{const std::string type=nav_action==2?"1":"0";const auto i=std::find_if(root_catalog.entries.begin(),root_catalog.entries.end(),[&](const xs::Entry& e){return e.kind==xs::EntryKind::Section&&e.program_type==type;});
@@ -467,6 +479,8 @@ int main(int argc,char** argv){
                 if(left)selected=move(-1,0);
                 if(right)selected=move(1,0);
                 if(next||previous)selected=move(0,next?1:-1);
+                if(view.nova_enabled&&selected<catalog.entries.size())
+                    view.ensure_nova_visible(catalog,selected);
                 if(up||down||left||right||next||previous)redraw=true;
             }else
 #endif
