@@ -1,6 +1,8 @@
 #include "view.hpp"
 #ifdef _WIN32
 #include "cinematic_layout.hpp"
+#include "nova_layout.hpp"
+#include <fstream>
 #endif
 #if defined(_WIN32)
 #include "remote_server.hpp"
@@ -39,7 +41,12 @@ bool View::open(std::string& error){
 #endif
     font=TTF_OpenFont(path,22*kFontRenderScale);small=TTF_OpenFont(path,17*kFontRenderScale);large=TTF_OpenFont(path,46*kFontRenderScale);heading=TTF_OpenFont(path,30*kFontRenderScale);
     if(!font||!small||!large||!heading){error=TTF_GetError();return false;}
-    images=std::make_unique<Artwork>(renderer);trace("view:ready");return true;
+    images=std::make_unique<Artwork>(renderer);
+#ifdef _WIN32
+    std::ifstream ui_mode("ui_mode.txt");std::string saved_mode;
+    if(ui_mode>>saved_mode)nova_enabled=saved_mode=="nova";
+#endif
+    trace("view:ready");return true;
 }
 void View::rect(SDL_Rect r,SDL_Color c){SDL_SetRenderDrawColor(renderer,c.r,c.g,c.b,c.a);SDL_RenderFillRect(renderer,&r);}
 void View::text(int x,int y,const std::string& value,SDL_Color color,int width,TTF_Font* type,int max_height){
@@ -74,7 +81,7 @@ void View::splash(const std::string& status){
 }
 int View::columns(const Catalog& c)const{
 #ifdef _WIN32
-    return cinematic_columns(c);
+    return nova_enabled?nova_columns(c):cinematic_columns(c);
 #else
     if(!c.entries.empty()&&c.entries[0].kind==EntryKind::Asset)return 5;
     if(!c.entries.empty()&&c.entries[0].kind==EntryKind::Channel)return 4;
@@ -83,7 +90,7 @@ int View::columns(const Catalog& c)const{
 }
 int View::page_size(const Catalog& c)const{
 #ifdef _WIN32
-    return cinematic_page_size(c);
+    return nova_enabled?nova_page_size(c):cinematic_page_size(c);
 #else
     const int col=columns(c);return col*(col==4?3:2);
 #endif
@@ -96,7 +103,8 @@ bool View::image(const std::string& url,const std::string& key,SDL_Rect bounds){
 void View::draw(const Catalog& c,size_t selected,const std::string& status,bool full_memory){
 #ifdef _WIN32
     (void)full_memory;
-    draw_cinematic(c,selected,status);
+    if(nova_enabled)draw_nova(c,selected,status);
+    else draw_cinematic(c,selected,status);
 #else
 
     poll_images();background();rect({0,0,240,720},{13,20,32,255});rect({239,0,1,720},{32,43,61,255});brand(24,30);
@@ -138,7 +146,7 @@ void View::draw(const Catalog& c,size_t selected,const std::string& status,bool 
 }
 int View::hit(const Catalog& c,size_t selected,int x,int y)const{
 #ifdef _WIN32
-    return hit_cinematic(c,selected,x,y);
+    return nova_enabled?hit_nova(c,selected,x,y):hit_cinematic(c,selected,x,y);
 #else
 
     if(!c.entries.empty()&&c.entries[selected].kind==EntryKind::Channel&&x>=1080&&x<=1225&&y>=103&&y<=129)return -8;
@@ -159,6 +167,13 @@ void View::donation(){
     text(900,565,"MERCADO PAGO",accent,300,small);text(76,680,"B / A / Y  Continuar a la app",white,900,small);SDL_RenderPresent(renderer);
 }
 void View::move_to_next_display(){xs::move_to_next_display(window);}
+#ifdef _WIN32
+void View::toggle_ui_mode(){
+    nova_enabled=!nova_enabled;
+    std::ofstream state("ui_mode.txt",std::ios::trunc);
+    if(state)state<<(nova_enabled?"nova\n":"cinematic\n");
+}
+#endif
 void View::toggle_fullscreen(){
     if(!window)return;
     const bool active=(SDL_GetWindowFlags(window)&SDL_WINDOW_FULLSCREEN_DESKTOP)!=0;
