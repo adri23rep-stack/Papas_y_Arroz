@@ -50,6 +50,7 @@ class NovaQtHome : public QObject {
     Q_PROPERTY(QString videoPresetLabel READ videoPresetLabel NOTIFY changed)
     Q_PROPERTY(int motionMode READ motionMode NOTIFY changed)
     Q_PROPERTY(QString motionLabel READ motionLabel NOTIFY changed)
+    Q_PROPERTY(bool gpuRifeReady READ gpuRifeReady NOTIFY changed)
 public:
     explicit NovaQtHome(QObject* parent=nullptr);
     ~NovaQtHome() override;
@@ -86,6 +87,7 @@ public:
     QString videoPresetLabel() const;
     int motionMode() const;
     QString motionLabel() const;
+    bool gpuRifeReady() const{return NovaQtPlayer::gpuRifeReady();}
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void playFeatured();
     Q_INVOKABLE void moreInfoFeatured(){featured_info_visible_=true;emit changed();}
