@@ -9,6 +9,10 @@
 #include <QQmlContext>
 #include <QQuickWindow>
 #include <QTimer>
+#include <QRegularExpression>
+#include <QScreen>
+#include <QImage>
+#include <QPixmap>
 #include <QSurfaceFormat>
 #include <cstdio>
 #include <cstring>
@@ -38,6 +42,49 @@ int main(int argc,char** argv){
     QDir::setCurrent(QCoreApplication::applicationDirPath());
 
     checkpoint("application_ready");
+    const bool testRife=argc>1 && std::strcmp(argv[1],"--smoke-rife-fullscreen")==0;
+    if(testRife || (argc>1 && std::strcmp(argv[1],"--smoke-video-fullscreen")==0)){
+        NovaQtPlayer player;
+        xs::SourceResult source;
+        source.ok=true;
+        source.source="test.mp4";
+        player.play(source,QStringLiteral("Nova fullscreen test"),false);
+        QTimer poll;
+        int stage=0, moving=0;
+        bool requested=false;
+        QImage previous;
+        QObject::connect(&poll,&QTimer::timeout,&app,[&]{
+            auto* window=player.videoWindow();
+            if(!window || !player.playing()){app.exit(4);return;}
+            if((window->visibility()==QWindow::FullScreen)!=(stage==1))return;
+            const auto size=window->size();
+            const auto image=window->screen()->grabWindow(window->winId(),size.width()/2-64,
+                size.height()/2-48,128,96).toImage();
+            if(!image.isNull() && !previous.isNull() && image!=previous)++moving;
+            previous=image;
+            if(testRife && moving>=3 && !requested){
+                player.requestQuality(4);
+                if(!player.requestMotion(2)){app.exit(6);return;}
+                requested=true;
+                moving=0;
+                return;
+            }
+            if(testRife){
+                const QRegularExpression fps(QStringLiteral("FPS estimados tras filtro: ([0-9.]+)"));
+                const double rate=fps.match(player.diagnostics()).captured(1).toDouble();
+                if(rate<46 || rate>50)return;
+            }
+            if(moving<3)return;
+            std::fprintf(stderr,"Moving video verified in stage %d\\n",stage);
+            if(++stage==3){app.quit();return;}
+            player.toggleFullscreen();
+            previous=QImage();
+            moving=0;
+        });
+        poll.start(250);
+        QTimer::singleShot(testRife?90000:25000,&app,[&]{std::fprintf(stderr,"%s\\n",player.diagnostics().toUtf8().constData());app.exit(5);});
+        return app.exec();
+    }
     NovaQtHome home;
     QQmlApplicationEngine engine;
     // windeployqt puts importable modules beside this executable in /qml.

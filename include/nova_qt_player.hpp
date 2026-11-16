@@ -1,6 +1,7 @@
 #pragma once
 #include "service.hpp"
 #include <QObject>
+#include <QWindow>
 #include <QMutex>
 #include <QString>
 #include <atomic>
@@ -9,8 +10,7 @@
 #include <thread>
 struct mpv_handle;
 
-// Keep Qt Quick rendering and media playback separate. libmpv owns its video
-// window while QML remains alive, and remote actions use the same player.
+// Qt owns the top-level video window; mpv draws into its native child.
 class NovaQtPlayer : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool playing READ playing NOTIFY changed)
@@ -35,11 +35,16 @@ public:
     bool requestMotion(int value);
     static bool gpuRifeReady();
     void toggleFullscreen();
+    QWindow* videoWindow() const { return videoWindow_.get(); }
     void selectTrack(int kind,int id,uint32_t generation);
 signals:
     void changed();
     void finishedPlayback(double seconds,bool ended);
 private:
+    bool eventFilter(QObject* object,QEvent* event) override;
+    std::unique_ptr<QWindow> videoWindow_;
+    bool restoreMaximized_=false;
+    std::int64_t videoWindowId_=0;
     void command(const char* name,const char* argument);
     void finish(const QString& message);
     void playWorker(xs::SourceResult result,QString title,bool live,double resumeSeconds);

@@ -6,6 +6,9 @@
 #include "nova_gpu.hpp"
 #include <QCoreApplication>
 #include <QDir>
+#include <QGuiApplication>
+#include <QKeyEvent>
+#include <QScreen>
 #include <QFileInfo>
 #include <QTemporaryDir>
 #include <QByteArray>
@@ -33,6 +36,7 @@ NovaQtPlayer::~NovaQtPlayer(){
 
 void NovaQtPlayer::finish(const QString& message){
     QMetaObject::invokeMethod(this,[this,message]{
+        if(videoWindow_)videoWindow_->hide();
         playing_.store(false);
         notice_=message;
         emit changed();
@@ -43,6 +47,20 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
     if(playing_.load()||!result.ok||!xs::valid_source(result.source))return;
     if(thread_.joinable())thread_.join();
     stop_.store(false);
+    if(!videoWindow_){
+        videoWindow_=std::make_unique<QWindow>();
+        videoWindow_->installEventFilter(this);
+    }
+    auto* screen=QGuiApplication::focusWindow()?QGuiApplication::focusWindow()->screen():QGuiApplication::primaryScreen();
+    videoWindow_->setScreen(screen);
+    const QRect area=screen->availableGeometry();
+    QRect bounds(QPoint(),QSize(960,540).boundedTo(area.size()));
+    bounds.moveCenter(area.center());
+    videoWindow_->setTitle(title);
+    videoWindow_->showNormal();
+    videoWindow_->setGeometry(bounds);
+    videoWindow_->requestActivate();
+    videoWindowId_=static_cast<std::int64_t>(videoWindow_->winId());
     title_=title;
     notice_=QStringLiteral("Abriendo reproductor...");
     playing_.store(true);
@@ -85,13 +103,39 @@ void NovaQtPlayer::setSpeed(int percent){
     mpv_set_property_async(handle_,0,"speed",MPV_FORMAT_DOUBLE,&speed);
 }
 void NovaQtPlayer::toggleFullscreen(){
-    QMutexLocker lock(&mutex_);
-    if(!handle_)return;
-    int fullscreen=0;
-    if(mpv_get_property(handle_,"fullscreen",MPV_FORMAT_FLAG,&fullscreen)>=0){
-        fullscreen=!fullscreen;
-        mpv_set_property_async(handle_,0,"fullscreen",MPV_FORMAT_FLAG,&fullscreen);
+    if(!videoWindow_ || !videoWindow_->isVisible())return;
+    if(videoWindow_->visibility()==QWindow::FullScreen){
+        if(restoreMaximized_)videoWindow_->showMaximized();
+        else videoWindow_->showNormal();
+    }else{
+        restoreMaximized_=videoWindow_->visibility()==QWindow::Maximized;
+        videoWindow_->showFullScreen();
     }
+}
+
+bool NovaQtPlayer::eventFilter(QObject* object,QEvent* event){
+    if(object!=videoWindow_.get())return QObject::eventFilter(object,event);
+    if(event->type()==QEvent::Close){
+        stop();
+    }else if(event->type()==QEvent::MouseButtonDblClick){
+        toggleFullscreen();
+        return true;
+    }else if(event->type()==QEvent::KeyPress){
+        auto* key=static_cast<QKeyEvent*>(event);
+        switch(key->key()){
+        case Qt::Key_F: case Qt::Key_F11:
+            if(!key->isAutoRepeat())toggleFullscreen();
+            return true;
+        case Qt::Key_Escape:
+            if(videoWindow_->visibility()==QWindow::FullScreen)toggleFullscreen();
+            else stop();
+            return true;
+        case Qt::Key_Space: togglePause();return true;
+        case Qt::Key_Left: seek(-5);return true;
+        case Qt::Key_Right: seek(5);return true;
+        }
+    }
+    return QObject::eventFilter(object,event);
 }
 void NovaQtPlayer::selectTrack(int kind,int id,uint32_t generation){
     QMutexLocker lock(&mutex_);
@@ -232,6 +276,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
     if(activeMotion<0||activeMotion>2)activeMotion=0;
     requested_motion_.store(activeMotion);
     int previousPreset=activePreset,previousMotion=activeMotion;
+    QString motionFallbackReason;
+    bool fastRife=false;
     bool switching=false, registered=false, reachedEnd=false;
     bool recoveryAttempted=false;
     double lastPosition=resumeSeconds;
@@ -338,6 +384,12 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                      opt("keep-open","no") &&
                      opt("title",title.toUtf8().constData()) &&
                      opt("vo","gpu") &&
+                     opt("wid",std::to_string(videoWindowId_).c_str()) &&
+#ifdef Q_OS_WIN
+                     // Keep presentation composed by Windows during monitor-sized resizes.
+                     opt("d3d11-exclusive-fs","no") &&
+                     opt("d3d11-flip","no") &&
+#endif
                      opt("network-timeout",live?"25":"15") &&
                      opt("cache","yes") &&
                      opt("sub-auto","no") &&
@@ -353,7 +405,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     failed=failed||!opt("scale","lanczos");
                 else if(gpuMode){
                     const QByteArray shaderPath=QDir::toNativeSeparators(shader).toUtf8();
-                    failed=failed||!opt("gpu-api","opengl") ||
+                    failed=failed||!opt("gpu-api",gpuRife?"d3d11":"opengl") ||
                            !opt("glsl-shaders",shaderPath.constData()) ||
                            !opt("scale","ewa_lanczossharp") ||
                            !opt("cscale","ewa_lanczos");
@@ -374,7 +426,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     const QByteArray bytes=QDir::toNativeSeparators(script).toUtf8();
                     rifeSession=std::make_unique<QTemporaryDir>();
                     if(rifeSession->isValid()){
-                        rifeStatusPath=rifeSession->filePath(QStringLiteral("rife-status"));
+                        rifeStatusPath=rifeSession->filePath(fastRife?QStringLiteral("rife-fast"):
+                            gpuMode?QStringLiteral("rife-balanced"):QStringLiteral("rife-status"));
                         const QByteArray statusPath=QDir::toNativeSeparators(rifeStatusPath).toUtf8();
                         const std::string spec="vapoursynth=file=%"+
                             std::to_string(bytes.size())+"%"+bytes.toStdString()+
@@ -527,6 +580,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                                  gpuRife?QStringLiteral("GPU Vulkan RIFE (verificar FPS reales)"):
                                          QStringLiteral("MPV"));
                         baseDiagnostics=details;
+                        if(gpuRife && (gpuMode||fastRife))baseDiagnostics+=QStringLiteral("\nResolución de cálculo RIFE: hasta %1 px de ancho").arg(fastRife?384:640);
+                        if(!motionFallbackReason.isEmpty())baseDiagnostics+="\n"+motionFallbackReason;
                         publish(QStringLiteral("Reproduciendo · %1").arg(
                             QString::fromUtf8(xs::video_preset_label(preset))),details);
                         lastFpsCheck=std::chrono::steady_clock::now();
@@ -542,11 +597,10 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                             std::string message=std::string(log->prefix?log->prefix:"")+" "+log->text;
                             std::transform(message.begin(),message.end(),message.begin(),
                                 [](unsigned char c){return static_cast<char>(std::tolower(c));});
-                            if(gpuRife &&
-                               (message.find("vapoursynth")!=std::string::npos ||
-                                message.find("rife")!=std::string::npos) &&
-                               (message.find("failed")!=std::string::npos ||
-                                message.find("error")!=std::string::npos)){
+                            if(gpuRife && message.find("vapoursynth")!=std::string::npos &&
+                               (message.find("script evaluation failed")!=std::string::npos ||
+                                message.find("disabling filter")!=std::string::npos ||
+                                message.find("filter error at frame")!=std::string::npos)){
                                 failed=true;
                                 failure=QStringLiteral("RIFE GPU no pudo cargar el filtro.");
                                 break;
@@ -560,6 +614,10 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                                 break;
                             }
                         }
+                    }
+                    if(event->event_id==MPV_EVENT_PLAYBACK_RESTART || event->event_id==MPV_EVENT_VIDEO_RECONFIG){
+                        gpuReadyAt=std::chrono::steady_clock::now();
+                        badSyncSamples=0;
                     }
                     if(event->event_id==MPV_EVENT_END_FILE){
                         const auto* end=static_cast<const mpv_event_end_file*>(event->data);
@@ -589,6 +647,13 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                         ++badSyncSamples;
                     else badSyncSamples=0;
                     if(badSyncSamples>=3){
+                        if(!fastRife){
+                            capture(mpv);
+                            fastRife=true;
+                            restart=true;
+                            publish(QStringLiteral("Ajustando RIFE para recuperar la sincronización..."));
+                            break;
+                        }
                         failed=true;
                         failure=QStringLiteral(
                             "RIFE GPU no mantiene audio/video sincronizados. Volviendo a reproducción normal.");
@@ -624,6 +689,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     previousMotion=activeMotion;
                     activePreset=wanted;
                     activeMotion=wantedMotion;
+                    motionFallbackReason.clear();
+                    fastRife=false;
                     switching=true;
                     recoveryAttempted=false;
                     restart=true;
@@ -669,7 +736,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                 previousMotion=fallbackMotion;
                 switching=false;
                 remote.set_setting_value(presetId,fallback);
-                remote.set_setting_value(motionId,fallbackMotion);
+                if(gpuRife)motionFallbackReason=failure;
+                else remote.set_setting_value(motionId,fallbackMotion);
                 requested_quality_.store(fallback);
                 requested_motion_.store(fallbackMotion);
                 restart_revision_.fetch_add(1);

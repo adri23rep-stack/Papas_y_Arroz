@@ -32,17 +32,6 @@
 #include <vector>
 
 namespace {
-BOOL CALLBACK findVideoWindow(HWND window,LPARAM output){
-    DWORD pid=0;
-    GetWindowThreadProcessId(window,&pid);
-    wchar_t name[64]{};
-    if(pid==GetCurrentProcessId()&&IsWindowVisible(window)&&
-       GetClassNameW(window,name,64)&&std::wcscmp(name,L"mpv")==0){
-        *reinterpret_cast<HWND*>(output)=window;
-        return FALSE;
-    }
-    return TRUE;
-}
 BOOL CALLBACK collectMonitor(HMONITOR monitor,HDC,LPRECT,LPARAM output){
     reinterpret_cast<std::vector<HMONITOR>*>(output)->push_back(monitor);
     return TRUE;
@@ -62,10 +51,9 @@ void moveToMonitor(HWND window,HMONITOR destination){
                  w,h,SWP_NOZORDER|SWP_NOACTIVATE);
     if(maximized)ShowWindow(window,SW_MAXIMIZE);
 }
-void nextMonitor(QQuickWindow* home){
+void nextMonitor(QQuickWindow* home,QWindow* player){
     if(!home)return;
-    HWND video=nullptr;
-    EnumWindows(findVideoWindow,reinterpret_cast<LPARAM>(&video));
+    HWND video=player&&player->isVisible()?reinterpret_cast<HWND>(player->winId()):nullptr;
     HWND catalog=reinterpret_cast<HWND>(home->winId());
     std::vector<HMONITOR> monitors;
     EnumDisplayMonitors(nullptr,nullptr,collectMonitor,reinterpret_cast<LPARAM>(&monitors));
@@ -723,7 +711,7 @@ void NovaQtHome::pollRemote(){
             case SDLK_F6:openSection(2);break;
             case SDLK_F7:openSection(1);break;
             case SDLK_SPACE:player_.togglePause();break;
-            case SDLK_F10:nextMonitor(window_);break;
+            case SDLK_F10:nextMonitor(window_,player_.videoWindow());break;
             case SDLK_F11:
                 if(player_.playing())player_.toggleFullscreen();
                 else if(window_)window_->setVisibility(window_->visibility()==QWindow::FullScreen?
