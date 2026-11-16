@@ -127,22 +127,15 @@ jobs:
           test -x /ucrt64/bin/mpv.exe
           /ucrt64/bin/mpv.exe --no-config --no-audio --vo=null --frames=2             '--vf=lavfi=[scale=1920:1080:flags=lanczos,cas=strength=0.30]'             packaging/runtime/switch/xuperswitch/test.mp4
           echo 'CAS + Lanczos filter smoke test passed.'
-      - name: Validate real 60 FPS motion-compensated filter
+      - name: Validate mpv VapourSynth bridge without Vulkan hardware
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          /ucrt64/bin/ffmpeg -hide_banner -loglevel error -y \
-            -f lavfi -i 'testsrc2=size=320x180:rate=24:duration=1.5' \
-            -vf 'minterpolate=fps=60:mi_mode=mci:mc_mode=obmc:me_mode=bidir' \
-            -an -f framehash build/windows/motionboost-framehash.txt
-          # A 24 FPS input must produce new frame timestamps, not merely
-          # declare an output framerate in UI.
-          awk -F, '!/^#/ && NF >= 6 { count++ } END { if (count < 60) exit 1; print "MotionBoost actual frames:", count }' \
-            build/windows/motionboost-framehash.txt
-          /ucrt64/bin/mpv.exe --no-config --no-audio --vo=null --frames=6 \
-            '--vf=lavfi=[minterpolate=fps=60:mi_mode=mci:mc_mode=obmc:me_mode=bidir]' \
+          /ucrt64/bin/python.exe -m py_compile nova-gpu/rife.vpy nova-gpu/smoke.vpy
+          /ucrt64/bin/mpv.exe --no-config --no-audio --vo=null --frames=3 \
+            '--vf=vapoursynth=nova-gpu/smoke.vpy' \
             packaging/runtime/switch/xuperswitch/test.mp4
-          echo "FFmpeg motion compensation and mpv filter bridge verified."
+          echo "VapourSynth mpv bridge works; actual RIFE GPU needs NVIDIA/Vulkan."
       - name: Check native renderer orientation with synthetic two-color video
         shell: msys2 {0}
         run: |
@@ -193,7 +186,8 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          mkdir -p dist/Xuper-TV-Desktop/licenses dist/Xuper-TV-Desktop/shaders
+          mkdir -p dist/Xuper-TV-Desktop/licenses dist/Xuper-TV-Desktop/shaders dist/Xuper-TV-Desktop/nova-gpu
+          cp nova-gpu/rife.vpy dist/Xuper-TV-Desktop/nova-gpu/
           cp build/windows/XuperTVDesktop.exe dist/Xuper-TV-Desktop/
           cp build/windows/XuperTVNovaQt.exe dist/Xuper-TV-Desktop/
           # Bundle Qt Quick's real QML/graphics plugins. This is a separate
@@ -377,8 +371,9 @@ jobs:
             "$qt"/swresample*.dll "$qt"/libavcodec*.dll \
             "$qt"/libavformat*.dll "$qt"/libavutil*.dll \
             "$qt"/libswscale*.dll "$qt"/libswresample*.dll
-          # Nova Qt now supports FSRCNNX; keep its shader in the portable build.
+          # Keep FSRCNNX and RIFE's GPU script; weights stay in optional add-on.
           test -s "$qt/shaders/FSRCNNX_x2_8-0-4-1.glsl"
+          test -s "$qt/nova-gpu/rife.vpy"
           rm -f "$qt"/font.ttf
           rm -rf "$qt"/qml/QtQml/DesignSupport             "$qt"/qml/QtQml/XmlListModel             "$qt"/qml/QtQuick/Shapes/DesignHelpers
           # QML app imports QtQuick and QtQuick.Window.
@@ -462,6 +457,13 @@ jobs:
       # The account's Actions artifact storage quota is currently exhausted.
       # Instead of silently failing or deleting old user artifacts, stage 3
       # can provide its verified ZIP on a dedicated orphan branch. No release.
+      - name: Package pinned optional GPU RIFE Vulkan add-on
+        if: github.event_name == 'pull_request' && github.head_ref == 'feature/nova-quality-presets-seamless-restart'
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          bash tools/package-nova-gpu-rife-ucrt64.sh
+          test -s dist/Xuper-TV-NovaQt-GPU-RIFE-Addon/Xuper-TV-NovaQt-Preview/nova-gpu/librife_windows_x86-64.dll
       - name: Publish temporary ZIP to isolated build-delivery branch
         if: github.ref_name == 'windows-desktop-preview' || github.ref_name == 'feature/nova-ui-from-scratch' || (github.event_name == 'pull_request' && (github.head_ref == 'feature/nova-ui-from-scratch' || github.head_ref == 'feature/nova-quality-presets-seamless-restart') && github.event.pull_request.head.repo.full_name == github.repository)
         shell: pwsh
@@ -485,6 +487,9 @@ jobs:
             @(
               @{ Name = 'XuperTV-Integrated-Windows-Preview.zip'; Folder = 'dist/Xuper-TV-Desktop' }
             )
+          }
+          if ($env:NOVA_SOURCE_BRANCH -eq 'feature/nova-quality-presets-seamless-restart') {
+            $packages += @{ Name = 'XuperTV-NOVA-GPU-RIFE-Addon.zip'; Folder = 'dist/Xuper-TV-NovaQt-GPU-RIFE-Addon/Xuper-TV-NovaQt-Preview' }
           }
           $archives = @()
           foreach ($package in $packages) {
@@ -515,6 +520,7 @@ jobs:
               "Source branch: $env:NOVA_SOURCE_BRANCH",
               "Source commit: $env:GITHUB_SHA",
               'Nova Qt requires TWO files: Qt Preview ZIP plus Playback Addon ZIP.',
+              'RIFE GPU is OPTIONAL: also extract GPU RIFE Addon ZIP into the same preview folder.',
               'Extract BOTH ZIPs in the SAME parent folder, merging Xuper-TV-NovaQt-Preview.',
               'Launch XuperTVNovaQt.exe only after extracting both files.',
               'Classic Windows ZIP is a separate fallback. Do not mix it into Nova Qt.'
