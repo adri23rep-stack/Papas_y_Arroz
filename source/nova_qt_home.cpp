@@ -153,6 +153,11 @@ NovaQtHome::NovaQtHome(QObject* parent):QObject(parent),player_(this){
                 playback_history_.auto_next,ended);
         }
         refreshContinue();
+        if(queued_remote_entry_){
+            const auto entry=*queued_remote_entry_;
+            queued_remote_entry_.reset();
+            activate(entry);
+        }
     });
     refreshContinue();
     // SDL is used ONLY as the existing iPhone remote's event queue; Qt draws
@@ -580,8 +585,10 @@ void NovaQtHome::pollRemote(){
                     ?remote.selected_browse_result(generation,index,picked)
                     :remote.selected_result(generation,index,picked);
                 if(valid&&index<picked.entries.size()){
-                    if(player_.playing())player_.stop();
-                    activate(picked.entries[index]);
+                    if(player_.playing()){
+                        queued_remote_entry_=picked.entries[index];
+                        player_.stop();
+                    }else activate(picked.entries[index]);
                 }
             }
             continue;
