@@ -405,7 +405,7 @@ jobs:
             $logOut = Join-Path $env:RUNNER_TEMP 'nova-compact-out.txt'
             $logErr = Join-Path $env:RUNNER_TEMP 'nova-compact-err.txt'
             Remove-Item '.\nova-qt-smoke.log' -ErrorAction SilentlyContinue
-            $qt = Start-Process -FilePath '.\XuperTVNovaQt.exe' -ArgumentList @('--smoke') -PassThru -NoNewWindow -RedirectStandardOutput $logOut -RedirectStandardError $logErr
+            $qt = Start-Process -FilePath '.\XuperTVNovaQt.exe' -ArgumentList @('--smoke-fullscreen') -PassThru -NoNewWindow -RedirectStandardOutput $logOut -RedirectStandardError $logErr
             $finished = $qt.WaitForExit(20000)
             if (-not $finished) {
               Stop-Process -Id $qt.Id -Force -ErrorAction SilentlyContinue
