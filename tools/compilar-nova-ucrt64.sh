@@ -102,6 +102,10 @@ cmake --build build/nova-local --target XuperTVNovaQt --parallel 4
 output="dist/Xuper-TV-NovaQt-Local"
 mkdir -p "$output"
 cp build/nova-local/XuperTVNovaQt.exe "$output/"
+# The GPU quality mode needs the real FSRCNNX shader next to the player.
+mkdir -p "$output/shaders"
+cp shaders/FSRCNNX_x2_8-0-4-1.glsl "$output/shaders/"
+test -s "$output/shaders/FSRCNNX_x2_8-0-4-1.glsl"
 
 # Qt's Windows deployment tool collects Qt DLLs, modules and plugins.
 echo "[NOVA] Empaquetando Qt Quick..."
