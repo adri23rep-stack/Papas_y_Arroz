@@ -45,6 +45,7 @@ private:
     std::unique_ptr<QWindow> videoWindow_;
     bool restoreMaximized_=false;
     std::int64_t videoWindowId_=0;
+    int displayWidth_=1920,displayHeight_=1080; // sampled before playback worker starts
     void command(const char* name,const char* argument);
     void finish(const QString& message);
     void playWorker(xs::SourceResult result,QString title,bool live,double resumeSeconds);
