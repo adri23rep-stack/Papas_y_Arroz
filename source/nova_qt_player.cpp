@@ -3,9 +3,11 @@
 #include "remote_server.hpp"
 #include "nova_quality.hpp"
 #include "nova_motion.hpp"
+#include "nova_gpu.hpp"
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QByteArray>
 #include <mpv/client.h>
 #include <QMetaObject>
 #include <QMutexLocker>
@@ -141,10 +143,25 @@ void NovaQtPlayer::requestQuality(int value){
     if(requested_quality_.exchange(value)==value)return;
     restart_revision_.fetch_add(1);
 }
-void NovaQtPlayer::requestMotion(int value){
-    if(value<0||value>2)return;
-    if(requested_motion_.exchange(value)==value)return;
-    restart_revision_.fetch_add(1);
+bool NovaQtPlayer::gpuRifeReady(){
+    const auto exeDir=QCoreApplication::applicationDirPath();
+    return xs::nova_rife_files_present(
+        std::filesystem::path(QDir::toNativeSeparators(exeDir).toStdWString()));
+}
+bool NovaQtPlayer::requestMotion(int value){
+    if(value<0||value>2)return false;
+    if(value==2&&!gpuRifeReady()){
+        // The server may have saved the iPhone's selection before this
+        // request reaches the UI thread. Undo it without restarting playback.
+        xs::RemoteServer::shared().set_setting_value(
+            xs::remote_setting_index("motion_mode"),requested_motion_.load());
+        notice_=QStringLiteral("RIFE GPU no está instalado. Añade el complemento Vulkan.");
+        emit changed();
+        return false;
+    }
+    if(requested_motion_.exchange(value)!=value)
+        restart_revision_.fetch_add(1);
+    return true;
 }
 
 void NovaQtPlayer::applySetting(int id,int value){
@@ -264,13 +281,18 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
         const auto preset=xs::nova_video_preset(activePreset);
         const auto motion=xs::nova_motion_mode(activeMotion);
         const bool gpuMode=xs::nova_needs_shader(preset);
+        const bool gpuRife=xs::nova_motion_needs_gpu(motion);
+        // Evaluate before touching libmpv: the previous CPU interpolator
+        // must NEVER be used as an implicit fallback for a missing GPU.
+        const bool missingRife=gpuRife&&!gpuRifeReady();
         const QString shader=QDir(QCoreApplication::applicationDirPath())
             .filePath(QStringLiteral("shaders/FSRCNNX_x2_8-0-4-1.glsl"));
-        bool failed=gpuMode&&(!QFileInfo(shader).isFile());
+        bool failed=missingRife||(gpuMode&&(!QFileInfo(shader).isFile()));
         bool loaded=false, restart=false;
         QString baseDiagnostics;
         auto lastFpsCheck=std::chrono::steady_clock::now();
-        QString failure=failed?QStringLiteral("Falta el shader GPU FSRCNNX."):QString();
+        QString failure=missingRife?QStringLiteral("Falta el complemento GPU RIFE Vulkan."):
+            (failed?QStringLiteral("Falta el shader GPU FSRCNNX."):QString());
         mpv_handle* mpv=failed?nullptr:mpv_create();
         if(!failed&&!mpv){
             failed=true;
@@ -296,7 +318,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
             if(!failed){
                 // mpv's hardware decoder chooses D3D11VA/NVDEC on supported
                 // devices; compatible mode deliberately stays on CPU.
-                const char* decoder=preset==xs::VideoPreset::Compatible?"no":"auto-safe";
+                const char* decoder=preset==xs::VideoPreset::Compatible?"no":
+                    (gpuRife?"auto-copy":"auto-safe");
                 failed=!opt("hwdec",decoder);
                 if(preset==xs::VideoPreset::Sharp ||
                    preset==xs::VideoPreset::ExtraDetail)
@@ -314,10 +337,17 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     failed=!opt("video-sync","display-resample") ||
                            !opt("interpolation","yes") ||
                            !opt("tscale","linear");
-                }else if(motion==xs::MotionMode::Compensated60){
-                    // True motion estimation through FFmpeg, NOT GPU RIFE.
-                    // The resulting FPS is measured independently below.
-                    failed=!opt("vf",xs::nova_motion_filter(motion));
+                }else if(gpuRife){
+                    // Use genuine GPU RIFE through VapourSynth/Vulkan. No
+                    // CPU minterpolate in this pipeline. MPV interprets %N%
+                    // as a length-prefixed filename, so drive colons, commas
+                    // and spaces cannot be mistaken for vf delimiters.
+                    const QString script=QDir(QCoreApplication::applicationDirPath())
+                        .filePath(QStringLiteral("nova-gpu/rife.vpy"));
+                    const QByteArray bytes=QDir::toNativeSeparators(script).toUtf8();
+                    const std::string spec="vapoursynth=file=%"+
+                        std::to_string(bytes.size())+"%"+bytes.toStdString();
+                    failed=!opt("vf",spec.c_str());
                 }
             }
             if(!failed&&live)failed=!opt("demuxer-readahead-secs","3");
@@ -424,9 +454,11 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                             mpv_get_property(mpv,"video-params/w",MPV_FORMAT_INT64,&w);
                             mpv_get_property(mpv,"video-params/h",MPV_FORMAT_INT64,&h);
                             std::string graph=xs::extra_detail_filter(int(w),int(h));
-                            if(motion==xs::MotionMode::Compensated60)
-                                graph+=","+std::string(xs::nova_motion_filter(motion));
-                            if(graph.empty()||mpv_set_property_string(mpv,"vf",graph.c_str())<0){
+                            // "vf add" preserves the already-installed RIFE
+                            // VapourSynth filter; replacing vf would silently
+                            // disable GPU interpolation whenever CAS is chosen.
+                            const char* add[]={"vf","add",graph.c_str(),nullptr};
+                            if(graph.empty()||mpv_command(mpv,add)<0){
                                 failed=true;
                                 failure=QStringLiteral("Filtro CAS no disponible.");
                                 break;
@@ -453,9 +485,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                             .arg(decoding,QString::fromStdString(filter))
                             .arg(originalFps>0?QString::number(originalFps,'f',2):
                                  QStringLiteral("sin datos"),motionStatus,
-                                 motion==xs::MotionMode::Compensated60?
-                                     QStringLiteral("CPU (comprobando FPS reales)"):
-                                     QStringLiteral("MPV"));
+                                 gpuRife?QStringLiteral("GPU Vulkan RIFE (verificar FPS reales)"):
+                                         QStringLiteral("MPV"));
                         baseDiagnostics=details;
                         publish(QStringLiteral("Reproduciendo · %1").arg(
                             QString::fromUtf8(xs::video_preset_label(preset))),details);
@@ -466,19 +497,20 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     if(event->event_id==MPV_EVENT_FILE_LOADED)
                         publishTracks(mpv,title);
                     if(event->event_id==MPV_EVENT_LOG_MESSAGE&&
-                       (gpuMode||motion==xs::MotionMode::Compensated60)){
+                       (gpuMode||gpuRife)){
                         const auto* log=static_cast<const mpv_event_log_message*>(event->data);
                         if(log&&log->text){
                             std::string message(log->text);
                             std::transform(message.begin(),message.end(),message.begin(),
                                 [](unsigned char c){return static_cast<char>(std::tolower(c));});
-                            if(motion==xs::MotionMode::Compensated60 &&
-                               (message.find("minterpolate")!=std::string::npos ||
+                            if(gpuRife &&
+                               (message.find("vapoursynth")!=std::string::npos ||
+                                message.find("rife")!=std::string::npos ||
                                 message.find("filter")!=std::string::npos) &&
                                (message.find("failed")!=std::string::npos ||
                                 message.find("error")!=std::string::npos)){
                                 failed=true;
-                                failure=QStringLiteral("El interpolador de movimiento falló.");
+                                failure=QStringLiteral("RIFE GPU no pudo cargar el filtro.");
                                 break;
                             }
                             if(gpuMode && (message.find("shader")!=std::string::npos||
@@ -513,7 +545,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     if(mpv_get_property(mpv,"estimated-vf-fps",MPV_FORMAT_DOUBLE,
                                         &estimated)>=0 && estimated>0.0 &&
                        std::isfinite(estimated))
-                        info+=QStringLiteral("\nFPS medidos tras filtro: %1")
+                        info+=QStringLiteral("\nFPS estimados tras filtro: %1")
                             .arg(estimated,0,'f',1);
                     else
                         info+=QStringLiteral("\nFPS tras filtro: sin datos todavía");
