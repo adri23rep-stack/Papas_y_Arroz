@@ -191,6 +191,12 @@ void NovaQtPlayer::requestQuality(int value){
     if(requested_quality_.exchange(value)==value)return;
     restart_revision_.fetch_add(1);
 }
+void NovaQtPlayer::requestRtxScale(int value){
+    if(value<0||value>4)return;
+    if(requested_rtx_scale_.exchange(value)==value)return;
+    if(requested_quality_.load()==static_cast<int>(xs::VideoPreset::RtxAiSuperResolution))
+        restart_revision_.fetch_add(1);
+}
 bool NovaQtPlayer::gpuRifeReady(){
     const auto exeDir=QCoreApplication::applicationDirPath();
     return xs::nova_rife_files_present(
@@ -219,6 +225,10 @@ void NovaQtPlayer::applySetting(int id,int value){
     }
     if(id==xs::remote_setting_index("motion_mode")){
         requestMotion(value);
+        return;
+    }
+    if(id==xs::remote_setting_index("rtx_scale_mode")){
+        requestRtxScale(value);
         return;
     }
     if(id==xs::remote_setting_index("volume")){setVolume(value);return;}
@@ -278,7 +288,11 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
     int activeMotion=remote.setting_value(motionId);
     if(activeMotion<0||activeMotion>2)activeMotion=0;
     requested_motion_.store(activeMotion);
+    const int rtxScaleId=xs::remote_setting_index("rtx_scale_mode");
+    int activeRtxScale=std::clamp(remote.setting_value(rtxScaleId),0,4);
+    requested_rtx_scale_.store(activeRtxScale);
     int previousPreset=activePreset,previousMotion=activeMotion;
+    int previousRtxScale=activeRtxScale;
     QString motionFallbackReason;
     bool fastRife=false;
     bool switching=false, registered=false, reachedEnd=false;
@@ -565,7 +579,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                             int64_t w=0,h=0;
                             mpv_get_property(mpv,"video-params/w",MPV_FORMAT_INT64,&w);
                             mpv_get_property(mpv,"video-params/h",MPV_FORMAT_INT64,&h);
-                            vsrScale=xs::nova_rtx_vsr_scale(int(w),int(h),displayWidth_,displayHeight_);
+                            vsrScale=xs::nova_rtx_vsr_scale(int(w),int(h),displayWidth_,displayHeight_,activeRtxScale);
                             if(vsrScale>1.0){
                                 // Append AFTER VapourSynth: preserve RIFE x2 and apply NVIDIA last.
                                 const std::string spec="d3d11vpp=scale="+
@@ -625,8 +639,9 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                                          QStringLiteral("MPV"));
                         baseDiagnostics=details;
                         if(live)baseDiagnostics+=QStringLiteral("\nTV en vivo: búfer inicial objetivo 15 s · reserva hasta 30 s");
-                        if(vsrRequested)baseDiagnostics+=QStringLiteral("\nRTX Video Super Resolution x%1 solicitado; confirmación pendiente del driver NVIDIA")
-                            .arg(vsrScale,0,'f',2);
+                        if(vsrRequested)baseDiagnostics+=QStringLiteral("\nRTX Video Super Resolution x%1 solicitado (%2). Calidad IA controlada en NVIDIA App.")
+                            .arg(vsrScale,0,'f',2)
+                            .arg(QString::fromUtf8(xs::nova_rtx_scale_label(activeRtxScale)));
                         else if(rtxVsr)baseDiagnostics+=QStringLiteral("\nRTX VSR sin ampliar: el video ya alcanza la resolución del monitor");
                         if(gpuRife && (gpuMode||fastRife))baseDiagnostics+=QStringLiteral("\nResolución de cálculo RIFE: hasta %1 px de ancho").arg(fastRife?384:640);
                         if(!motionFallbackReason.isEmpty())baseDiagnostics+="\n"+motionFallbackReason;
@@ -769,13 +784,17 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                 restartGate.observe(revision,xs::NovaPlaybackRestartGate::Clock::now());
                 const int wanted=requested_quality_.load();
                 const int wantedMotion=requested_motion_.load();
-                if(restartGate.ready(wanted,wantedMotion,activePreset,activeMotion,
+                const int wantedRtxScale=requested_rtx_scale_.load();
+                if(restartGate.ready(wanted,wantedMotion,wantedRtxScale,
+                                     activePreset,activeMotion,activeRtxScale,
                                      xs::NovaPlaybackRestartGate::Clock::now())){
                     capture(mpv);
                     previousPreset=activePreset;
                     previousMotion=activeMotion;
+                    previousRtxScale=activeRtxScale;
                     activePreset=wanted;
                     activeMotion=wantedMotion;
+                    activeRtxScale=wantedRtxScale;
                     motionFallbackReason.clear();
                     fastRife=false;
                     switching=true;
@@ -808,10 +827,17 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
             // Revert only once. Keep the same source and saved position.
             int fallback=switching?previousPreset:static_cast<int>(xs::VideoPreset::Balanced);
             int fallbackMotion=switching?previousMotion:0;
+            int fallbackRtxScale=activeRtxScale;
             if(vsrProblem){
                 // Keep RIFE x2 on RTX failures, instead of unnecessarily disabling it.
-                fallback=switching&&previousPreset!=static_cast<int>(xs::VideoPreset::RtxAiSuperResolution)
-                    ?previousPreset:static_cast<int>(xs::VideoPreset::Balanced);
+                // A heavy scale setting may fail while the previous RTX mode worked.
+                // Restore that mode before dropping NVIDIA processing altogether.
+                const bool scaleOnly=switching && previousPreset==activePreset &&
+                    previousRtxScale!=activeRtxScale;
+                fallback=scaleOnly?activePreset:
+                    (switching&&previousPreset!=static_cast<int>(xs::VideoPreset::RtxAiSuperResolution)
+                        ?previousPreset:static_cast<int>(xs::VideoPreset::Balanced));
+                fallbackRtxScale=scaleOnly?previousRtxScale:activeRtxScale;
                 fallbackMotion=activeMotion;
             }else if(gpuRife){
                 // Keep the picture preset and retry the same source without RIFE.
@@ -820,18 +846,23 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
             }else if(!switching && fallback==activePreset){
                 fallback=static_cast<int>(xs::VideoPreset::Compatible);
             }
-            if(fallback!=activePreset||fallbackMotion!=activeMotion){
+            if(fallback!=activePreset||fallbackMotion!=activeMotion||
+               fallbackRtxScale!=activeRtxScale){
                 recoveryAttempted=true;
                 activePreset=fallback;
                 activeMotion=fallbackMotion;
+                activeRtxScale=fallbackRtxScale;
                 previousPreset=fallback;
                 previousMotion=fallbackMotion;
+                previousRtxScale=fallbackRtxScale;
                 switching=false;
                 remote.set_setting_value(presetId,fallback);
+                remote.set_setting_value(rtxScaleId,fallbackRtxScale);
                 if(gpuRife||vsrProblem)motionFallbackReason=failure;
                 else remote.set_setting_value(motionId,fallbackMotion);
                 requested_quality_.store(fallback);
                 requested_motion_.store(fallbackMotion);
+                requested_rtx_scale_.store(fallbackRtxScale);
                 restart_revision_.fetch_add(1);
                 publish(QStringLiteral("Filtro no disponible. Restaurando modo anterior."),
                         failure);
