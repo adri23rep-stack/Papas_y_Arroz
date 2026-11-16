@@ -41,6 +41,7 @@ class NovaQtHome : public QObject {
     Q_PROPERTY(QString pairingQr READ pairingQr NOTIFY changed)
     Q_PROPERTY(bool remoteReady READ remoteReady NOTIFY changed)
     Q_PROPERTY(bool remoteConnected READ remoteConnected NOTIFY changed)
+    Q_PROPERTY(int brightness READ brightness NOTIFY changed)
     Q_PROPERTY(bool playing READ playing NOTIFY changed)
     Q_PROPERTY(QString playbackTitle READ playbackTitle NOTIFY changed)
     Q_PROPERTY(QString playbackNotice READ playbackNotice NOTIFY changed)
@@ -71,6 +72,7 @@ public:
     QString pairingQr() const{return qr_;}
     bool remoteReady() const{return remote_ready_;}
     bool remoteConnected() const{return remote_connected_;}
+    int brightness() const{return brightness_;}
     bool playing() const{return player_.playing();}
     QString playbackTitle() const{return player_.title();}
     QString playbackNotice() const{return player_.notice();}
@@ -127,5 +129,6 @@ private:
     bool catalog_connected_=false;
     bool featured_info_visible_=false;
     int selected_item_=0,selected_section_=0,selected_home_card_=0;
+    int brightness_=100;
     bool sdl_started_=false;
 };

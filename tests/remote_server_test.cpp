@@ -141,6 +141,23 @@ int main(){
     live.title="TV";live.column_id=5;
     mock_root.entries={live};
     server.set_session(std::make_shared<xs::ServiceSession>(),mock_root);
+    xs::Entry movie, series;
+    movie.kind=series.kind=xs::EntryKind::Asset;
+    movie.title="Prueba cine";movie.content_id="movie";movie.program_type="1";
+    series.title="Prueba serie";series.content_id="series";series.program_type="0";
+    server.index_assets({movie,series});
+    const auto search=post("/catalog/search",R"({"query":"prueba"})",token);
+    REQUIRE(okay(search));
+    const auto ticket=nlohmann::json::parse(payload(search)).at("generation");
+    nlohmann::json hits;
+    for(int i=0;i<50;++i){
+        const auto response=post("/catalog/results",nlohmann::json({{"generation",ticket}}).dump(),token);
+        hits=nlohmann::json::parse(payload(response));
+        if(hits["state"]=="ready")break;
+        SDL_Delay(10);
+    }
+    REQUIRE(hits["items"].size()==2);
+    REQUIRE(hits["items"][0]["kind"]=="movies" && hits["items"][1]["kind"]=="series");
     const auto mobile_start=post("/mobile/catalog/start",R"({})",token);
     REQUIRE(okay(mobile_start));
     const auto first=nlohmann::json::parse(payload(mobile_start));

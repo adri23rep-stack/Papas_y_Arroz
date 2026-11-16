@@ -188,6 +188,7 @@ NovaQtHome::NovaQtHome(QObject* parent):QObject(parent),player_(this){
         xs::RemoteServer::shared().start();
         connect(&remote_timer_,&QTimer::timeout,this,&NovaQtHome::pollRemote);
         remote_timer_.start(45);
+        brightness_=xs::RemoteServer::shared().setting_value(xs::remote_setting_index("brightness"));
         updateRemote();
     }else status_=QStringLiteral("Control remoto no disponible.");
 }
@@ -344,6 +345,8 @@ void NovaQtHome::refresh(){
         updateFeatured();
         refreshContinue();
         xs::RemoteServer::shared().set_session(session_,root_);
+        xs::RemoteServer::shared().index_assets(series_entries_);
+        xs::RemoteServer::shared().index_assets(movie_entries_);
         status_=snap.status;
         loading_=false;
         emit changed();
@@ -355,6 +358,7 @@ void NovaQtHome::refresh(){
 void NovaQtHome::showCatalog(xs::Catalog catalog,bool pushHistory){
     if(pushHistory&&browsing_)history_.push_back({page_,selected_item_});
     page_=std::move(catalog);
+    xs::RemoteServer::shared().index_assets(page_.entries);
     items_=listFor(page_.entries);
     page_title_=QString::fromStdString(page_.title);
     browsing_=true;
@@ -584,12 +588,15 @@ void NovaQtHome::pollRemote(){
         if(event.type==SDL_USEREVENT){
             if(event.user.code==xs::REMOTE_VOLUME)
                 player_.setVolume(static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1)));
-            if(event.user.code==xs::REMOTE_BRIGHTNESS)
-                player_.applySetting(xs::remote_setting_index("brightness"),
-                    static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1)));
+            if(event.user.code==xs::REMOTE_BRIGHTNESS){
+                brightness_=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
+                player_.applySetting(xs::remote_setting_index("brightness"),brightness_);
+                emit changed();
+            }
             if(event.user.code==xs::REMOTE_SETTING){
                 const int id=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
                 const int value=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data2));
+                if(id==xs::remote_setting_index("brightness")){brightness_=value;emit changed();}
                 player_.applySetting(id,value);
             }
             if(event.user.code==xs::REMOTE_WHEEL)

@@ -38,6 +38,7 @@ public:
         browse_.set_session(session,root);
         mobile_browse_.set_session(std::move(session),root);
     }
+    void index_assets(const std::vector<Entry>& entries){catalog_.index_assets(entries);}
     bool selected_result(uint32_t generation,size_t index,Catalog& out)const{return catalog_.select(generation,index,out);}
     bool selected_browse_result(uint32_t generation,size_t index,Catalog& out)const{
         return browse_.selected_result(generation,index,out);

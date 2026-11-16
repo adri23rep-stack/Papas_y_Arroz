@@ -309,4 +309,11 @@ Window {
             }
         }
     }
+    Rectangle {
+        anchors.fill: parent
+        z: 100
+        color: "black"
+        opacity: 0.85 * (1 - novaHome.brightness / 100)
+        Behavior on opacity { NumberAnimation { duration: 100 } }
+    }
 }

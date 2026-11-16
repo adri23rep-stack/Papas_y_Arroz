@@ -5,12 +5,22 @@
 namespace xs {
 void RemoteCatalog::set_session(std::shared_ptr<ServiceSession> session){
     std::lock_guard<std::mutex> lock(mutex_);
+    assets_.clear();
     session_=std::move(session);
+}
+void RemoteCatalog::index_assets(const std::vector<Entry>& entries){
+    std::lock_guard<std::mutex> lock(mutex_);
+    for(const auto& e:entries){
+        if(e.kind!=EntryKind::Asset||assets_.size()>=5000)continue;
+        const auto same=[&](const Entry& a){return e.content_id==a.content_id&&e.program_type==a.program_type;};
+        if(std::none_of(assets_.begin(),assets_.end(),same))assets_.push_back(e);
+    }
 }
 bool RemoteCatalog::begin(const std::string& query,uint32_t& generation,std::string& error){
     if(query.empty()||query.size()>120||search_key(query).empty()){
         error="Introduce un nombre de 1 a 120 caracteres.";return false;
     }
+    std::vector<Entry> matches;
     std::shared_ptr<ServiceSession> local;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -18,19 +28,27 @@ bool RemoteCatalog::begin(const std::string& query,uint32_t& generation,std::str
         if(busy_){error="Hay otra búsqueda en curso.";return false;}
         if(!session_){error="Primero espera a que Xuper TV se conecte.";return false;}
         local=session_;
+        const auto key=search_key(query);
+        for(const auto& e:assets_)
+            if(search_key(e.title).find(key)!=std::string::npos)matches.push_back(e);
         ++generation_;
         generation=generation_;
         busy_=true;state_="loading";message_="Buscando en TV, películas y series...";
         results_.clear();
     }
     if(worker_.joinable())worker_.join();
-    worker_=std::thread([this,local,query,generation]{
+    worker_=std::thread([this,local,query,generation,matches=std::move(matches)]{
         BrowseResult result;
         try{result=service_search_remote(local,query);}
         catch(...){result.status="No se pudo consultar el catálogo.";result.ok=false;}
         std::vector<Entry> items;
         // Keep a mix of channels, movies and series; no stream URLs or tokens
         // are ever returned to the iPhone.
+        for(const auto& e:matches){
+            const auto same=[&](const Entry& a){return a.kind==e.kind&&a.content_id==e.content_id&&a.program_type==e.program_type;};
+            auto& entries=result.catalog.entries;
+            if(std::none_of(entries.begin(),entries.end(),same))entries.push_back(e);
+        }
         size_t tv=0,movies=0,series=0;
         for(const auto& entry:result.catalog.entries){
             if(entry.kind==EntryKind::Channel&&tv<20){items.push_back(entry);++tv;}
@@ -45,7 +63,7 @@ bool RemoteCatalog::begin(const std::string& query,uint32_t& generation,std::str
         if(generation!=generation_||stopping_)return;
         results_=std::move(items);
         message_=result.status;
-        state_=result.ok?"ready":"error";
+        state_=(result.ok||!results_.empty())?"ready":"error";
         busy_=false;
     });
     return true;

@@ -268,7 +268,7 @@ void RemoteServer::dispatch(const std::string& action,int dx,int dy,int value){
     else if(action=="next")push_key(SDLK_PAGEDOWN);
     else if(action=="previous")push_key(SDLK_PAGEUP);
     else if(action=="volume"){volume_=value;push_value(REMOTE_VOLUME,value);}
-    else if(action=="brightness"){brightness_=value;push_value(REMOTE_BRIGHTNESS,value);}
+    else if(action=="brightness"){brightness_=value;settings_.put(remote_setting_index("brightness"),value,false);push_value(REMOTE_BRIGHTNESS,value);}
     else if(action=="wheel"){
         // User events are reliable even in SDL_INIT_EVENTS-only test mode.
         // The UI thread translates this into navigation / channel scrolling.

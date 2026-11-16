@@ -87,8 +87,11 @@ void NovaQtPlayer::applySetting(int id,int value){
     QMutexLocker lock(&mutex_);
     if(!handle_)return;
     if(id==xs::remote_setting_index("brightness")){
-        double brightness=std::clamp(value,0,100)*2.0-100.0;
-        mpv_set_property_async(handle_,0,"brightness",MPV_FORMAT_DOUBLE,&brightness);
+        const int alpha=255-(100-std::clamp(value,0,100))*217/100;
+        const auto shade=QStringLiteral("{\\an7\\pos(0,0)\\bord0\\shad0\\1c&H000000&\\1a&H%1&\\p1}m 0 0 l 100 0 100 100 0 100")
+            .arg(alpha,2,16,QChar('0')).toUtf8();
+        const char* args[]={"osd-overlay","42","ass-events",shade.constData(),"100","100",nullptr};
+        mpv_command_async(handle_,0,args);
     }else if(id==xs::remote_setting_index("mute")){
         int flag=value!=0;
         mpv_set_property_async(handle_,0,"mute",MPV_FORMAT_FLAG,&flag);
