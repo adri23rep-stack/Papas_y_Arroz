@@ -268,6 +268,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
             .filePath(QStringLiteral("shaders/FSRCNNX_x2_8-0-4-1.glsl"));
         bool failed=gpuMode&&(!QFileInfo(shader).isFile());
         bool loaded=false, restart=false;
+        QString baseDiagnostics;
+        auto lastFpsCheck=std::chrono::steady_clock::now();
         QString failure=failed?QStringLiteral("Falta el shader GPU FSRCNNX."):QString();
         mpv_handle* mpv=failed?nullptr:mpv_create();
         if(!failed&&!mpv){
@@ -454,8 +456,10 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                                  motion==xs::MotionMode::Compensated60?
                                      QStringLiteral("CPU (comprobando FPS reales)"):
                                      QStringLiteral("MPV"));
+                        baseDiagnostics=details;
                         publish(QStringLiteral("Reproduciendo · %1").arg(
                             QString::fromUtf8(xs::video_preset_label(preset))),details);
+                        lastFpsCheck=std::chrono::steady_clock::now();
                     }
                     if(event->event_id==MPV_EVENT_PROPERTY_CHANGE&&event->reply_userdata==41)
                         publishTracks(mpv,title);
@@ -497,6 +501,24 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                         break;
                     }
                     if(event->event_id==MPV_EVENT_SHUTDOWN)break;
+                }
+                // The filter's requested output (60) is NOT proof of 60
+                // rendered FPS. Expose the estimated post-filter output,
+                // leaving unknown measurements explicitly unknown.
+                if(loaded&&std::chrono::steady_clock::now()-lastFpsCheck>=
+                   std::chrono::seconds(2)){
+                    lastFpsCheck=std::chrono::steady_clock::now();
+                    double estimated=0.0;
+                    QString info=baseDiagnostics;
+                    if(mpv_get_property(mpv,"estimated-vf-fps",MPV_FORMAT_DOUBLE,
+                                        &estimated)>=0 && estimated>0.0 &&
+                       std::isfinite(estimated))
+                        info+=QStringLiteral("\nFPS medidos tras filtro: %1")
+                            .arg(estimated,0,'f',1);
+                    else
+                        info+=QStringLiteral("\nFPS tras filtro: sin datos todavía");
+                    publish(QStringLiteral("Reproduciendo · %1").arg(
+                        QString::fromUtf8(xs::video_preset_label(preset))),info);
                 }
                 const auto revision=restart_revision_.load();
                 restartGate.observe(revision,xs::NovaPlaybackRestartGate::Clock::now());
