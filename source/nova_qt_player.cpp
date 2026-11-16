@@ -1,5 +1,6 @@
 #include "nova_qt_player.hpp"
 #include "catalog.hpp"
+#include "remote_server.hpp"
 #include <mpv/client.h>
 #include <QMetaObject>
 #include <QMutexLocker>
@@ -68,6 +69,42 @@ void NovaQtPlayer::setSpeed(int percent){
     if(!handle_)return;
     const double speed=std::clamp(percent,50,200)/100.0;
     mpv_set_property_async(handle_,0,"speed",MPV_FORMAT_DOUBLE,&speed);
+}
+void NovaQtPlayer::toggleFullscreen(){
+    QMutexLocker lock(&mutex_);
+    if(!handle_)return;
+    int fullscreen=0;
+    if(mpv_get_property(handle_,"fullscreen",MPV_FORMAT_FLAG,&fullscreen)>=0){
+        fullscreen=!fullscreen;
+        mpv_set_property_async(handle_,0,"fullscreen",MPV_FORMAT_FLAG,&fullscreen);
+    }
+}
+void NovaQtPlayer::applySetting(int id,int value){
+    if(id==xs::remote_setting_index("volume")){setVolume(value);return;}
+    if(id==xs::remote_setting_index("speed")){setSpeed(value);return;}
+    QMutexLocker lock(&mutex_);
+    if(!handle_)return;
+    if(id==xs::remote_setting_index("brightness")){
+        const double brightness=std::clamp(value,0,100)*2.0-100.0;
+        mpv_set_property_async(handle_,0,"brightness",MPV_FORMAT_DOUBLE,&brightness);
+    }else if(id==xs::remote_setting_index("mute")){
+        const int flag=value!=0;
+        mpv_set_property_async(handle_,0,"mute",MPV_FORMAT_FLAG,&flag);
+    }else if(id==xs::remote_setting_index("audio_delay")||
+             id==xs::remote_setting_index("sub_delay")){
+        const double delay=value/1000.0;
+        mpv_set_property_async(handle_,0,
+            id==xs::remote_setting_index("audio_delay")?"audio-delay":"sub-delay",
+            MPV_FORMAT_DOUBLE,&delay);
+    }else if(id==xs::remote_setting_index("sub_scale")){
+        const double scale=value/100.0;
+        mpv_set_property_async(handle_,0,"sub-scale",MPV_FORMAT_DOUBLE,&scale);
+    }else if(id==xs::remote_setting_index("aspect")){
+        const char* aspect=value==1?"16:9":value==2?"4:3":"-1";
+        mpv_set_property_string(handle_,"video-aspect-override",aspect);
+        const double panscan=value==3?1.0:0.0;
+        mpv_set_property_async(handle_,0,"panscan",MPV_FORMAT_DOUBLE,&panscan);
+    }
 }
 void NovaQtPlayer::seek(double seconds){
     QMutexLocker lock(&mutex_);
@@ -141,6 +178,12 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live){
     {
         QMutexLocker lock(&mutex_);
         handle_=mpv;
+    }
+    // Apply the same stored iPhone settings to the Qt player's mpv engine.
+    const auto& remote=xs::RemoteServer::shared();
+    for(size_t i=0;i<xs::kRemoteSettings.size();++i){
+        const int id=static_cast<int>(i);
+        applySetting(id,remote.setting_value(id));
     }
     const char* load[]={"loadfile",result.source.c_str(),nullptr};
     if(mpv_command(mpv,load)<0){
