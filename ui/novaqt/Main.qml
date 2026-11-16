@@ -24,6 +24,12 @@ Window {
     property int backdropStart: Math.floor(Math.random() * backdropSources.length)
     property int backdropAttempt: 0
     property string toast: ""
+    // Keep the compact 1280x800 composition as-is, but use extra vertical
+    // space on maximized / fullscreen windows for the artwork and rows.
+    // All three sections move together; their tiles and gaps stay identical.
+    readonly property real homeRowsTop: 230 + Math.max(0, height - 800) * 0.52
+    // The black fade ends exactly where the first carousel cards begin.
+    readonly property real backdropBottom: homeRowsTop + 43
 
     function notifyPreview(subject) {
         toast = subject + " · por ahora solo estamos probando Inicio"
@@ -47,7 +53,7 @@ Window {
         Item {
             id: hero
             width: page.width
-            height: 308
+            height: root.backdropBottom
             anchors.top: parent.top
 
             Rectangle {
@@ -103,7 +109,7 @@ Window {
         Column {
             id: rows
             x: 0
-            y: 230
+            y: root.homeRowsTop
             width: page.width
             spacing: 22
 
