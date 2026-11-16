@@ -79,9 +79,13 @@ echo "[NOVA] Empaquetando Qt Quick..."
     "$output/XuperTVNovaQt.exe"
 
 printf '[Paths]\nPrefix = .\nPlugins = .\nQmlImports = qml\n' > "$output/qt.conf"
-for name in QtQuick QtQuick/Window QtQuick/Shapes QtQuick/Effects; do
+# Verify only modules actually imported by the current QML files.
+# The legacy UI once imported QtQuick.Shapes, but Nova no longer does.
+# windeployqt may create an empty Shapes directory without its qmldir:
+# that is NOT a packaging error or a required dependency.
+for name in QtQuick QtQuick/Window QtQuick/Effects; do
     if [[ ! -s "$output/qml/$name/qmldir" ]]; then
-        echo "[NOVA] Falta el modulo Qt $name. Revisa el resultado de windeployqt6." >&2
+        echo "[NOVA] Falta el modulo Qt requerido: $name." >&2
         exit 1
     fi
 done
