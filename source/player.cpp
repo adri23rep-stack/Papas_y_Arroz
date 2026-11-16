@@ -53,6 +53,9 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
     auto cleanup=[&]{
         trace("play:free_context_begin");
 #ifdef _WIN32
+        RemoteServer::shared().end_playback();
+#endif
+#ifdef _WIN32
         if(gpu){
             gpu->close(); // free libmpv renderer while its own GL context exists
             gpu.reset();
@@ -118,6 +121,11 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
 #endif
     option("osd-level","0");option("sub-visibility","yes");
     option("sub-auto","no");option("audio-pitch-correction","yes");
+#ifdef _WIN32
+    // Prefer Spanish dubbing if the source offers it; otherwise mpv falls back.
+    option("alang","es,spa,es-MX,es-ES,en,eng");
+    option("slang","es,spa,es-MX,es-ES");
+#endif
     option("speed",std::to_string(options.speed).c_str());option("volume",std::to_string(options.volume).c_str());
 #ifdef _WIN32
     const auto& remote_initial=RemoteServer::shared();
@@ -193,6 +201,9 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
     const char* load[]={"loadfile",source.c_str(),nullptr};rc=mpv_command(mpv,load);
     if(rc<0){error=mpv_error_string(rc);cleanup();return error;}
     trace("play:file_requested");
+#ifdef _WIN32
+    RemoteServer::shared().begin_playback(options.title);
+#endif
 #ifdef __SWITCH__
     appletSetMediaPlaybackState(true);
     PadState pad;padConfigureInput(1,HidNpadStyleSet_NpadStandard);padInitializeDefault(&pad);padUpdate(&pad);
@@ -318,6 +329,35 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
         mpv_set_property_string(mpv,type=="audio"?"aid":"sid",next.id<0?"no":std::to_string(next.id).c_str());
         if(type=="sub"){int on=next.id>=0;mpv_set_property(mpv,"sub-visibility",MPV_FORMAT_FLAG,&on);}
         notice=next.label;show();};
+#ifdef _WIN32
+    auto publish_remote_tracks=[&]{
+        RemotePlaybackSnapshot state;state.active=true;state.title=options.title;
+        const bool visible=flag("sub-visibility");
+        state.subtitles.push_back({-1,"subtitle","Desactivados",!visible});
+        for(const auto& t:tracks()){
+            if(t.id<0||t.id>100000)continue;
+            if(t.type=="audio")
+                state.audio.push_back({static_cast<int>(t.id),"audio",t.label,t.selected});
+            else if(t.type=="sub")
+                state.subtitles.push_back({static_cast<int>(t.id),"subtitle",
+                    t.label,t.selected&&visible});
+        }
+        for(size_t i=0;i<options.subtitles.size()&&i<1000;++i){
+            std::string label="Servicio: "+options.subtitles[i];
+            if(label.size()>140)label.resize(140);
+            state.subtitles.push_back({static_cast<int>(i),"external_subtitle",
+                label,external_index==static_cast<int>(i)&&visible});
+        }
+        for(size_t i=0;i<options.variants.size()&&i<1000;++i){
+            std::string label=options.variants[i];
+            if(label.size()>140)label.resize(140);
+            state.sources.push_back({static_cast<int>(i),"source",
+                label,static_cast<int>(i)==options.variant});
+        }
+        RemoteServer::shared().publish_playback_options(std::move(state));
+    };
+    Uint32 remote_options_synced=0;
+#endif
     auto cycle_speed=[&](int direction){double speed=property("speed");size_t i=0;for(size_t k=0;k<speeds.size();++k)if(std::abs(speeds[k]-speed)<0.01)i=k;
         set_number("speed",speeds[(i+speeds.size()+direction)%speeds.size()]);show();};
     auto cycle_aspect=[&]{aspect=(aspect+1)%4;set_number("video-aspect-override",aspect==1?16.0/9:aspect==2?4.0/3:-1);
@@ -368,6 +408,63 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
                     reinterpret_cast<uintptr_t>(event.user.data2));
                 result.requested_remote_browse=event.user.code==REMOTE_OPEN_BROWSE;
                 running=false;break;
+            }
+            if(event.type==SDL_USEREVENT&&event.user.code==REMOTE_PLAYBACK_SELECT){
+                const int kind=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
+                const int id=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data2));
+                if(kind==1||kind==2){
+                    const char* type=kind==1?"audio":"sub";
+                    bool found=(kind==2&&id==-1);
+                    if(!found)for(const auto& t:tracks())
+                        if(t.type==type&&t.id==id){found=true;break;}
+                    if(found){
+                        const int rc=mpv_set_property_string(mpv,kind==1?"aid":"sid",
+                            id<0?"no":std::to_string(id).c_str());
+                        if(rc>=0){
+                            if(kind==2){int on=id>=0;
+                                mpv_set_property(mpv,"sub-visibility",MPV_FORMAT_FLAG,&on);}
+                            notice=kind==1?"Idioma de audio actualizado.":"Subtítulos actualizados.";
+                        }else notice="No se pudo seleccionar la pista.";
+                    }else notice="Esta pista ya no está disponible.";
+                }else if(kind==3){
+                    if(id<0||static_cast<size_t>(id)>=options.subtitles.size()){
+                        notice="Subtítulo del servicio no disponible.";
+                    }else if(external_index==id&&external_id>=0){
+                        mpv_set_property_string(mpv,"sid",std::to_string(external_id).c_str());
+                        int on=1;mpv_set_property(mpv,"sub-visibility",MPV_FORMAT_FLAG,&on);
+                        notice="Subtítulo seleccionado.";
+                    }else{
+                        std::string data,subtitle_error;
+                        if(!options.subtitle_loader||
+                           !options.subtitle_loader(static_cast<size_t>(id),data,subtitle_error)){
+                            notice=subtitle_error.empty()?"No se pudo descargar el subtítulo.":subtitle_error;
+                        }else{
+                            if(external_id>=0)command("sub-remove",std::to_string(external_id));
+                            std::ofstream file(subtitle_cache,std::ios::binary|std::ios::trunc);
+                            file.write(data.data(),static_cast<std::streamsize>(data.size()));
+                            file.close();
+                            if(!file)notice="No se pudo guardar el subtítulo.";
+                            else{
+                                subtitle_written=true;
+                                const char* args[]={"sub-add",subtitle_cache,"select",
+                                    options.subtitles[static_cast<size_t>(id)].c_str(),nullptr};
+                                if(mpv_command(mpv,args)<0)notice="Formato de subtítulo incompatible.";
+                                else{
+                                    external_index=id;
+                                    mpv_get_property(mpv,"sid",MPV_FORMAT_INT64,&external_id);
+                                    int on=1;mpv_set_property(mpv,"sub-visibility",MPV_FORMAT_FLAG,&on);
+                                    notice="Subtítulo cargado.";
+                                }
+                            }
+                        }
+                    }
+                }else if(kind==4){
+                    if(id>=0&&static_cast<size_t>(id)<options.variants.size()){
+                        if(id!=options.variant){result.next_variant=id;running=false;}
+                        else notice="Ya se usa esta fuente.";
+                    }
+                }
+                remote_options_synced=0;show();continue;
             }
             if(event.type==SDL_USEREVENT&&event.user.code==REMOTE_SETTING){
                 const int id=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
@@ -698,6 +795,11 @@ std::string play(const std::string& source,SDL_Renderer* renderer,const std::vec
             if(first_frame&&loaded){trace("play:first_frame");first_frame=false;}
         }
         const Uint32 now=SDL_GetTicks();paused=flag("pause");
+#ifdef _WIN32
+        if(!remote_options_synced||now-remote_options_synced>=500){
+            publish_remote_tracks();remote_options_synced=now?now:1;
+        }
+#endif
         if(strip_visible&&now>strip_until&&!rail.pressed())strip_visible=false;
 #ifdef _WIN32
         const int held_channel=strip_visible?rail.preview(now):-1;
