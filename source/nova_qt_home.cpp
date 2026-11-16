@@ -243,6 +243,16 @@ void NovaQtHome::setVideoPreset(int value){
     player_.requestQuality(value);
     emit changed();
 }
+int NovaQtHome::rtxScaleMode()const{
+    return xs::RemoteServer::shared().setting_value(xs::remote_setting_index("rtx_scale_mode"));
+}
+void NovaQtHome::setRtxScaleMode(int value){
+    const int id=xs::remote_setting_index("rtx_scale_mode");
+    if(!xs::valid_remote_setting(id,value))return;
+    if(!xs::RemoteServer::shared().set_setting_value(id,value))return;
+    player_.requestRtxScale(value);
+    emit changed();
+}
 int NovaQtHome::motionMode()const{
     return xs::RemoteServer::shared().setting_value(xs::remote_setting_index("motion_mode"));
 }
@@ -670,7 +680,8 @@ void NovaQtHome::pollRemote(){
                 if(id==xs::remote_setting_index("brightness")){brightness_=value;emit changed();}
                 player_.applySetting(id,value);
                 if(id==xs::remote_setting_index("video_preset")||
-                   id==xs::remote_setting_index("motion_mode"))emit changed();
+                   id==xs::remote_setting_index("motion_mode")||
+                   id==xs::remote_setting_index("rtx_scale_mode"))emit changed();
             }
             if(event.user.code==xs::REMOTE_WHEEL)
                 navigate(0,-static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1)));
