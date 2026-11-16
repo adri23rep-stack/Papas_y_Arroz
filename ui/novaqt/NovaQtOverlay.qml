@@ -154,7 +154,7 @@ Item {
             id: qualityPanel
             anchors.centerIn: parent
             width: Math.min(520,overlay.width - 70)
-            height: 528
+            height: Math.min(600,overlay.height - 24)
             radius: 20
             color: "#191821"
             border.color: "#595067"
@@ -184,9 +184,9 @@ Item {
                 delegate: Rectangle {
                     required property int index
                     required property string modelData
-                    x: 24; y: 75 + index * 53
+                    x: 24; y: 67 + index * 43
                     width: qualityPanel.width - 48
-                    height: 46
+                    height: 39
                     radius: 10
                     color: novaHome.videoPreset === index ? "#463366" :
                            qualityMouse.containsMouse ? "#302B3D" : "#24222D"
@@ -212,7 +212,57 @@ Item {
                 }
             }
             Text {
-                x: 26; y: 350
+                x: 26; y: 287
+                text: "MotionBoost · FPS"
+                color: "white"
+                font.family: "Segoe UI"
+                font.pixelSize: 17
+                font.weight: Font.DemiBold
+            }
+            Repeater {
+                model: ["Desactivado", "Suavizado ligero (MPV)",
+                        "Interpolación real 60 FPS (experimental, CPU)"]
+                delegate: Rectangle {
+                    required property int index
+                    required property string modelData
+                    x: 24; y: 316 + index * 40
+                    width: qualityPanel.width - 48
+                    height: 35
+                    radius: 9
+                    color: novaHome.motionMode === index ? "#463366" :
+                           motionMouse.containsMouse ? "#302B3D" : "#24222D"
+                    border.color: novaHome.motionMode === index ? "#A78BFA" : "#403A4D"
+                    Accessible.role: Accessible.RadioButton
+                    Accessible.name: modelData
+                    Accessible.onPressAction: novaHome.setMotionMode(index)
+                    Text {
+                        x: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: (novaHome.motionMode === index ? "◉  " : "○  ") + modelData
+                        color: "white"
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: motionMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: novaHome.setMotionMode(index)
+                    }
+                }
+            }
+            Text {
+                x: 26; y: 443
+                width: parent.width - 52
+                text: "60 FPS usa FFmpeg y puede sobrecargar el CPU. No es generación por GPU."
+                color: "#E9BC89"
+                font.family: "Segoe UI"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                x: 26; y: 487
                 width: parent.width - 52
                 color: "#C4B4F8"
                 font.pixelSize: 13
@@ -222,9 +272,9 @@ Item {
                 wrapMode: Text.WordWrap
             }
             Text {
-                x: 26; y: 403
+                x: 26; y: 526
                 width: parent.width - 52
-                height: 92
+                height: Math.max(45,qualityPanel.height - 533)
                 color: "#B9B4C5"
                 font.family: "Segoe UI"
                 font.pixelSize: 12
