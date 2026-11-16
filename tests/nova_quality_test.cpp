@@ -19,6 +19,7 @@ int main() {
     assert(!gate.ready(3,3,now+std::chrono::seconds(3)));
     assert(!gate.ready(-1,1,now+std::chrono::seconds(3)));
     assert(!gate.ready(9,1,now+std::chrono::seconds(3)));
+    assert(gate.ready(5,1,now+std::chrono::seconds(3)));
     assert(nova_can_resume(false,5041.25));
     assert(!nova_can_resume(true,5041.25));
     assert(!nova_can_resume(false,-1));
@@ -26,6 +27,13 @@ int main() {
     assert(!nova_can_resume(false,std::numeric_limits<double>::infinity()));
     assert(nova_video_preset(-5)==VideoPreset::Balanced);
     assert(nova_video_preset(4)==VideoPreset::GpuFsrcnnx);
+    assert(nova_video_preset(5)==VideoPreset::RtxAiSuperResolution);
+    assert(nova_rtx_vsr(VideoPreset::RtxAiSuperResolution));
+    assert(!nova_rtx_vsr(VideoPreset::GpuFsrcnnx));
+    assert(nova_rtx_vsr_scale(1280,720,1920,1080)==1.5);
+    assert(nova_rtx_vsr_scale(640,360,3840,2160)==2.0);
+    assert(nova_rtx_vsr_scale(1920,1080,1920,1080)==1.0);
+    assert(nova_rtx_vsr_scale(0,1080,1920,1080)==1.0);
     assert(nova_needs_shader(VideoPreset::GpuFsrcnnx));
     assert(!nova_needs_shader(VideoPreset::Sharp));
     return 0;
