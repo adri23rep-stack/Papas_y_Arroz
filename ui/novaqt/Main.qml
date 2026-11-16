@@ -244,7 +244,7 @@ Window {
                             Item {
                                 id: tileSurface
                                 x: 3
-                                y: hovered ? 4 : 8
+                                y: tile.hovered ? 4 : 8
                                 width: 190
                                 height: 112
                                 transformOrigin: Item.Center
