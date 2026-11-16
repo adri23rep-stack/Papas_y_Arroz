@@ -10,6 +10,7 @@ on:
       - 'include/**'
       - 'tests/**'
       - 'tools/**'
+      - 'ui/novaqt/**'
       - 'README_WINDOWS.md'
       - 'README_NOVA_UI.md'
       - 'README_VIDEO_ENHANCED.md'
@@ -29,6 +30,7 @@ on:
       - 'source/**'
       - 'include/**'
       - 'tests/**'
+      - 'ui/novaqt/**'
       - 'CMakeLists.txt'
   workflow_dispatch:
 
@@ -107,6 +109,9 @@ jobs:
             mingw-w64-ucrt-x86_64-libwebp
             mingw-w64-ucrt-x86_64-ntldd
             mingw-w64-ucrt-x86_64-qrencode
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-declarative
+            mingw-w64-ucrt-x86_64-qt6-imageformats
       - name: Configure, compile and run tests
         shell: msys2 {0}
         run: |
@@ -175,6 +180,15 @@ jobs:
           set -euo pipefail
           mkdir -p dist/Xuper-TV-Desktop/licenses dist/Xuper-TV-Desktop/shaders
           cp build/windows/XuperTVDesktop.exe dist/Xuper-TV-Desktop/
+          cp build/windows/XuperTVNovaQt.exe dist/Xuper-TV-Desktop/
+          # Bundle Qt Quick's real QML/graphics plugins. This is a separate
+          # preview EXE; existing SDL and native-player binaries are unchanged.
+          /ucrt64/bin/windeployqt6.exe --release --no-translations \
+            --qmldir ui/novaqt \
+            --dir dist/Xuper-TV-Desktop \
+            dist/Xuper-TV-Desktop/XuperTVNovaQt.exe
+          test -s dist/Xuper-TV-Desktop/Qt6Quick.dll
+          test -s dist/Xuper-TV-Desktop/Qt6Qml.dll
           cp build/windows/XuperNativeProbe.exe dist/Xuper-TV-Desktop/
           cp build/windows/XuperNativePlayer.exe dist/Xuper-TV-Desktop/
           cp packaging/runtime/switch/xuperswitch/{font.ttf,cacert.pem,test.mp4} dist/Xuper-TV-Desktop/
@@ -186,6 +200,7 @@ jobs:
           test -s /ucrt64/share/licenses/qrencode/COPYING
           cp /ucrt64/share/licenses/qrencode/COPYING dist/Xuper-TV-Desktop/licenses/libqrencode-LGPL.txt
           ntldd -R build/windows/XuperTVDesktop.exe > build/windows/dependencies.txt
+          ntldd -R build/windows/XuperTVNovaQt.exe >> build/windows/dependencies.txt
           ntldd -R build/windows/XuperNativeProbe.exe >> build/windows/dependencies.txt
           ntldd -R build/windows/XuperNativePlayer.exe >> build/windows/dependencies.txt
           # Current MSYS2 SDL2.dll is sdl2-compat; it dynamically loads
@@ -209,6 +224,23 @@ jobs:
             fi
           done
           ls -lh dist/Xuper-TV-Desktop/XuperTVDesktop.exe
+      - name: Smoke test Qt Quick home outside MSYS2 PATH
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Push-Location "dist/Xuper-TV-Desktop"
+          try {
+            $env:Path = "$env:SystemRoot\System32;$env:SystemRoot"
+            $env:QT_QPA_PLATFORM = "offscreen"
+            $env:QT_QUICK_BACKEND = "software"
+            & ".\XuperTVNovaQt.exe" --smoke
+            if ($LASTEXITCODE -ne 0) {
+              throw "Standalone Qt Quick QML preview failed outside MSYS2 PATH (exit $LASTEXITCODE)."
+            }
+            Write-Host "Qt6 NOVA first screen loaded with only portable DLLs/plugins."
+          } finally {
+            Pop-Location
+          }
       - name: Smoke test packaged SDL runtime outside MSYS2 PATH
         shell: pwsh
         run: |
@@ -272,6 +304,7 @@ jobs:
           Copy-Item README_PROVIDER_CATALOG.md dist/Xuper-TV-Desktop/README_PROVIDER_CATALOG.md
           Copy-Item README_LIVE_TV.md dist/Xuper-TV-Desktop/README_LIVE_TV.md
           if (Test-Path 'README_NOVA_UI.md') { Copy-Item README_NOVA_UI.md dist/Xuper-TV-Desktop/README_NOVA_UI.md }
+          if (Test-Path 'README_NOVA_QT.md') { Copy-Item README_NOVA_QT.md dist/Xuper-TV-Desktop/README_NOVA_QT.md }
           Write-Host "Bundled service template verified. No APK import required."
       # The account's Actions artifact storage quota is currently exhausted.
       # Instead of silently failing or deleting old user artifacts, stage 3
