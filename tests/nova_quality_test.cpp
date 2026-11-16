@@ -20,6 +20,15 @@ int main() {
     assert(!gate.ready(-1,1,now+std::chrono::seconds(3)));
     assert(!gate.ready(9,1,now+std::chrono::seconds(3)));
     assert(gate.ready(5,1,now+std::chrono::seconds(3)));
+    assert(kNovaLiveCacheOptions.size()==7);
+    assert(std::string(kNovaLiveCacheOptions[0].first)=="cache-pause");
+    assert(std::string(kNovaLiveCacheOptions[1].second)=="yes");
+    assert(std::string(kNovaLiveCacheOptions[2].first)=="cache-pause-wait");
+    assert(std::string(kNovaLiveCacheOptions[2].second)=="15");
+    assert(std::string(kNovaLiveCacheOptions[3].second)=="30");
+    assert(std::string(kNovaLiveCacheOptions[4].second)=="30");
+    assert(std::string(kNovaLiveCacheOptions[5].second)=="128MiB");
+    assert(std::string(kNovaLiveCacheOptions[6].second)=="4MiB");
     assert(nova_can_resume(false,5041.25));
     assert(!nova_can_resume(true,5041.25));
     assert(!nova_can_resume(false,-1));
