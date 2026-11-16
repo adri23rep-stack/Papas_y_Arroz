@@ -31,6 +31,7 @@ public:
     void toggleFullscreen();
 signals:
     void changed();
+    void finishedPlayback(double seconds,bool ended);
 private:
     void command(const char* name,const char* argument);
     void finish(const QString& message);
