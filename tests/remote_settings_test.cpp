@@ -10,6 +10,9 @@ int main(){
     assert(!valid_remote_setting(remote_setting_index("speed"),137));
     assert(valid_remote_setting(remote_setting_index("speed"),125));
     assert(!valid_remote_setting(-1,50));
+    assert(remote_setting_index("motion_mode")==10);
+    assert(valid_remote_setting(remote_setting_index("motion_mode"),2));
+    assert(!valid_remote_setting(remote_setting_index("motion_mode"),3));
     RemoteSettingsStore settings;
     assert(settings.get(0)==100);
     assert(settings.put(0,42,false));
