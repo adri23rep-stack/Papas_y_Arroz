@@ -5,6 +5,7 @@ Item {
     property string heading: ""
     property var entries: []
     property bool channel: false
+    property bool demo: false
     property int sectionId: -1
     property bool showBrowse: sectionId >= 0
     readonly property bool empty: !entries || entries.length === 0
@@ -45,7 +46,8 @@ Item {
         x: 55
         y: 49
         width: rail.width - 110
-        text: rail.sectionId === -1
+        text: rail.demo ? "No hay video de prueba en esta instalación." :
+              rail.sectionId === -1
             ? "Tus episodios pendientes aparecerán aquí cuando tengas progreso guardado."
             : novaHome.loading ? "Cargando catálogo..." : "No hay contenido en esta sección."
         color: "#85848F"
@@ -82,7 +84,8 @@ Item {
                 novaHome.selectedSection === rail.sectionId &&
                 novaHome.selectedHomeCard === index
             onActivated: {
-                if(rail.sectionId === -1) novaHome.openContinue(index)
+                if(rail.demo) novaHome.openDemo(index)
+                else if(rail.sectionId === -1) novaHome.openContinue(index)
                 else novaHome.openHomeCard(rail.sectionId,index)
             }
         }
