@@ -277,13 +277,18 @@ jobs:
       # Instead of silently failing or deleting old user artifacts, stage 3
       # can provide its verified ZIP on a dedicated orphan branch. No release.
       - name: Publish temporary ZIP to isolated build-delivery branch
-        if: github.ref_name == 'windows-desktop-preview'
+        if: github.ref_name == 'windows-desktop-preview' || github.ref_name == 'feature/nova-ui-from-scratch'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $name = 'XuperTV-Integrated-Windows-Preview.zip'
+          # Keep the experimental NOVA download separate from the existing
+          # integrated Windows build. Never rewrite main or an unrelated branch.
+          $isNova = $env:GITHUB_REF_NAME -eq 'feature/nova-ui-from-scratch'
+          $name = if ($isNova) { 'XuperTV-NOVA-Windows-Preview.zip' } else { 'XuperTV-Integrated-Windows-Preview.zip' }
+          $deliveryBranch = if ($isNova) { 'build/nova-ui-preview' } else { 'build/live-tv-recovery' }
+          $title = if ($isNova) { 'XuperTV Desktop - NOVA experimental UI' } else { 'XuperTV Desktop - integrated Windows preview' }
           $zip = Join-Path $env:RUNNER_TEMP $name
           Compress-Archive -Path 'dist/Xuper-TV-Desktop' -DestinationPath $zip -CompressionLevel Optimal
           $bytes = (Get-Item $zip).Length
@@ -296,7 +301,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Could not open delivery worktree' }
           Push-Location $folder
           try {
-            git checkout --orphan build/live-tv-recovery
+            git checkout --orphan $deliveryBranch
             if ($LASTEXITCODE -ne 0) { throw 'Cannot create delivery branch' }
             git rm -r --cached --ignore-unmatch . | Out-Null
             Get-ChildItem -Force | Where-Object { $_.Name -ne '.git' } |
@@ -304,23 +309,24 @@ jobs:
             Copy-Item $zip -Destination (Join-Path $folder $name)
             $hash = (Get-FileHash -Algorithm SHA256 $name).Hash
             @(
-              'XuperTV Desktop — integrated Windows preview',
-              'Integrated public features, unsigned portable build. main remains untouched.',
+              $title,
+              'Unsigned portable Windows test build. main remains untouched.',
               "SHA256: $hash",
               "Source branch: $env:GITHUB_REF_NAME",
+              "Source commit: $env:GITHUB_SHA",
               'Extract the ZIP as one folder. Do not mix DLLs from older builds.'
             ) | Set-Content -Encoding UTF8 README.txt
             git add -- $name README.txt
-            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Integrated Windows preview ZIP (automated verified build)'
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "$title ZIP (automated verified build)"
             if ($LASTEXITCODE -ne 0) { throw 'Cannot commit delivery package' }
-            git push --force origin HEAD:refs/heads/build/live-tv-recovery
+            git push --force origin HEAD:refs/heads/$deliveryBranch
             if ($LASTEXITCODE -ne 0) { throw 'Cannot publish delivery branch' }
-            Write-Host "Temporary download: https://github.com/$env:GITHUB_REPOSITORY/raw/refs/heads/build/live-tv-recovery/$name"
+            Write-Host "Temporary download: https://github.com/$env:GITHUB_REPOSITORY/raw/refs/heads/$deliveryBranch/$name"
           } finally {
             Pop-Location
           }
       - name: Upload test build (not a release)
-        if: github.ref_name != 'windows-desktop-preview'
+        if: github.ref_name != 'windows-desktop-preview' && github.ref_name != 'feature/nova-ui-from-scratch'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.ref_name == 'feature/nova-ui-from-scratch' && 'XuperTV-Nova-Windows' || 'XuperTV-Live-TV-Recovery-Windows' }}
