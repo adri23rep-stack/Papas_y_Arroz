@@ -26,8 +26,8 @@
 
 namespace {
 struct HomeSnapshot {
-    QVariantList channels,series,movies;
-    std::vector<xs::Entry> tv_entries,series_entries,movie_entries;
+    QVariantList channels,series,movies,demo_items;
+    std::vector<xs::Entry> tv_entries,series_entries,movie_entries,demo_entries;
     std::shared_ptr<xs::ServiceSession> session;
     xs::Catalog root;
     QString status;
@@ -67,27 +67,35 @@ HomeSnapshot loadHome(){
     if(out.session&&out.root.entries.empty()){
         const auto response=xs::service_root(out.session);
         if(response.ok)out.root=response.catalog;
+        else out.status=QString::fromStdString(response.status);
     }
     if(!out.session){
         std::ifstream file("catalog.m3u");
         if(file){
             const auto local=xs::read_m3u(file);
             for(const auto& e:local.entries)
-                if(e.kind==xs::EntryKind::Media)addEntry(out.tv_entries,e,80);
+                if(e.kind==xs::EntryKind::Media)addEntry(out.demo_entries,e,80);
         }
-        out.channels=listFor(out.tv_entries);
+        out.demo_items=listFor(out.demo_entries);
         out.status=QString::fromStdString(login.status);
         if(out.status.isEmpty())out.status=QStringLiteral("Sin conexión al servicio.");
         return out;
     }
-    const auto live=std::find_if(out.root.entries.begin(),out.root.entries.end(),
-        [](const xs::Entry& e){return e.kind==xs::EntryKind::Category;});
-    if(live!=out.root.entries.end()){
-        const auto response=xs::service_channels(out.session,live->column_id);
+    // Authorized M3U playlists can be returned directly as Media entries;
+    // don't mistake them for an empty live service just because there are no
+    // column/category entries.
+    for(const auto& e:out.root.entries)
+        if(e.kind==xs::EntryKind::Media)addEntry(out.tv_entries,e,80);
+    // A first empty category must not hide channels in the next category.
+    int checkedLive=0;
+    for(const auto& category:out.root.entries){
+        if(category.kind!=xs::EntryKind::Category||checkedLive++>=6||
+           out.tv_entries.size()>=72)break;
+        const auto response=xs::service_channels(out.session,category.column_id);
         if(response.ok){
             for(const auto& e:response.catalog.entries)
-                if(e.kind==xs::EntryKind::Channel)addEntry(out.tv_entries,e,60);
-        }
+                if(e.kind==xs::EntryKind::Channel)addEntry(out.tv_entries,e,72);
+        }else if(out.status.isEmpty())out.status=QString::fromStdString(response.status);
     }
     for(const char* type:{"0","1"}){
         auto& dest=std::string(type)=="0"?out.series_entries:out.movie_entries;
@@ -111,9 +119,10 @@ HomeSnapshot loadHome(){
     out.channels=listFor(out.tv_entries);
     out.series=listFor(out.series_entries);
     out.movies=listFor(out.movie_entries);
-    out.status=out.channels.empty()&&out.series.empty()&&out.movies.empty()
-        ?QStringLiteral("El servicio no devolvió contenido para Inicio.")
-        :QStringLiteral("Catálogo conectado.");
+    if(out.channels.empty()&&out.series.empty()&&out.movies.empty()){
+        if(out.status.isEmpty())out.status=QString::fromStdString(login.status);
+        if(out.status.isEmpty())out.status=QStringLiteral("Conectado, pero Inicio todavía no tiene contenido. Prueba las categorías de TV, Series o Películas.");
+    }else out.status=QStringLiteral("Catálogo conectado.");
     return out;
 }
 
@@ -292,6 +301,10 @@ void NovaQtHome::playFeatured(){
         return xs::service_browse_remote(session,chosen);
     }));
 }
+void NovaQtHome::openDemo(int index){
+    if(index<0||static_cast<size_t>(index)>=demo_entries_.size())return;
+    activate(demo_entries_[static_cast<size_t>(index)]);
+}
 void NovaQtHome::openContinue(int index){
     if(index<0||static_cast<size_t>(index)>=continue_entries_.size())return;
     activate(continue_entries_[static_cast<size_t>(index)]);
@@ -306,6 +319,8 @@ void NovaQtHome::refresh(){
     connect(watcher,&QFutureWatcher<HomeSnapshot>::finished,this,[this,watcher](){
         const auto snap=watcher->result();
         channels_=snap.channels;series_=snap.series;movies_=snap.movies;
+        demo_items_=snap.demo_items;demo_entries_=snap.demo_entries;
+        catalog_connected_=snap.session!=nullptr;
         channel_entries_=snap.tv_entries;
         series_entries_=snap.series_entries;
         movie_entries_=snap.movie_entries;
