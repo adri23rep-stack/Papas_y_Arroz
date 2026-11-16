@@ -11,9 +11,9 @@ if 0 < fps <= 30:
 
     # mpv's VapourSynth bridge supplies planar YUV. Use R65's matrix names.
     matrix = "709" if clip.width >= 1280 or clip.height >= 720 else "170m"
-    rgb = core.resize.Bicubic(clip, format=vs.RGBS, matrix_in_s=matrix)
-    luma = core.std.ShufflePlanes(clip, planes=0, colorfamily=vs.GRAY)
-    small = core.resize.Bilinear(luma, width=160, height=90, format=vs.GRAY8)
+    rgb = core.resize.Bicubic(clip, format=vs.PresetVideoFormat.RGBS, matrix_in_s=matrix)
+    luma = core.std.ShufflePlanes(clip, planes=0, colorfamily=vs.ColorFamily.GRAY)
+    small = core.resize.Bilinear(luma, width=160, height=90, format=vs.PresetVideoFormat.GRAY8)
     difference = core.std.PlaneStats(small, small[1:] + small[-1])
 
     def mark_cut(n, f):
