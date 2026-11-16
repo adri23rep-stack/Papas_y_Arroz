@@ -4,44 +4,43 @@ Esta es una **vista previa nativa de Windows con Qt 6 Quick / QML**, no una
 reescritura del reproductor. El diseño anterior en SDL se mantiene para
 comprobar, comparar y reproducir contenido mientras terminamos las vistas.
 
-## Cómo abrirla
+## Cómo abrir Nova Qt
 
-1. Descarga **XuperTV-NOVA-Qt-Preview.zip** de `build/nova-ui-preview`.
-2. Extráelo en una carpeta nueva y ejecuta **XuperTVNovaQt.exe**. Es la nueva
-   pantalla Inicio de Qt Quick, únicamente para evaluar diseño y catálogo.
-3. Si quieres comparar con el programa anterior, descarga por separado
-   **XuperTV-NOVA-Windows-Preview.zip**, extráelo en **otra** carpeta
-   y ejecuta **XuperTVDesktop.exe**. El reproductor e iPhone siguen ahí.
+1. Descarga **XuperTV-NOVA-Qt-Preview.zip** y
+   **XuperTV-NOVA-Playback-Addon.zip** de `build/nova-ui-preview`.
+2. Extrae **ambos ZIP en la misma carpeta**, de modo que se combinen los
+   archivos de `Xuper-TV-NovaQt-Preview` (no dentro de dos carpetas separadas).
+3. Abre `XuperTVNovaQt.exe`. El complemento incluye las DLL necesarias para
+   reproducir video y enlazar el control del iPhone.
+4. Arriba a la derecha encontrarás **QR / PIN**. Abre Apple Controller,
+   escanea el QR o escribe IP y PIN, con ambos equipos en la misma red.
+5. Elige un canal o episodio para reproducir. El motor libmpv abre su propia
+   ventana de video mientras conservamos la interfaz Qt del catálogo.
 
-Los dos ZIP son independientes. No mezcles DLL ni carpetas `qml` entre ellos.
-Si ya tienes una configuración local activada en otro directorio, conserva tus
-archivos `service.json` y `device_state.json`; son datos locales privados
-y no vienen incluidos en estos ZIP.
+**XuperTV-NOVA-Windows-Preview.zip** es la versión clásica, con su propio
+reproductor. Se extrae **aparte** como respaldo, no encima de Nova Qt.
 
-## Qué tiene exactamente la etapa 1
+El token permanente de emparejamiento sigue protegido en el perfil local de
+Windows. Nunca se incluye en las descargas.
 
-- Primera pantalla sin barra lateral, con tarjetas de bordes reales
-  antialiasing y máscara GPU, e íconos vectoriales de Qt Quick Shapes.
-- Portada panorámica de 2026 aleatoria, con degradado a negro.
-- Tres filas horizontales de tamaño uniforme: TV, Series y Películas.
-- Carga real (en segundo plano) de metadatos y portadas mediante
-  `service_bootstrap`, `service_channels` y `service_browse` de C++.
-- Movimiento horizontal nativo con mouse/touchpad y reacomodo con el tamaño
-  de la ventana.
-- Al tocar títulos o portadas, **no abre el diseño viejo**: por ahora aparece
-  solo un mensaje de vista previa.
 
-## Qué NO tiene todavía
+## Etapa de integración
 
-Esta primera versión Qt es **solo para evaluar la apariencia de Inicio**:
-aún no incluye pantallas Qt de catálogos, navegación completa, reproducción,
-configuración, favoritos ni el control remoto. Esas funciones siguen operando
-en el programa SDL original; se irán conectando solamente cuando el usuario
-dé instrucciones.
+- Conserva la interfaz Qt Quick de Inicio, sus animaciones y su degradado.
+- Los títulos reales, categorías y episodios pueden explorarse y buscarse
+  desde Qt. Los datos y URLs de streaming se resuelven mediante las funciones
+  existentes de servicio, sin exponer tokens en QML.
+- Reproducción real mediante libmpv en una ventana independiente de video.
+  El catálogo Qt permanece disponible durante el video.
+- El servidor del iPhone ya existente se ejecuta dentro de Nova Qt: mismo
+  protocolo, mismo PIN/QR, control por LAN, búsqueda y acciones de reproducción
+  compatibles con la navegación disponible en Qt.
+- El botón pequeño **QR / PIN** enseña el código QR y datos para conectar.
+- No migramos todavía controles avanzados del reproductor clásico (por ejemplo
+  su menú integrado de pistas y filtros). El viejo programa sigue disponible
+  como respaldo mientras terminamos la transición.
+- No se fusiona con `main` ni se publica release.
 
-No se ha modificado `main`, no se ha creado una rama extra y no se ha
-publicado un release. Los archivos QML están en `ui/novaqt` y el adaptador
-de datos de C++ en `source/nova_qt_home.cpp`.
 
 La distribución de Qt requiere revisar y respetar su licencia y las
 obligaciones de redistribución antes de una publicación estable.
