@@ -191,7 +191,7 @@ jobs:
           # Lock Qt's runtime paths to this portable ZIP. The Qt build
           # machine's hardcoded import directory will not exist on user PCs.
           printf '[Paths]\nPrefix = .\nPlugins = .\nQmlImports = qml\n' > dist/Xuper-TV-Desktop/qt.conf
-          for name in QtQuick QtQuick/Window QtQuick/Effects; do
+          for name in QtQuick QtQuick/Window; do
             test -s "dist/Xuper-TV-Desktop/qml/$name/qmldir" || {
               echo "Missing deployed QML import module: $name" >&2
               exit 1
@@ -363,7 +363,7 @@ jobs:
           rm -rf "$qt"/shaders
           rm -f "$qt"/font.ttf
           rm -rf "$qt"/qml/QtQml/DesignSupport             "$qt"/qml/QtQml/XmlListModel             "$qt"/qml/QtQuick/Shapes/DesignHelpers
-          # QML app imports QtQuick, QtQuick.Window and QtQuick.Effects.
+          # QML app imports QtQuick and QtQuick.Window.
           # No QtQuick.Shapes dependency; remove heavy unused UI styles.
           rm -rf "$qt"/qml/QtQuick/Controls \
             "$qt"/qml/QtQuick/Dialogs \
@@ -374,7 +374,7 @@ jobs:
             "$qt"/qml/QtQuick/Layouts \
             "$qt"/qml/QtQuick/VectorImage
           test -s "$qt/XuperTVNovaQt.exe"
-          for name in QtQuick QtQuick/Window QtQuick/Effects; do
+          for name in QtQuick QtQuick/Window; do
             test -s "$qt/qml/$name/qmldir" || {
               echo "Qt-only preview missing required QML module $name" >&2
               exit 1

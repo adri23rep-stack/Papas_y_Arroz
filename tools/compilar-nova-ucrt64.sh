@@ -115,7 +115,7 @@ printf '[Paths]\nPrefix = .\nPlugins = .\nQmlImports = qml\n' > "$output/qt.conf
 # The legacy UI once imported QtQuick.Shapes, but Nova no longer does.
 # windeployqt may create an empty Shapes directory without its qmldir:
 # that is NOT a packaging error or a required dependency.
-for name in QtQuick QtQuick/Window QtQuick/Effects; do
+for name in QtQuick QtQuick/Window; do
     if [[ ! -s "$output/qml/$name/qmldir" ]]; then
         echo "[NOVA] Falta el modulo Qt requerido: $name." >&2
         exit 1
