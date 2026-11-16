@@ -391,13 +391,32 @@ jobs:
             "$classic"/qt.conf
           test -s "$classic/XuperTVDesktop.exe"
           test -s "$classic/XuperNativePlayer.exe"
+          # The Qt application now reuses libmpv and the proven SDL-based
+          # iPhone pairing protocol. Its runtime is shipped as a SMALL
+          # independent add-on, not duplicated in a >100MB Git blob.
+          addon=dist/Xuper-TV-NovaQt-MediaAddon/Xuper-TV-NovaQt-Preview
+          mkdir -p "$addon"
+          for dll in dist/Xuper-TV-Desktop/*.dll; do
+            name="${dll##*/}"
+            if [[ ! -f "$qt/$name" ]]; then
+              cp "$dll" "$addon/"
+            fi
+          done
+          test -s "$addon/libmpv-2.dll"
+          test -s "$addon/SDL2.dll"
+          test -s "$addon/SDL3.dll"
+          # The original Qt ZIP and the add-on share the same root folder
+          # name so extracting them together forms one portable app.
+          mkdir -p dist/Xuper-TV-NovaQt-Smoke
+          cp -a "$qt" dist/Xuper-TV-NovaQt-Smoke/
+          cp "$addon"/*.dll dist/Xuper-TV-NovaQt-Smoke/Xuper-TV-NovaQt-Preview/
           echo "Portable package sizes BEFORE compression:"
           du -sh "$qt" "$classic"
       - name: Smoke test compact Qt Quick preview independently
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          Push-Location 'dist/Xuper-TV-NovaQt-Preview'
+          Push-Location 'dist/Xuper-TV-NovaQt-Smoke/Xuper-TV-NovaQt-Preview'
           try {
             $env:Path = "$env:SystemRoot\System32;$env:SystemRoot"
             $env:QT_QPA_PLATFORM = "offscreen"
@@ -419,7 +438,7 @@ jobs:
             if (-not $finished -or $qt.ExitCode -ne 0) {
               throw "Compact Qt preview failed its standalone smoke test (exit $($qt.ExitCode))."
             }
-            Write-Host 'Compact Qt-only Nova preview passed without any SDL runtime.'
+            Write-Host 'Merged Qt Nova + mpv/iPhone runtime passes portable startup test.'
           } finally {
             Pop-Location
           }
@@ -442,6 +461,7 @@ jobs:
           $packages = if ($isNova) {
             @(
               @{ Name = 'XuperTV-NOVA-Qt-Preview.zip'; Folder = 'dist/Xuper-TV-NovaQt-Preview' },
+              @{ Name = 'XuperTV-NOVA-Playback-Addon.zip'; Folder = 'dist/Xuper-TV-NovaQt-MediaAddon/Xuper-TV-NovaQt-Preview' },
               @{ Name = 'XuperTV-NOVA-Windows-Preview.zip'; Folder = 'dist/Xuper-TV-Classic-Preview' }
             )
           } else {
@@ -477,9 +497,10 @@ jobs:
               'Unsigned portable Windows test builds. main remains untouched.',
               "Source branch: $env:NOVA_SOURCE_BRANCH",
               "Source commit: $env:GITHUB_SHA",
-              'Each ZIP is independent: extract the desired preview into its own folder.',
-              'Qt preview: XuperTVNovaQt.exe (visual-only)',
-              'Classic: XuperTVDesktop.exe (reproducer and iPhone control)'
+              'Nova Qt requires TWO files: Qt Preview ZIP plus Playback Addon ZIP.',
+              'Extract BOTH ZIPs in the SAME parent folder, merging Xuper-TV-NovaQt-Preview.',
+              'Launch XuperTVNovaQt.exe only after extracting both files.',
+              'Classic Windows ZIP is a separate fallback. Do not mix it into Nova Qt.'
             )
             foreach ($archive in $archives) {
               Copy-Item $archive.Zip -Destination (Join-Path $folder $archive.Name)
