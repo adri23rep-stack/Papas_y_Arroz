@@ -7,7 +7,7 @@ on:
       - '.github/workflows/cleanup-old-artifacts-once.yml'
 
 permissions:
-  contents: read
+  contents: write
   actions: write
 
 jobs:
@@ -64,3 +64,22 @@ jobs:
           fi
           echo "Deleted $deleted obsolete Actions artifacts ($bytes bytes)."
           echo "Newest NOVA ZIP remains in build/nova-ui-preview."
+
+          # Write a small, verifiable cleanup receipt into the experimental
+          # branch. This path is not a trigger for this one-shot workflow.
+          receipt=$(printf 'XuperTV old Actions artifact cleanup\\nDeleted: %s\\nBytes reclaimed: %s\\nProtected: build/nova-ui-preview/XuperTV-NOVA-Windows-Preview.zip\\nProtected blob: %s\\nRun: %s\\n' \
+            "$deleted" "$bytes" "$archive_sha" "$GITHUB_RUN_ID")
+          encoded=$(printf '%s' "$receipt" | base64 -w 0)
+          existing_sha=$(gh api \
+            "repos/$GITHUB_REPOSITORY/contents/ci-reports/actions-artifacts-cleanup.txt?ref=feature/nova-ui-from-scratch" \
+            --jq '.sha' 2>/dev/null || true)
+          extra=()
+          if [[ -n "$existing_sha" ]]; then
+            extra=(-f "sha=$existing_sha")
+          fi
+          gh api --method PUT \
+            "repos/$GITHUB_REPOSITORY/contents/ci-reports/actions-artifacts-cleanup.txt" \
+            -f "message=chore(ci): record old artifact cleanup result" \
+            -f "branch=feature/nova-ui-from-scratch" \
+            -f "content=$encoded" "${extra[@]}" >/dev/null
+          echo "Cleanup receipt committed successfully."
