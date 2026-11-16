@@ -132,6 +132,9 @@ jobs:
         run: |
           set -euo pipefail
           /ucrt64/bin/python.exe -m py_compile nova-gpu/rife.vpy nova-gpu/smoke.vpy
+          # libmpv Windows looks up VSScript.dll by its Windows basename.
+          # The MSYS2 package calls the same VSScript API library differently.
+          cp /ucrt64/bin/libvapoursynth-script-0.dll /ucrt64/bin/VSScript.dll
           /ucrt64/bin/mpv.exe --no-config --no-audio --vo=null --frames=3 \
             '--vf=vapoursynth=nova-gpu/smoke.vpy' \
             packaging/runtime/switch/xuperswitch/test.mp4
