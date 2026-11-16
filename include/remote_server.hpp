@@ -10,8 +10,20 @@
 #include <thread>
 #include <mutex>
 #include <utility>
+#include <vector>
 
 namespace xs {
+struct RemotePlaybackChoice {
+    int id=0;
+    std::string kind,label;
+    bool selected=false;
+};
+struct RemotePlaybackSnapshot {
+    bool active=false;
+    uint32_t generation=0;
+    std::string title;
+    std::vector<RemotePlaybackChoice> audio,subtitles,sources;
+};
 struct RemoteInfo {
     std::string address;
     std::string pin;
@@ -41,6 +53,27 @@ public:
     bool selected_result(uint32_t generation,size_t index,Catalog& out)const{return catalog_.select(generation,index,out);}
     bool selected_browse_result(uint32_t generation,size_t index,Catalog& out)const{
         return browse_.selected_result(generation,index,out);
+    }
+    // Only titles and track labels are shared; never stream URLs or credentials.
+    void begin_playback(const std::string& title){
+        std::lock_guard<std::mutex> lock(playback_mutex_);
+        ++playback_generation_;playback_={};
+        playback_.active=true;playback_.generation=playback_generation_;
+        playback_.title=title;
+    }
+    void publish_playback_options(RemotePlaybackSnapshot next){
+        std::lock_guard<std::mutex> lock(playback_mutex_);
+        if(!playback_.active)return;
+        next.active=true;next.generation=playback_generation_;
+        playback_=std::move(next);
+    }
+    void end_playback(){
+        std::lock_guard<std::mutex> lock(playback_mutex_);
+        ++playback_generation_;playback_={};
+    }
+    RemotePlaybackSnapshot playback_options()const{
+        std::lock_guard<std::mutex> lock(playback_mutex_);
+        return playback_;
     }
     int setting_value(int id)const{return settings_.get(id);}
     void publish_setting(int id,int value){settings_.put(id,value,false);}
@@ -72,6 +105,9 @@ private:
     RemoteBrowse browse_;
     RemoteBrowse mobile_browse_;
     RemoteSettingsStore settings_;
+    mutable std::mutex playback_mutex_;
+    RemotePlaybackSnapshot playback_;
+    uint32_t playback_generation_=0;
     std::mutex text_mutex_;
     std::string pending_text_;
     uintptr_t listener_=static_cast<uintptr_t>(~uintptr_t{0});
@@ -87,5 +123,6 @@ constexpr int REMOTE_YOUTUBE_RETURN=0x585505;
 constexpr int REMOTE_WHEEL=0x585506;
 constexpr int REMOTE_OPEN_BROWSE=0x585507;
 constexpr int REMOTE_SETTING=0x585508;
+constexpr int REMOTE_PLAYBACK_SELECT=0x585509;
 }
 #endif
