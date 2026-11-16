@@ -253,7 +253,28 @@ int main(int argc,char** argv){
             }
 #endif
 #ifdef _WIN32
-            if(event.type==SDL_MOUSEMOTION)redraw=true;
+            if(event.type==SDL_MOUSEMOTION){
+                redraw=true;
+                if(view.nova_enabled&&xs::nova_is_home(catalog)&&nova_drag_pending&&!nova_drag_touch){
+                    const int x=event.motion.x,y=event.motion.y;
+                    if(std::abs(x-nova_drag_start_x)>8||std::abs(y-nova_drag_start_y)>8)
+                        nova_drag_moved=true;
+                    if(nova_drag_moved)
+                        view.scroll_nova_row(catalog,nova_drag_row,nova_drag_last_x-x);
+                    nova_drag_last_x=x;
+                }
+            }
+            if(event.type==SDL_FINGERMOTION&&view.nova_enabled&&xs::nova_is_home(catalog)
+               &&nova_drag_pending&&nova_drag_touch){
+                const int x=int(event.tfinger.x*1280),y=int(event.tfinger.y*720);
+                if(std::abs(x-nova_drag_start_x)>8||std::abs(y-nova_drag_start_y)>8)
+                    nova_drag_moved=true;
+                if(nova_drag_moved){
+                    view.scroll_nova_row(catalog,nova_drag_row,nova_drag_last_x-x);
+                    redraw=true;
+                }
+                nova_drag_last_x=x;
+            }
             if(event.type==SDL_USEREVENT&&event.user.code==xs::REMOTE_VOLUME)
                 playback_history.volume=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
 #endif
@@ -263,17 +284,69 @@ int main(int argc,char** argv){
                 previous|=ticks>0;next|=ticks<0;
             }
 #endif
-            if(event.type==SDL_MOUSEWHEEL){previous|=event.wheel.y>0;next|=event.wheel.y<0;}
+            if(event.type==SDL_MOUSEWHEEL){
+#ifdef _WIN32
+                if(view.nova_enabled&&xs::nova_is_home(catalog)){
+                    int mx=0,my=0;SDL_GetMouseState(&mx,&my);
+                    const int row=xs::nova_row_at(my);
+                    if(row>=0){
+                        const int ticks=event.wheel.x!=0?event.wheel.x:event.wheel.y;
+                        view.scroll_nova_row(catalog,row,-ticks*xs::nova_card_step);
+                        redraw=true;
+                        continue;
+                    }
+                }
+#endif
+                previous|=event.wheel.y>0;next|=event.wheel.y<0;
+            }
+#ifdef _WIN32
+            if((event.type==SDL_MOUSEBUTTONUP||event.type==SDL_FINGERUP)
+               &&nova_drag_pending&&
+               ((event.type==SDL_FINGERUP)==nova_drag_touch)){
+                const int x=event.type==SDL_FINGERUP?int(event.tfinger.x*1280):event.button.x;
+                const int y=event.type==SDL_FINGERUP?int(event.tfinger.y*720):event.button.y;
+                if(!nova_drag_moved){
+                    const int hit=view.hit(catalog,selected,x,y);
+                    if(hit>=0){
+                        selected=static_cast<size_t>(hit);
+                        view.nav_focus=-1;view.show_details=false;play=true;
+                    }
+                }
+                nova_drag_pending=false;
+                continue;
+            }
+#endif
             if(event.type==SDL_MOUSEBUTTONDOWN||event.type==SDL_FINGERDOWN){
                 const int x=event.type==SDL_FINGERDOWN?int(event.tfinger.x*1280):event.button.x,y=event.type==SDL_FINGERDOWN?int(event.tfinger.y*720):event.button.y;
-                if(donating){back=true;continue;}const int hit=view.hit(catalog,selected,x,y);
+                if(donating){back=true;continue;}
+#ifdef _WIN32
+                if(view.nova_enabled&&xs::nova_is_home(catalog)){
+                    const int row=xs::nova_row_at(y);
+                    if(row>=0){
+                        nova_drag_pending=true;
+                        nova_drag_touch=event.type==SDL_FINGERDOWN;
+                        nova_drag_moved=false;
+                        nova_drag_row=row;
+                        nova_drag_start_x=nova_drag_last_x=x;
+                        nova_drag_start_y=y;
+                        continue;
+                    }
+                }
+#endif
+                const int hit=view.hit(catalog,selected,x,y);
                 if(hit==-13){view.pairing_visible=!view.pairing_visible;redraw=true;}
                 else if(hit==-8)toggle_favorite=true;
                 else if(hit==-9)play=true;
                 else if(hit==-10){view.toggle_fullscreen();redraw=true;}
                 else if(hit==-11){view.show_details=!view.show_details;redraw=true;}
                 else if(hit==-12){search=true;redraw=true;}
-                else if(hit<=-2)nav_action=-hit-2;
+                else if(hit<=-2){
+                    nav_action=-hit-2;
+#ifdef _WIN32
+                    if(view.nova_enabled&&xs::nova_is_home(catalog)&&hit==-3)
+                        nova_heading_catalog=true;
+#endif
+                }
                 else if(hit>=0){selected=static_cast<size_t>(hit);view.nav_focus=-1;view.show_details=false;play=true;}
             }
             if(event.type==SDL_KEYDOWN){
