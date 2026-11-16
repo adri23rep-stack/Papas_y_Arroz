@@ -1,0 +1,85 @@
+name: One-time cleanup of old XuperTV Actions artifacts
+
+on:
+  push:
+    branches: [feature/nova-ui-from-scratch]
+    paths:
+      - '.github/workflows/cleanup-old-artifacts-once.yml'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify current NOVA ZIP and delete old Actions artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REPOSITORY" != "adri23rep-stack/Xuper-Tv" ]]; then
+            echo "::error::Unexpected repository; refusing deletion."
+            exit 1
+          fi
+
+          # The latest NOVA portable ZIP is a normal Git branch file,
+          # NOT an Actions artifact. Make sure it exists before cleanup.
+          archive_sha=$(gh api \
+            "repos/$GITHUB_REPOSITORY/contents/XuperTV-NOVA-Windows-Preview.zip?ref=build/nova-ui-preview" \
+            --jq '.sha')
+          if [[ -z "$archive_sha" || "$archive_sha" == "null" ]]; then
+            echo "::error::Latest NOVA ZIP missing; refusing deletion."
+            exit 1
+          fi
+          echo "Protected newest NOVA ZIP: build/nova-ui-preview/XuperTV-NOVA-Windows-Preview.zip"
+          echo "NOVA Git blob SHA: $archive_sha"
+
+          # Delete only the Actions 'Artifacts' storage items. Keep source,
+          # releases, branches and especially the protected latest ZIP.
+          rows=$(gh api --paginate \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
+            --jq '.artifacts[] | [.id, .name, .size_in_bytes] | @tsv')
+          deleted=0
+          bytes=0
+          if [[ -n "$rows" ]]; then
+            while IFS=$'\t' read -r id name size; do
+              [[ "$id" =~ ^[0-9]+$ ]] || {
+                echo "::error::Invalid artifact ID; aborting"
+                exit 1
+              }
+              # The newest NOVA is in the build branch; an artifact with the
+              # same name, if later uploaded, should be kept as well.
+              if [[ "$name" == "XuperTV-Nova-Windows" ]]; then
+                echo "Keeping NOVA Actions artifact: $id $name"
+                continue
+              fi
+              gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$id" >/dev/null
+              echo "Deleted old artifact: $id $name"
+              deleted=$((deleted+1))
+              bytes=$((bytes+size))
+            done <<< "$rows"
+          fi
+          echo "Deleted $deleted obsolete Actions artifacts ($bytes bytes)."
+          echo "Newest NOVA ZIP remains in build/nova-ui-preview."
+
+          # Write a small, verifiable cleanup receipt into the experimental
+          # branch. This path is not a trigger for this one-shot workflow.
+          receipt=$(printf 'XuperTV old Actions artifact cleanup\\nDeleted: %s\\nBytes reclaimed: %s\\nProtected: build/nova-ui-preview/XuperTV-NOVA-Windows-Preview.zip\\nProtected blob: %s\\nRun: %s\\n' \
+            "$deleted" "$bytes" "$archive_sha" "$GITHUB_RUN_ID")
+          encoded=$(printf '%s' "$receipt" | base64 -w 0)
+          existing_sha=$(gh api \
+            "repos/$GITHUB_REPOSITORY/contents/ci-reports/actions-artifacts-cleanup.txt?ref=feature/nova-ui-from-scratch" \
+            --jq '.sha' 2>/dev/null || true)
+          extra=()
+          if [[ -n "$existing_sha" ]]; then
+            extra=(-f "sha=$existing_sha")
+          fi
+          gh api --method PUT \
+            "repos/$GITHUB_REPOSITORY/contents/ci-reports/actions-artifacts-cleanup.txt" \
+            -f "message=chore(ci): record old artifact cleanup result" \
+            -f "branch=feature/nova-ui-from-scratch" \
+            -f "content=$encoded" "${extra[@]}" >/dev/null
+          echo "Cleanup receipt committed successfully."

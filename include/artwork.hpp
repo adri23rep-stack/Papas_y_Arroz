@@ -8,7 +8,9 @@ class Artwork {
 public:
     explicit Artwork(SDL_Renderer* renderer);
     ~Artwork();
-    SDL_Texture* get(const std::string& url,const std::string& key);
+    // Full-resolution decoding is opt-in for NOVA's wide wallpaper only.
+    SDL_Texture* get(const std::string& url,const std::string& key,bool high_resolution=false);
+    bool failed(const std::string& key) const;
     bool poll();
 };
 }

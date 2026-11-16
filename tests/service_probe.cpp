@@ -47,6 +47,7 @@ int main(int argc,char** argv) {
         if(!movies.ok||movies.catalog.entries.size()!=1)return 1;
         auto films=xs::service_browse(result.session,movies.catalog.entries[0]);
         if(!films.ok||films.catalog.entries.size()!=2||films.catalog.entries[0].artwork!="https://images.example.invalid/movie.jpg"||films.catalog.entries[0].description!="Ficha sintetica")return 1;
+        if(films.catalog.entries[0].backdrop!="https://images.example.invalid/wide.jpg")return 1;
         auto detail=xs::service_browse(result.session,films.catalog.entries[0]);
         if(!detail.ok||detail.catalog.entries.size()!=1||detail.catalog.entries[0].kind!=xs::EntryKind::Episode)return 1;
         auto source=xs::service_source(result.session,detail.catalog.entries[0]);
@@ -80,6 +81,8 @@ int main(int argc,char** argv) {
         auto channels=xs::service_channels(result.session,category.column_id);
         if(!channels.ok||channels.catalog.entries.size()!=1||channels.catalog.warnings.size()!=1)return 1;
         const auto channel=channels.catalog.entries.front();
+        if(channel.schedule.size()!=1||channel.schedule[0].title!="Noticias"||
+           channel.schedule[0].start!="1700000000"||channel.schedule[0].end!="1700003600")return 1;
         if(channel.kind!=xs::EntryKind::Channel||channel.channel_code!="channel-test")return 1;
         auto source=xs::service_source(result.session,channel);
         if(mode=="bootstrap_catalog_denied")return !source.ok&&source.source.empty()&&source.status.find("rechazo permission-denied")!=std::string::npos?0:1;

@@ -42,9 +42,21 @@ if(WIN32 AND MINGW)
           if(NOT _convert_status EQUAL 0)
             message(FATAL_ERROR "Cannot convert pkg-config path: ${_inc_dir}")
           endif()
-          list(APPEND _fixed_dirs "${_win_dir}")
+          set(_resolved_dir "${_win_dir}")
         else()
-          list(APPEND _fixed_dirs "${_inc_dir}")
+          set(_resolved_dir "${_inc_dir}")
+        endif()
+        if(EXISTS "${_resolved_dir}")
+          list(APPEND _fixed_dirs "${_resolved_dir}")
+        elseif(_pkg_target STREQUAL "PkgConfig::MPV" AND
+               _resolved_dir MATCHES "[/\\\\]lua5[.]1$")
+          # Some MSYS2 libmpv .pc metadata mentions legacy Lua 5.1 even
+          # without its optional headers installed. The public libmpv API
+          # uses mpv/client.h, not lua5.1/*.h; keep the real MPV paths.
+          message(STATUS "Skipping missing optional mpv Lua include: ${_resolved_dir}")
+        else()
+          message(FATAL_ERROR
+            "${_pkg_target} reports a missing required include directory: ${_resolved_dir}")
         endif()
       endforeach()
       set_property(TARGET "${_pkg_target}" PROPERTY INTERFACE_INCLUDE_DIRECTORIES "${_fixed_dirs}")
@@ -72,7 +84,7 @@ target_sources(XuperTVDesktop PRIVATE
 )
 # Muted secondary decoder is a Windows-only experimental UI feature.
 if(WIN32)
-  target_sources(XuperTVDesktop PRIVATE source/live_preview.cpp source/remote_server.cpp source/view_cinematic.cpp source/remote_catalog.cpp source/youtube_remote.cpp source/gpu_readback.cpp source/remote_browse.cpp)
+  target_sources(XuperTVDesktop PRIVATE source/live_preview.cpp source/remote_server.cpp source/view_cinematic.cpp source/view_nova.cpp source/view_nova_home.cpp source/remote_catalog.cpp source/youtube_remote.cpp source/gpu_readback.cpp source/remote_browse.cpp)
   target_link_libraries(XuperTVDesktop PRIVATE ws2_32 bcrypt shell32 user32 opengl32 crypt32 ole32 PkgConfig::QRENCODE)
   # The native engine currently builds as an independent decoder pilot.
   # It cannot accidentally replace, break, or steal XuperTV's working playback.
@@ -132,6 +144,9 @@ if(BUILD_TESTING)
   add_executable(cinematic_home_test tests/cinematic_home_test.cpp)
   target_include_directories(cinematic_home_test PRIVATE include)
   add_test(NAME cinematic_home_test COMMAND cinematic_home_test)
+  add_executable(nova_layout_test tests/nova_layout_test.cpp)
+  target_include_directories(nova_layout_test PRIVATE include)
+  add_test(NAME nova_layout_test COMMAND nova_layout_test)
   if(WIN32)
     add_executable(native_subtitles_test tests/native_subtitles_test.cpp)
     target_include_directories(native_subtitles_test PRIVATE include)
@@ -242,11 +257,51 @@ if(BUILD_TESTING)
   # Test cases use assert() for both checks and setup/side effects.
   # Release adds -DNDEBUG, which otherwise skips their setup and crashes
   # when fixtures are renamed before being created.
-  foreach(_test_target IN ITEMS catalog_test playback_state_test playback_error_test saved_catalog_test channel_rail_test cinematic_layout_test cinematic_home_test)
+  foreach(_test_target IN ITEMS catalog_test playback_state_test playback_error_test saved_catalog_test channel_rail_test cinematic_layout_test cinematic_home_test nova_layout_test)
     if(MSVC)
       target_compile_options(${_test_target} PRIVATE /UNDEBUG)
     else()
       target_compile_options(${_test_target} PRIVATE -UNDEBUG)
     endif()
   endforeach()
+endif()
+
+# Qt Quick now owns the new Windows interface, catalog and pairing UI.
+# The classic SDL desktop and Switch builds remain separate, untouched.
+if(WIN32)
+  find_package(Qt6 6.5 REQUIRED COMPONENTS Quick Concurrent)
+  add_executable(XuperTVNovaQt WIN32
+    source/nova_qt_main.cpp
+    source/nova_qt_home.cpp
+    source/nova_qt_player.cpp
+    include/nova_qt_home.hpp
+    include/nova_qt_player.hpp
+    source/remote_server.cpp
+    source/remote_catalog.cpp
+    source/remote_browse.cpp
+    source/youtube_remote.cpp
+    source/catalog.cpp
+    source/service.cpp
+    source/codec.cpp
+    source/ranger_codec.cpp
+    source/trace.cpp
+  )
+  set_target_properties(XuperTVNovaQt PROPERTIES AUTOMOC ON)
+  qt_add_resources(XuperTVNovaQt "nova_qt_qml"
+    PREFIX "/"
+    FILES
+      ui/novaqt/Main.qml
+      ui/novaqt/NovaQtOverlay.qml
+      ui/novaqt/NovaHero.qml
+      ui/novaqt/NovaCard.qml
+      ui/novaqt/NovaRail.qml
+      ui/novaqt/NovaTopNav.qml
+  )
+  target_include_directories(XuperTVNovaQt PRIVATE include include/vendor)
+  target_link_libraries(XuperTVNovaQt PRIVATE
+    Qt6::Quick Qt6::Concurrent SDL2::SDL2
+    PkgConfig::CURL PkgConfig::MPV PkgConfig::QRENCODE
+    ${MBEDCRYPTO_LIBRARY}
+    ws2_32 bcrypt crypt32 shell32 ole32 user32
+  )
 endif()
