@@ -233,9 +233,16 @@ jobs:
             $env:Path = "$env:SystemRoot\System32;$env:SystemRoot"
             $env:QT_QPA_PLATFORM = "offscreen"
             $env:QT_QUICK_BACKEND = "software"
-            & ".\XuperTVNovaQt.exe" --smoke
-            if ($LASTEXITCODE -ne 0) {
-              throw "Standalone Qt Quick QML preview failed outside MSYS2 PATH (exit $LASTEXITCODE)."
+            # Windows GUI-subsystem executables don't reliably populate
+            # PowerShell's LASTEXITCODE after a direct invocation.
+            # Start-Process gives the real exit code and captures QML errors.
+            $logOut = Join-Path $env:RUNNER_TEMP 'nova-qt-smoke-out.txt'
+            $logErr = Join-Path $env:RUNNER_TEMP 'nova-qt-smoke-err.txt'
+            $qt = Start-Process -FilePath ".\XuperTVNovaQt.exe" -ArgumentList @("--smoke") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $logOut -RedirectStandardError $logErr
+            if (Test-Path $logOut) { Get-Content $logOut }
+            if (Test-Path $logErr) { Get-Content $logErr }
+            if ($qt.ExitCode -ne 0) {
+              throw "Standalone Qt Quick QML preview failed outside MSYS2 PATH (exit $($qt.ExitCode))."
             }
             Write-Host "Qt6 NOVA first screen loaded with only portable DLLs/plugins."
           } finally {
