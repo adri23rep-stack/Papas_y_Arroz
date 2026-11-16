@@ -7,10 +7,9 @@ int main(){
     assert(nova_motion_mode(-1)==MotionMode::Off);
     assert(nova_motion_mode(3)==MotionMode::Off);
     assert(nova_motion_mode(2)==MotionMode::RifeGpu);
-    assert(std::string(nova_motion_filter(MotionMode::Off)).empty());
-    assert(std::string(nova_motion_filter(MotionMode::SmoothDisplay)).empty());
-    assert(std::string(nova_motion_filter(MotionMode::Compensated60))
-           .find("minterpolate=fps=60")!=std::string::npos);
+    assert(!nova_motion_needs_gpu(MotionMode::Off));
+    assert(!nova_motion_needs_gpu(MotionMode::SmoothDisplay));
+    assert(nova_motion_needs_gpu(MotionMode::RifeGpu));
     const auto now=NovaPlaybackRestartGate::Clock::time_point{};
     NovaPlaybackRestartGate gate;
     assert(!gate.ready(1,2,1,0,now+std::chrono::seconds(1)));
