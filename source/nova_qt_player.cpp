@@ -2,6 +2,7 @@
 #include "catalog.hpp"
 #include "remote_server.hpp"
 #include "nova_quality.hpp"
+#include "nova_motion.hpp"
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -138,12 +139,21 @@ void NovaQtPlayer::requestQuality(int value){
     if(value<0||value>4)return;
     // No restart, and no misleading status, when selecting the same mode.
     if(requested_quality_.exchange(value)==value)return;
-    quality_revision_.fetch_add(1);
+    restart_revision_.fetch_add(1);
+}
+void NovaQtPlayer::requestMotion(int value){
+    if(value<0||value>2)return;
+    if(requested_motion_.exchange(value)==value)return;
+    restart_revision_.fetch_add(1);
 }
 
 void NovaQtPlayer::applySetting(int id,int value){
     if(id==xs::remote_setting_index("video_preset")){
         requestQuality(value);
+        return;
+    }
+    if(id==xs::remote_setting_index("motion_mode")){
+        requestMotion(value);
         return;
     }
     if(id==xs::remote_setting_index("volume")){setVolume(value);return;}
@@ -199,11 +209,15 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
     int activePreset=remote.setting_value(presetId);
     if(activePreset<0||activePreset>4)activePreset=1;
     requested_quality_.store(activePreset);
-    int previousPreset=activePreset;
+    const int motionId=xs::remote_setting_index("motion_mode");
+    int activeMotion=remote.setting_value(motionId);
+    if(activeMotion<0||activeMotion>2)activeMotion=0;
+    requested_motion_.store(activeMotion);
+    int previousPreset=activePreset,previousMotion=activeMotion;
     bool switching=false, registered=false, reachedEnd=false;
     double lastPosition=0.0;
     QString endMessage=QStringLiteral("Volviste al catálogo.");
-    xs::NovaQualityRestartGate qualityGate;
+    xs::NovaPlaybackRestartGate restartGate;
 
     auto publish=[this](const QString& message,const QString& details=QString()){
         QMetaObject::invokeMethod(this,[this,message,details]{
@@ -248,6 +262,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
     // Never persist a preset that failed to load this playback.
     while(!stop_.load()){
         const auto preset=xs::nova_video_preset(activePreset);
+        const auto motion=xs::nova_motion_mode(activeMotion);
         const bool gpuMode=xs::nova_needs_shader(preset);
         const QString shader=QDir(QCoreApplication::applicationDirPath())
             .filePath(QStringLiteral("shaders/FSRCNNX_x2_8-0-4-1.glsl"));
@@ -291,6 +306,17 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                            !opt("scale","ewa_lanczossharp") ||
                            !opt("cscale","ewa_lanczos");
                 }else failed=failed||!opt("scale","bicubic");
+            }
+            if(!failed){
+                if(motion==xs::MotionMode::SmoothDisplay){
+                    failed=!opt("video-sync","display-resample") ||
+                           !opt("interpolation","yes") ||
+                           !opt("tscale","linear");
+                }else if(motion==xs::MotionMode::Compensated60){
+                    // True motion estimation through FFmpeg, NOT GPU RIFE.
+                    // The resulting FPS is measured independently below.
+                    failed=!opt("vf",xs::nova_motion_filter(motion));
+                }
             }
             if(!failed&&live)failed=!opt("demuxer-readahead-secs","3");
             if(!failed&&xs::nova_can_resume(live,restore.position)){
@@ -395,7 +421,9 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                             int64_t w=0,h=0;
                             mpv_get_property(mpv,"video-params/w",MPV_FORMAT_INT64,&w);
                             mpv_get_property(mpv,"video-params/h",MPV_FORMAT_INT64,&h);
-                            const std::string graph=xs::extra_detail_filter(int(w),int(h));
+                            std::string graph=xs::extra_detail_filter(int(w),int(h));
+                            if(motion==xs::MotionMode::Compensated60)
+                                graph+=","+std::string(xs::nova_motion_filter(motion));
                             if(graph.empty()||mpv_set_property_string(mpv,"vf",graph.c_str())<0){
                                 failed=true;
                                 failure=QStringLiteral("Filtro CAS no disponible.");
@@ -413,9 +441,19 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                         char* decoder=mpv_get_property_string(mpv,"hwdec-current");
                         QString decoding=decoder?QString::fromUtf8(decoder):QStringLiteral("sin datos");
                         if(decoder)mpv_free(decoder);
-                        const QString details=QStringLiteral("Origen %1×%2 · Salida %3×%4 · Decodificador %5 · %6")
+                        double originalFps=0.0;
+                        mpv_get_property(mpv,"container-fps",MPV_FORMAT_DOUBLE,&originalFps);
+                        const QString motionStatus=QString::fromUtf8(xs::nova_motion_label(motion));
+                        const QString details=QStringLiteral(
+                            "Origen %1×%2 · Salida %3×%4 · Decodificador %5 · %6\n"
+                            "FPS originales: %7 · MotionBoost: %8 · Procesamiento: %9")
                             .arg(sourceW).arg(sourceH).arg(outputW).arg(outputH)
-                            .arg(decoding,QString::fromStdString(filter));
+                            .arg(decoding,QString::fromStdString(filter))
+                            .arg(originalFps>0?QString::number(originalFps,'f',2):
+                                 QStringLiteral("sin datos"),motionStatus,
+                                 motion==xs::MotionMode::Compensated60?
+                                     QStringLiteral("CPU (comprobando FPS reales)"):
+                                     QStringLiteral("MPV"));
                         publish(QStringLiteral("Reproduciendo · %1").arg(
                             QString::fromUtf8(xs::video_preset_label(preset))),details);
                     }
@@ -423,13 +461,23 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                         publishTracks(mpv,title);
                     if(event->event_id==MPV_EVENT_FILE_LOADED)
                         publishTracks(mpv,title);
-                    if(event->event_id==MPV_EVENT_LOG_MESSAGE&&gpuMode){
+                    if(event->event_id==MPV_EVENT_LOG_MESSAGE&&
+                       (gpuMode||motion==xs::MotionMode::Compensated60)){
                         const auto* log=static_cast<const mpv_event_log_message*>(event->data);
                         if(log&&log->text){
                             std::string message(log->text);
                             std::transform(message.begin(),message.end(),message.begin(),
                                 [](unsigned char c){return static_cast<char>(std::tolower(c));});
-                            if((message.find("shader")!=std::string::npos||
+                            if(motion==xs::MotionMode::Compensated60 &&
+                               (message.find("minterpolate")!=std::string::npos ||
+                                message.find("filter")!=std::string::npos) &&
+                               (message.find("failed")!=std::string::npos ||
+                                message.find("error")!=std::string::npos)){
+                                failed=true;
+                                failure=QStringLiteral("El interpolador de movimiento falló.");
+                                break;
+                            }
+                            if(gpuMode && (message.find("shader")!=std::string::npos||
                                 message.find("glsl")!=std::string::npos)&&
                                (message.find("failed")!=std::string::npos||
                                 message.find("error")!=std::string::npos)){
@@ -450,19 +498,22 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     }
                     if(event->event_id==MPV_EVENT_SHUTDOWN)break;
                 }
-                const auto revision=quality_revision_.load();
-                qualityGate.observe(revision,xs::NovaQualityRestartGate::Clock::now());
+                const auto revision=restart_revision_.load();
+                restartGate.observe(revision,xs::NovaPlaybackRestartGate::Clock::now());
                 const int wanted=requested_quality_.load();
-                if(qualityGate.ready(wanted,activePreset,
-                                      xs::NovaQualityRestartGate::Clock::now())){
+                const int wantedMotion=requested_motion_.load();
+                if(restartGate.ready(wanted,wantedMotion,activePreset,activeMotion,
+                                     xs::NovaPlaybackRestartGate::Clock::now())){
                     capture(mpv);
                     previousPreset=activePreset;
+                    previousMotion=activeMotion;
                     activePreset=wanted;
+                    activeMotion=wantedMotion;
                     switching=true;
                     restart=true;
-                    publish(QStringLiteral("Aplicando calidad..."),
+                    publish(QStringLiteral("Aplicando imagen y movimiento..."),
                             QStringLiteral("Reiniciando MPV sin cerrar Nova"));
-                    const char* osd[]={"show-text","Aplicando calidad...","1200",nullptr};
+                    const char* osd[]={"show-text","Aplicando imagen y movimiento...","1200",nullptr};
                     mpv_command_async(mpv,0,osd);
                     break;
                 }
@@ -485,16 +536,20 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                 break;
             }
             // Revert only once. Keep the same source and saved position.
-            const int fallback=switching?previousPreset:
-                               (activePreset!=1?1:0);
-            if(fallback!=activePreset){
+            const int fallback=switching?previousPreset:(activePreset!=1?1:0);
+            const int fallbackMotion=switching?previousMotion:0;
+            if(fallback!=activePreset||fallbackMotion!=activeMotion){
                 activePreset=fallback;
+                activeMotion=fallbackMotion;
                 previousPreset=fallback;
+                previousMotion=fallbackMotion;
                 switching=false;
                 remote.set_setting_value(presetId,fallback);
+                remote.set_setting_value(motionId,fallbackMotion);
                 requested_quality_.store(fallback);
-                quality_revision_.fetch_add(1);
-                publish(QStringLiteral("No se pudo aplicar la calidad. Restaurando modo anterior."),
+                requested_motion_.store(fallbackMotion);
+                restart_revision_.fetch_add(1);
+                publish(QStringLiteral("Filtro no disponible. Restaurando modo anterior."),
                         failure);
                 continue;
             }
