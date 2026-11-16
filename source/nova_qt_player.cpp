@@ -10,6 +10,7 @@
 #include <QMutexLocker>
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <string>
@@ -479,6 +480,12 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
         if(stop_.load())break;
         if(restart)continue;
         if(failed){
+            // A network failure after a successfully loaded stream is not
+            // evidence that its quality mode is unsupported.
+            if(loaded&&failure==QStringLiteral("Se cortó la reproducción.")){
+                endMessage=failure;
+                break;
+            }
             // Revert only once. Keep the same source and saved position.
             const int fallback=switching?previousPreset:
                                (activePreset!=1?1:0);
