@@ -26,20 +26,18 @@ if [[ "${1:-}" == "--update-only" ]]; then
     exit 0
 fi
 echo "[NOVA] Fase 2/2: instalando dependencias oficiales..."
-# SDL2-compat provides SDL2's headers, libs, and CMake config. Other apps
-# (FFmpeg, SDL2_ttf, whisper.cpp) may already depend on SDL2-compat.
-# NEVER try to replace it with the legacy real-SDL2 package automatically.
-sdl2_package="mingw-w64-ucrt-x86_64-sdl2-compat"
-if pacman -Q mingw-w64-ucrt-x86_64-SDL2 >/dev/null 2>&1; then
-    sdl2_package="mingw-w64-ucrt-x86_64-SDL2"
-fi
-echo "[NOVA] SDL2: usando $sdl2_package sin desinstalar nada."
+# SDL2 is a virtual dependency provided by the installed SDL2-compat
+# or the legacy SDL2 package. Some versions of "pacman -Q SDL2" report
+# success for a provider (not just the exact installed name), so checking
+# it here can mistakenly force an incompatible SDL2 replacement.
+# Do not request EITHER provider explicitly. ffmpeg and SDL2_ttf already
+# depend on SDL2 and pacman will preserve the installed valid provider.
+echo "[NOVA] SDL2: conservando el proveedor instalado; no se forzara reemplazo."
 packages=(
   mingw-w64-ucrt-x86_64-gcc
   mingw-w64-ucrt-x86_64-cmake
   mingw-w64-ucrt-x86_64-ninja
   mingw-w64-ucrt-x86_64-pkgconf
-  "$sdl2_package"
   mingw-w64-ucrt-x86_64-SDL2_ttf
   mingw-w64-ucrt-x86_64-sdl3
   mingw-w64-ucrt-x86_64-mpv
