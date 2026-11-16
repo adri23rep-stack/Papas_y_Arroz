@@ -14,6 +14,7 @@ inline bool nova_rife_files_present(const std::filesystem::path& root) {
     for(const auto& f : {
         root/"libvapoursynth.dll",
         root/"libvapoursynth-script-0.dll",
+        root/"VSScript.dll",
         dir/"rife.vpy",
         dir/"librife_windows_x86-64.dll",
         dir/"models"/"rife-v4.6_ensembleFalse"/"flownet.bin",
