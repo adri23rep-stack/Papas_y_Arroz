@@ -63,13 +63,13 @@ void NovaQtPlayer::togglePause(){
 void NovaQtPlayer::setVolume(int value){
     QMutexLocker lock(&mutex_);
     if(!handle_)return;
-    const double volume=static_cast<double>(std::clamp(value,0,100));
+    double volume=static_cast<double>(std::clamp(value,0,100));
     mpv_set_property_async(handle_,0,"volume",MPV_FORMAT_DOUBLE,&volume);
 }
 void NovaQtPlayer::setSpeed(int percent){
     QMutexLocker lock(&mutex_);
     if(!handle_)return;
-    const double speed=std::clamp(percent,50,200)/100.0;
+    double speed=std::clamp(percent,50,200)/100.0;
     mpv_set_property_async(handle_,0,"speed",MPV_FORMAT_DOUBLE,&speed);
 }
 void NovaQtPlayer::toggleFullscreen(){
@@ -87,24 +87,24 @@ void NovaQtPlayer::applySetting(int id,int value){
     QMutexLocker lock(&mutex_);
     if(!handle_)return;
     if(id==xs::remote_setting_index("brightness")){
-        const double brightness=std::clamp(value,0,100)*2.0-100.0;
+        double brightness=std::clamp(value,0,100)*2.0-100.0;
         mpv_set_property_async(handle_,0,"brightness",MPV_FORMAT_DOUBLE,&brightness);
     }else if(id==xs::remote_setting_index("mute")){
-        const int flag=value!=0;
+        int flag=value!=0;
         mpv_set_property_async(handle_,0,"mute",MPV_FORMAT_FLAG,&flag);
     }else if(id==xs::remote_setting_index("audio_delay")||
              id==xs::remote_setting_index("sub_delay")){
-        const double delay=value/1000.0;
+        double delay=value/1000.0;
         mpv_set_property_async(handle_,0,
             id==xs::remote_setting_index("audio_delay")?"audio-delay":"sub-delay",
             MPV_FORMAT_DOUBLE,&delay);
     }else if(id==xs::remote_setting_index("sub_scale")){
-        const double scale=value/100.0;
+        double scale=value/100.0;
         mpv_set_property_async(handle_,0,"sub-scale",MPV_FORMAT_DOUBLE,&scale);
     }else if(id==xs::remote_setting_index("aspect")){
         const char* aspect=value==1?"16:9":value==2?"4:3":"-1";
         mpv_set_property_string(handle_,"video-aspect-override",aspect);
-        const double panscan=value==3?1.0:0.0;
+        double panscan=value==3?1.0:0.0;
         mpv_set_property_async(handle_,0,"panscan",MPV_FORMAT_DOUBLE,&panscan);
     }
 }
