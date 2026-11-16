@@ -87,11 +87,8 @@ void NovaQtPlayer::setSpeed(int percent){
 void NovaQtPlayer::toggleFullscreen(){
     QMutexLocker lock(&mutex_);
     if(!handle_)return;
-    int fullscreen=0;
-    if(mpv_get_property(handle_,"fullscreen",MPV_FORMAT_FLAG,&fullscreen)>=0){
-        fullscreen=!fullscreen;
-        mpv_set_property_async(handle_,0,"fullscreen",MPV_FORMAT_FLAG,&fullscreen);
-    }
+    const char* args[]={"cycle","fullscreen",nullptr};
+    mpv_command_async(handle_,0,args);
 }
 void NovaQtPlayer::selectTrack(int kind,int id,uint32_t generation){
     QMutexLocker lock(&mutex_);
@@ -338,6 +335,11 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                      opt("keep-open","no") &&
                      opt("title",title.toUtf8().constData()) &&
                      opt("vo","gpu") &&
+#ifdef Q_OS_WIN
+                     // Keep presentation composed by Windows during monitor-sized resizes.
+                     opt("d3d11-exclusive-fs","no") &&
+                     opt("d3d11-flip","no") &&
+#endif
                      opt("network-timeout",live?"25":"15") &&
                      opt("cache","yes") &&
                      opt("sub-auto","no") &&
