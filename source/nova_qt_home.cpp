@@ -419,7 +419,10 @@ void NovaQtHome::playEntry(const xs::Entry& e){
         const auto source=watcher->result();
         loading_=false;
         if(source.ok&&xs::valid_source(source.source))
-            player_.play(source,QString::fromStdString(e.title),e.kind==xs::EntryKind::Channel);
+            player_.play(source,QString::fromStdString(e.title),
+                e.kind==xs::EntryKind::Channel,
+                e.kind==xs::EntryKind::Episode
+                    ?playback_history_.position(e.content_id):0.0);
         else
             status_=QString::fromStdString(source.status.empty()?
                 "El servicio no devolvió un video reproducible.":source.status);
