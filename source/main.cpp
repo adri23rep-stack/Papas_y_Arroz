@@ -351,7 +351,18 @@ int main(int argc,char** argv){
 #endif
             if(play){nav_action=view.nav_focus;play=false;}
             up=down=left=right=false;
-        }else if(left&&selected%static_cast<size_t>(view.columns(catalog))==0){view.nav_focus=view.active_nav;left=false;redraw=true;}
+        }
+#ifdef _WIN32
+        else if(left&&(view.nova_enabled?
+                 xs::nova_left_edge(catalog,selected,xs::is_home(catalog)?view.home_last_index:-1):
+                 selected%static_cast<size_t>(view.columns(catalog))==0)){
+            view.nav_focus=std::max(0,view.active_nav);left=false;redraw=true;
+        }
+#else
+        else if(left&&selected%static_cast<size_t>(view.columns(catalog))==0){
+            view.nav_focus=view.active_nav;left=false;redraw=true;
+        }
+#endif
         if(nav_action==0)login=true;
         if(login){
             if(!session){
