@@ -76,6 +76,8 @@ public:
         return playback_;
     }
     int setting_value(int id)const{return settings_.get(id);}
+    // Keep the desktop quality selector and the iPhone on the same persisted setting.
+    bool set_setting_value(int id,int value){return settings_.put(id,value,true);}
     void publish_setting(int id,int value){settings_.put(id,value,false);}
     bool cursor_visible()const;
     int cursor_x()const{return pointer_x_.load();}
