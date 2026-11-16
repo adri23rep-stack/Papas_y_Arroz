@@ -268,7 +268,7 @@ void RemoteServer::dispatch(const std::string& action,int dx,int dy,int value){
     else if(action=="next")push_key(SDLK_PAGEDOWN);
     else if(action=="previous")push_key(SDLK_PAGEUP);
     else if(action=="volume"){volume_=value;push_value(REMOTE_VOLUME,value);}
-    else if(action=="brightness"){brightness_=value;push_value(REMOTE_BRIGHTNESS,value);}
+    else if(action=="brightness"){brightness_=value;settings_.put(remote_setting_index("brightness"),value,false);push_value(REMOTE_BRIGHTNESS,value);}
     else if(action=="wheel"){
         // User events are reliable even in SDL_INIT_EVENTS-only test mode.
         // The UI thread translates this into navigation / channel scrolling.
@@ -317,7 +317,9 @@ void RemoteServer::handle(uintptr_t id){
     const bool mobile_source=request.rfind("POST /mobile/source HTTP/1.",0)==0;
     const bool settings_get=request.rfind("POST /settings/get HTTP/1.",0)==0;
     const bool settings_set=request.rfind("POST /settings/set HTTP/1.",0)==0;
-    if(!pairing&&!input&&!catalog_search&&!catalog_results&&!catalog_open&&
+    const bool playback_get=request.rfind("POST /player/options HTTP/1.",0)==0;
+    const bool playback_set=request.rfind("POST /player/select HTTP/1.",0)==0;
+    if(!playback_get&&!playback_set&&!pairing&&!input&&!catalog_search&&!catalog_results&&!catalog_open&&
        !browse_start&&!browse_results&&!browse_select&&!browse_back&&
        !mobile_start&&!mobile_results&&!mobile_select&&!mobile_back&&!mobile_source&&
        !settings_get&&!settings_set){
@@ -376,6 +378,54 @@ void RemoteServer::handle(uintptr_t id){
         active_at_=SDL_GetTicks();
         reply(client,200,{{"ok",true},{"key",key->get<std::string>()},
             {"value",number},{"applies","Ahora o al abrir el siguiente video"}});return;
+    }
+    if(playback_get){
+        const auto state=playback_options();
+        const auto choices=[](const std::vector<RemotePlaybackChoice>& input){
+            Json result=Json::array();
+            for(const auto& entry:input)
+                result.push_back({{"id",entry.id},{"kind",entry.kind},
+                    {"label",entry.label},{"selected",entry.selected}});
+            return result;
+        };
+        reply(client,200,{{"active",state.active},{"generation",state.generation},
+            {"title",state.title},{"audio",choices(state.audio)},
+            {"subtitles",choices(state.subtitles)},{"sources",choices(state.sources)}});return;
+    }
+    if(playback_set){
+        const auto kind_it=payload.find("kind"),id_it=payload.find("id"),gen_it=payload.find("generation");
+        if(kind_it==payload.end()||!kind_it->is_string()||
+           id_it==payload.end()||!id_it->is_number_integer()||
+           gen_it==payload.end()||!gen_it->is_number_integer()){
+            reply(client,400,{{"error","Seleccion de pista invalida."}});return;
+        }
+        const auto kind=kind_it->get<std::string>();
+        const auto id64=id_it->get<int64_t>(),gen64=gen_it->get<int64_t>();
+        if(id64< -1||id64>100000||gen64<=0||gen64>UINT32_MAX){
+            reply(client,400,{{"error","Seleccion de pista invalida."}});return;
+        }
+        const auto state=playback_options();
+        if(!state.active||state.generation!=static_cast<uint32_t>(gen64)){
+            reply(client,400,{{"error","El video cambió. Actualiza las opciones."}});return;
+        }
+        const std::vector<RemotePlaybackChoice>* list=nullptr;
+        int kind_code=0;
+        if(kind=="audio"){list=&state.audio;kind_code=1;}
+        else if(kind=="subtitle"||kind=="external_subtitle"){
+            list=&state.subtitles;kind_code=kind=="subtitle"?2:3;
+        }else if(kind=="source"){list=&state.sources;kind_code=4;}
+        const bool valid=list&&std::any_of(list->begin(),list->end(),
+            [&](const RemotePlaybackChoice& item){return item.kind==kind&&item.id==id64;});
+        if(!valid){reply(client,400,{{"error","La pista no está disponible."}});return;}
+        SDL_Event event{};event.type=SDL_USEREVENT;event.user.code=REMOTE_PLAYBACK_SELECT;
+        event.user.windowID=state.generation;
+        event.user.data1=reinterpret_cast<void*>(static_cast<intptr_t>(kind_code));
+        event.user.data2=reinterpret_cast<void*>(static_cast<intptr_t>(id64));
+        if(SDL_PushEvent(&event)<0){
+            reply(client,400,{{"error","No se pudo enviar la opción."}});return;
+        }
+        active_at_=SDL_GetTicks();
+        reply(client,200,{{"ok",true},{"message","Opción enviada al reproductor."}});return;
     }
     const auto get_unsigned=[&](const char* name,uint64_t max_value,uint64_t fallback){
         const auto it=payload.find(name);

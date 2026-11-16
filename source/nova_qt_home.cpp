@@ -2,6 +2,11 @@
 #include "remote_server.hpp"
 #include "remote_pairing_qr.hpp"
 #include <SDL.h>
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <cwchar>
 #include <qrencode.h>
 #include <QBuffer>
 #include <QCoreApplication>
@@ -25,6 +30,49 @@
 #include <vector>
 
 namespace {
+BOOL CALLBACK findVideoWindow(HWND window,LPARAM output){
+    DWORD pid=0;
+    GetWindowThreadProcessId(window,&pid);
+    wchar_t name[64]{};
+    if(pid==GetCurrentProcessId()&&IsWindowVisible(window)&&
+       GetClassNameW(window,name,64)&&std::wcscmp(name,L"mpv")==0){
+        *reinterpret_cast<HWND*>(output)=window;
+        return FALSE;
+    }
+    return TRUE;
+}
+BOOL CALLBACK collectMonitor(HMONITOR monitor,HDC,LPRECT,LPARAM output){
+    reinterpret_cast<std::vector<HMONITOR>*>(output)->push_back(monitor);
+    return TRUE;
+}
+void moveToMonitor(HWND window,HMONITOR destination){
+    MONITORINFO from{sizeof(MONITORINFO)},to{sizeof(MONITORINFO)};
+    RECT r{};
+    if(!GetWindowRect(window,&r)||!GetMonitorInfoW(MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST),&from)||
+       !GetMonitorInfoW(destination,&to))return;
+    const bool fullscreen=EqualRect(&r,&from.rcMonitor);
+    const bool maximized=IsZoomed(window);
+    if(maximized){ShowWindow(window,SW_RESTORE);GetWindowRect(window,&r);}
+    const RECT area=fullscreen?to.rcMonitor:to.rcWork;
+    const LONG w=fullscreen?area.right-area.left:std::min(r.right-r.left,area.right-area.left);
+    const LONG h=fullscreen?area.bottom-area.top:std::min(r.bottom-r.top,area.bottom-area.top);
+    SetWindowPos(window,nullptr,area.left+(area.right-area.left-w)/2,area.top+(area.bottom-area.top-h)/2,
+                 w,h,SWP_NOZORDER|SWP_NOACTIVATE);
+    if(maximized)ShowWindow(window,SW_MAXIMIZE);
+}
+void nextMonitor(QQuickWindow* home){
+    if(!home)return;
+    HWND video=nullptr;
+    EnumWindows(findVideoWindow,reinterpret_cast<LPARAM>(&video));
+    HWND catalog=reinterpret_cast<HWND>(home->winId());
+    std::vector<HMONITOR> monitors;
+    EnumDisplayMonitors(nullptr,nullptr,collectMonitor,reinterpret_cast<LPARAM>(&monitors));
+    if(monitors.size()<2)return;
+    auto current=std::find(monitors.begin(),monitors.end(),MonitorFromWindow(video?video:catalog,MONITOR_DEFAULTTONEAREST));
+    const auto target=(current==monitors.end()||++current==monitors.end())?monitors.front():*current;
+    moveToMonitor(catalog,target);
+    if(video)moveToMonitor(video,target);
+}
 struct HomeSnapshot {
     QVariantList channels,series,movies,demo_items;
     std::vector<xs::Entry> tv_entries,series_entries,movie_entries,demo_entries;
@@ -188,6 +236,7 @@ NovaQtHome::NovaQtHome(QObject* parent):QObject(parent),player_(this){
         xs::RemoteServer::shared().start();
         connect(&remote_timer_,&QTimer::timeout,this,&NovaQtHome::pollRemote);
         remote_timer_.start(45);
+        brightness_=xs::RemoteServer::shared().setting_value(xs::remote_setting_index("brightness"));
         updateRemote();
     }else status_=QStringLiteral("Control remoto no disponible.");
 }
@@ -344,6 +393,8 @@ void NovaQtHome::refresh(){
         updateFeatured();
         refreshContinue();
         xs::RemoteServer::shared().set_session(session_,root_);
+        xs::RemoteServer::shared().index_assets(series_entries_);
+        xs::RemoteServer::shared().index_assets(movie_entries_);
         status_=snap.status;
         loading_=false;
         emit changed();
@@ -355,6 +406,7 @@ void NovaQtHome::refresh(){
 void NovaQtHome::showCatalog(xs::Catalog catalog,bool pushHistory){
     if(pushHistory&&browsing_)history_.push_back({page_,selected_item_});
     page_=std::move(catalog);
+    xs::RemoteServer::shared().index_assets(page_.entries);
     items_=listFor(page_.entries);
     page_title_=QString::fromStdString(page_.title);
     browsing_=true;
@@ -582,14 +634,19 @@ void NovaQtHome::pollRemote(){
             clickPointer(event.type==SDL_MOUSEBUTTONDOWN);continue;
         }
         if(event.type==SDL_USEREVENT){
+            if(event.user.code==xs::REMOTE_PLAYBACK_SELECT)
+                player_.selectTrack(int(reinterpret_cast<intptr_t>(event.user.data1)),int(reinterpret_cast<intptr_t>(event.user.data2)),event.user.windowID);
             if(event.user.code==xs::REMOTE_VOLUME)
                 player_.setVolume(static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1)));
-            if(event.user.code==xs::REMOTE_BRIGHTNESS)
-                player_.applySetting(xs::remote_setting_index("brightness"),
-                    static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1)));
+            if(event.user.code==xs::REMOTE_BRIGHTNESS){
+                brightness_=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
+                player_.applySetting(xs::remote_setting_index("brightness"),brightness_);
+                emit changed();
+            }
             if(event.user.code==xs::REMOTE_SETTING){
                 const int id=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data1));
                 const int value=static_cast<int>(reinterpret_cast<intptr_t>(event.user.data2));
+                if(id==xs::remote_setting_index("brightness")){brightness_=value;emit changed();}
                 player_.applySetting(id,value);
             }
             if(event.user.code==xs::REMOTE_WHEEL)
@@ -631,6 +688,7 @@ void NovaQtHome::pollRemote(){
             case SDLK_F6:openSection(2);break;
             case SDLK_F7:openSection(1);break;
             case SDLK_SPACE:player_.togglePause();break;
+            case SDLK_F10:nextMonitor(window_);break;
             case SDLK_F11:
                 if(player_.playing())player_.toggleFullscreen();
                 else if(window_)window_->setVisibility(window_->visibility()==QWindow::FullScreen?

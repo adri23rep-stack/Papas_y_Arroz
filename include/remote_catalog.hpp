@@ -19,6 +19,7 @@ struct RemoteSearchSnapshot {
 class RemoteCatalog {
 public:
     void set_session(std::shared_ptr<ServiceSession> session);
+    void index_assets(const std::vector<Entry>& entries);
     bool begin(const std::string& query,uint32_t& generation,std::string& error);
     RemoteSearchSnapshot snapshot(uint32_t generation)const;
     bool select(uint32_t generation,size_t index,Catalog& catalog)const;
@@ -30,6 +31,7 @@ public:
 private:
     mutable std::mutex mutex_;
     std::shared_ptr<ServiceSession> session_;
+    std::vector<Entry> assets_;
     std::thread worker_;
     uint32_t generation_=0;
     bool busy_=false,stopping_=false;

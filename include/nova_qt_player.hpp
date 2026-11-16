@@ -29,6 +29,7 @@ public:
     Q_INVOKABLE void seek(double seconds);
     void applySetting(int id,int value);
     void toggleFullscreen();
+    void selectTrack(int kind,int id,uint32_t generation);
 signals:
     void changed();
     void finishedPlayback(double seconds,bool ended);

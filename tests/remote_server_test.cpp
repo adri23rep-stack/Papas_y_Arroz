@@ -136,11 +136,64 @@ int main(){
             saw_setting=true;
     REQUIRE(saw_setting);
     REQUIRE(server.setting_value(xs::remote_setting_index("speed"))==125);
+    REQUIRE(!okay(post("/player/select",R"({"generation":1,"kind":"audio","id":2})",token)));
+    const auto idle=nlohmann::json::parse(payload(post("/player/options",R"({})",token)));
+    REQUIRE(idle["active"]==false);
+    server.begin_playback("Prueba de audio");
+    xs::RemotePlaybackSnapshot snapshot;
+    snapshot.active=true;snapshot.title="Prueba de audio";
+    snapshot.audio={{1,"audio","Portugués",true},{2,"audio","Español",false}};
+    snapshot.subtitles={{-1,"subtitle","Desactivados",true},
+                        {5,"subtitle","Español",false},
+                        {0,"external_subtitle","Servicio: español",false}};
+    snapshot.sources={{0,"source","Automático",true},{1,"source","HD",false}};
+    server.publish_playback_options(std::move(snapshot));
+    const auto track_json=nlohmann::json::parse(payload(post("/player/options",R"({})",token)));
+    REQUIRE(track_json["active"]==true&&track_json["audio"].size()==2);
+    REQUIRE(track_json["subtitles"].size()==3&&track_json["sources"].size()==2);
+    const auto track_generation=track_json["generation"].get<int>();
+    const auto choose=[&](const std::string& kind,int id,int gen){
+        return post("/player/select",nlohmann::json{
+           {"kind",kind},{"id",id},{"generation",gen}}.dump(),token);
+    };
+    REQUIRE(!okay(choose("audio",99,track_generation)));
+    REQUIRE(!okay(choose("audio",2,track_generation-1)));
+    REQUIRE(okay(choose("audio",2,track_generation)));
+    bool got_audio=false;SDL_Event track_event{};
+    while(SDL_PollEvent(&track_event))
+        if(track_event.type==SDL_USEREVENT&&track_event.user.code==xs::REMOTE_PLAYBACK_SELECT&&
+           reinterpret_cast<intptr_t>(track_event.user.data1)==1&&
+           reinterpret_cast<intptr_t>(track_event.user.data2)==2)got_audio=true;
+    REQUIRE(got_audio);
+    REQUIRE(okay(choose("subtitle",-1,track_generation)));
+    REQUIRE(okay(choose("external_subtitle",0,track_generation)));
+    REQUIRE(okay(choose("source",1,track_generation)));
+    server.end_playback();
+    REQUIRE(!okay(choose("audio",2,track_generation)));
+    REQUIRE(nlohmann::json::parse(payload(post("/player/options",R"({})",token)))["active"]==false);
+
     xs::Catalog mock_root;
     xs::Entry live;live.kind=xs::EntryKind::Category;
     live.title="TV";live.column_id=5;
     mock_root.entries={live};
     server.set_session(std::make_shared<xs::ServiceSession>(),mock_root);
+    xs::Entry movie, series;
+    movie.kind=series.kind=xs::EntryKind::Asset;
+    movie.title="Prueba cine";movie.content_id="movie";movie.program_type="1";
+    series.title="Prueba serie";series.content_id="series";series.program_type="0";
+    server.index_assets({movie,series});
+    const auto search=post("/catalog/search",R"({"query":"prueba"})",token);
+    REQUIRE(okay(search));
+    const auto ticket=nlohmann::json::parse(payload(search)).at("generation");
+    nlohmann::json hits;
+    for(int i=0;i<50;++i){
+        const auto response=post("/catalog/results",nlohmann::json({{"generation",ticket}}).dump(),token);
+        hits=nlohmann::json::parse(payload(response));
+        if(hits["state"]=="ready")break;
+        SDL_Delay(10);
+    }
+    REQUIRE(hits["items"].size()==2);
+    REQUIRE(hits["items"][0]["kind"]=="movies" && hits["items"][1]["kind"]=="series");
     const auto mobile_start=post("/mobile/catalog/start",R"({})",token);
     REQUIRE(okay(mobile_start));
     const auto first=nlohmann::json::parse(payload(mobile_start));
