@@ -362,6 +362,8 @@ jobs:
             "$qt"/libavformat*.dll "$qt"/libavutil*.dll \
             "$qt"/libswscale*.dll "$qt"/libswresample*.dll
           rm -rf "$qt"/shaders
+          rm -f "$qt"/font.ttf
+          rm -rf "$qt"/qml/QtQml/DesignSupport             "$qt"/qml/QtQml/XmlListModel             "$qt"/qml/QtQuick/Shapes/DesignHelpers
           # QML app imports only QtQuick, QtQuick.Window, QtQuick.Effects,
           # QtQuick.Shapes and QtQml. Remove heavy unused UI styles.
           rm -rf "$qt"/qml/QtQuick/Controls \
@@ -453,7 +455,9 @@ jobs:
             Compress-Archive -Path $package.Folder -DestinationPath $zip -CompressionLevel Optimal
             $bytes = (Get-Item $zip).Length
             Write-Host "$($package.Name): $bytes bytes"
-            if ($bytes -ge 95000000) {
+            # GitHub rejects regular Git blobs at 100 MB; keep a
+            # decimal-safe margin and never upload a 100 MB file.
+            if ($bytes -ge 100000000) {
               throw "Package $($package.Name) exceeds safe GitHub single-file limit."
             }
             $archives += @{ Name = $package.Name; Zip = $zip; Hash = (Get-FileHash -Algorithm SHA256 $zip).Hash }
