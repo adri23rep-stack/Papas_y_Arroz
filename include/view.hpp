@@ -11,6 +11,10 @@ public:
     SDL_Window* window=nullptr;SDL_Renderer* renderer=nullptr;TTF_Font* font=nullptr;
     int nav_focus=-1,active_nav=0;bool favorite=false;
     int home_last_index=-1;
+#ifdef _WIN32
+    bool nova_enabled=false; // Optional brand-new Windows UI; never affects Switch.
+    void toggle_ui_mode(); // F8 toggles and saves to ui_mode.txt beside the EXE.
+#endif
     bool show_details=false;
     bool pairing_visible=false;
     bool open(std::string& error);
@@ -33,8 +37,10 @@ private:
     void background();void brand(int x,int y,bool big=false);
 #ifdef _WIN32
     void draw_cinematic(const Catalog& catalog,size_t selected,const std::string& status);
+    void draw_nova(const Catalog& catalog,size_t selected,const std::string& status);
     void draw_pairing_overlay();
     int hit_cinematic(const Catalog& catalog,size_t selected,int x,int y)const;
+    int hit_nova(const Catalog& catalog,size_t selected,int x,int y)const;
     bool image_cover(const std::string& url,const std::string& key,SDL_Rect bounds);
 #endif
     bool image(const std::string& url,const std::string& key,SDL_Rect bounds);
