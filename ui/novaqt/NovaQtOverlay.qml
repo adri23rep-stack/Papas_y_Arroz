@@ -154,7 +154,7 @@ Item {
             id: qualityPanel
             anchors.centerIn: parent
             width: Math.min(520,overlay.width - 70)
-            height: Math.min(600,overlay.height - 24)
+            height: Math.min(680,overlay.height - 24)
             radius: 20
             color: "#191821"
             border.color: "#595067"
@@ -180,7 +180,7 @@ Item {
             }
             Repeater {
                 model: ["Compatible (CPU)", "Equilibrado", "Nitidez alta (Lanczos)",
-                        "Detalle extra (CAS)", "GPU FSRCNNX"]
+                        "Detalle extra (CAS)", "GPU FSRCNNX", "RTX AI Super Resolution"]
                 delegate: Rectangle {
                     required property int index
                     required property string modelData
@@ -212,7 +212,7 @@ Item {
                 }
             }
             Text {
-                x: 26; y: 287
+                x: 26; y: 333
                 text: "MotionBoost · FPS"
                 color: "white"
                 font.family: "Segoe UI"
@@ -225,7 +225,7 @@ Item {
                 delegate: Rectangle {
                     required property int index
                     required property string modelData
-                    x: 24; y: 316 + index * 40
+                    x: 24; y: 364 + index * 40
                     width: qualityPanel.width - 48
                     height: 35
                     radius: 9
@@ -253,7 +253,7 @@ Item {
                 }
             }
             Text {
-                x: 26; y: 443
+                x: 26; y: 490
                 width: parent.width - 52
                 text: novaHome.gpuRifeReady
                     ? "GPU RIFE preparado. 24→48 / 30→60 FPS; monitorea la sincronización."
@@ -264,7 +264,7 @@ Item {
                 wrapMode: Text.WordWrap
             }
             Text {
-                x: 26; y: 487
+                x: 26; y: 534
                 width: parent.width - 52
                 color: "#C4B4F8"
                 font.pixelSize: 13
@@ -274,9 +274,9 @@ Item {
                 wrapMode: Text.WordWrap
             }
             Text {
-                x: 26; y: 526
+                x: 26; y: 568
                 width: parent.width - 52
-                height: Math.max(45,qualityPanel.height - 533)
+                height: Math.max(45,qualityPanel.height - 578)
                 color: "#B9B4C5"
                 font.family: "Segoe UI"
                 font.pixelSize: 12
