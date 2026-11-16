@@ -49,7 +49,9 @@ Item {
         x: 55
         y: Math.max(137,hero.railTop - 255)
         width: Math.min(710,hero.width - 110)
-        text: novaHome.featuredReady ? "DESTACADO" : "XUPER TV"
+        text: novaHome.featuredReady ? "DESTACADO" :
+              novaHome.loading ? "CONECTANDO" :
+              novaHome.catalogConnected ? "TU CATÁLOGO" : "CONEXIÓN PENDIENTE"
         color: "#BBA4FB"
         font.family: "Segoe UI"
         font.pixelSize: 12
@@ -63,7 +65,8 @@ Item {
         x: 53
         y: Math.max(165,hero.railTop - 224)
         width: Math.min(780, hero.width - 105)
-        text: novaHome.featuredReady ? novaHome.featuredTitle : "Encuentra algo para ver"
+        text: novaHome.featuredReady ? novaHome.featuredTitle :
+              novaHome.catalogConnected ? "Explora tu catálogo" : "Catálogo desconectado"
         font.family: "Segoe UI"
         font.pixelSize: hero.width > 1640 ? 54 : 45
         font.weight: Font.Bold
@@ -83,7 +86,8 @@ Item {
         height: 53
         text: novaHome.featuredReady
             ? (novaHome.featuredDescription || "Sin sinopsis disponible en el catálogo.")
-            : "Cargando los títulos de tu catálogo..."
+            : novaHome.loading ? "Conectando al servicio y consultando tu contenido..."
+            : novaHome.status
         color: "#DDDDE3"
         font.family: "Segoe UI"
         font.pixelSize: 16
@@ -102,7 +106,7 @@ Item {
             height: 47
             radius: 12
             antialiasing: true
-            color: !novaHome.featuredReady ? "#4A4850" :
+            color: novaHome.loading ? "#4A4850" :
                    playMouse.containsMouse ? "#E6DDFB" : "#F4F2FA"
             scale: playMouse.containsMouse ? 1.035 : 1
             Behavior on scale {
@@ -110,7 +114,7 @@ Item {
             }
             Text {
                 anchors.centerIn: parent
-                text: "▶  Reproducir"
+                text: novaHome.featuredReady ? "▶  Reproducir" : "↻  Reintentar"
                 color: "#17131D"
                 font.family: "Segoe UI"
                 font.pixelSize: 17
@@ -120,12 +124,16 @@ Item {
                 id: playMouse
                 anchors.fill: parent
                 hoverEnabled: true
-                enabled: novaHome.featuredReady
+                enabled: !novaHome.loading
                 cursorShape: Qt.PointingHandCursor
-                onClicked: novaHome.playFeatured()
+                onClicked: {
+                    if(novaHome.featuredReady) novaHome.playFeatured()
+                    else novaHome.refresh()
+                }
             }
         }
         Rectangle {
+            visible: novaHome.featuredReady
             width: 144
             height: 47
             radius: 12
