@@ -8,6 +8,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QTimer>
+#include <QSurfaceFormat>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -25,6 +26,11 @@ int main(int argc,char** argv){
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
         Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
     QGuiApplication app(argc,argv);
+    // Request 4x multisampling on backends that support it. The QML
+    // rounded-image masks also have their own antialiased render layers.
+    QSurfaceFormat surface=QSurfaceFormat::defaultFormat();
+    surface.setSamples(4);
+    QSurfaceFormat::setDefaultFormat(surface);
     app.setApplicationName(QStringLiteral("Xuper TV Nova Qt"));
     // Share the same installation-neutral templates and artwork URLs.
     // Existing Windows/SDL player remains an untouched separate EXE.
@@ -66,19 +72,32 @@ int main(int argc,char** argv){
         // Test responsive maximized-window layout without any real display.
         // The Qt offscreen platform provides a deterministic scene geometry.
         QObject* window=engine.rootObjects().front();
+        window->setProperty("width",1280);
+        window->setProperty("height",800);
+        QCoreApplication::processEvents();
+        const double compactRows=window->property("homeRowsTop").toDouble();
         window->setProperty("width",1920);
         window->setProperty("height",1080);
         QCoreApplication::processEvents();
         const double rowsTop=window->property("homeRowsTop").toDouble();
         const double blackFadeBottom=window->property("backdropBottom").toDouble();
-        if(rowsTop<350||rowsTop>450||
+        if(compactRows<290||compactRows>355||
+           rowsTop<440||rowsTop>520||
+           rowsTop-compactRows<130||
            blackFadeBottom<rowsTop+42||blackFadeBottom>rowsTop+44){
             std::fprintf(stderr,
-                         "NOVA_FULLSCREEN_LAYOUT_FAIL rows=%.1f fade=%.1f\n",
-                         rowsTop,blackFadeBottom);
+                         "NOVA_FULLSCREEN_LAYOUT_FAIL compact=%.1f rows=%.1f fade=%.1f\n",
+                         compactRows,rowsTop,blackFadeBottom);
             return 3;
         }
-        checkpoint("fullscreen_layout_passed");
+        QObject* featured=window->findChild<QObject*>(
+            QStringLiteral("novaFeaturedTitle"));
+        if(!featured||featured->property("text").toString().trimmed().isEmpty()||
+           featured->property("text").toString()==QStringLiteral("XUPER TV")){
+            std::fputs("NOVA_FEATURED_TITLE_FAIL\n",stderr);
+            return 4;
+        }
+        checkpoint("fullscreen_layout_and_featured_title_passed");
     }
     if(smoke){
         QTimer::singleShot(1000,&app,[&app,&checkpoint](){
