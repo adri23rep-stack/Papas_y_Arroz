@@ -10,6 +10,7 @@
 #include <QTimer>
 #include <QQuickWindow>
 #include <memory>
+#include <optional>
 #include <vector>
 
 // The original Windows service and LAN pairing protocol remain authoritative.
@@ -100,6 +101,7 @@ private:
     QVariantList channels_,series_,movies_,items_,continue_watching_;
     std::vector<xs::Entry> continue_entries_;
     xs::Entry featured_entry_,active_entry_;
+    std::optional<xs::Entry> queued_remote_entry_;
     QString featured_backdrop_;
     std::vector<xs::Entry> channel_entries_,series_entries_,movie_entries_;
     xs::Catalog page_,root_;
