@@ -6,7 +6,7 @@ int main(){
     using namespace xs;
     assert(nova_motion_mode(-1)==MotionMode::Off);
     assert(nova_motion_mode(3)==MotionMode::Off);
-    assert(nova_motion_mode(2)==MotionMode::Compensated60);
+    assert(nova_motion_mode(2)==MotionMode::RifeGpu);
     assert(std::string(nova_motion_filter(MotionMode::Off)).empty());
     assert(std::string(nova_motion_filter(MotionMode::SmoothDisplay)).empty());
     assert(std::string(nova_motion_filter(MotionMode::Compensated60))
