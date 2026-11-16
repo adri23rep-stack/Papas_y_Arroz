@@ -1,42 +1,16 @@
 import QtQuick
 import QtQuick.Window
-import QtQuick.Effects
 
 Item {
     id: overlay
     property bool pairingVisible: false
 
-    // Small unobtrusive access to the existing iPhone pairing protocol.
-    Rectangle {
-        id: qrButton
-        x: overlay.width - width - 25
-        y: 20
-        width: 98
-        height: 36
-        radius: 12
-        z: 12
-        antialiasing: true
-        border.color: qrMouse.containsMouse ? "#CAB5F2" : "#777182"
-        color: qrMouse.containsMouse ? "#D840364E" : "#BB171721"
-        scale: qrMouse.containsMouse ? 1.04 : 1
-        Behavior on scale {
-            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
-        }
-        Text {
-            anchors.centerIn: parent
-            text: "QR / PIN"
-            color: "white"
-            font.family: "Segoe UI"
-            font.pixelSize: 14
-            font.weight: Font.DemiBold
-        }
-        MouseArea {
-            id: qrMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: overlay.pairingVisible = !overlay.pairingVisible
-        }
+    property double now: 0
+    property bool gridFocused: false
+    readonly property int columns: Math.max(1, Math.floor(entries.width / entries.cellWidth))
+    readonly property bool atFirstRow: novaHome.selectedItem < columns
+    function moveGrid(dx, dy) {
+        novaHome.selectGridItem(novaHome.selectedItem + dx + dy * columns)
     }
 
     // All sections, episodes and folders stay in the new Qt interface.
@@ -49,11 +23,12 @@ Item {
         Rectangle {
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 93
-            color: "#1A1923"
+            y: 68
+            height: 64
+            color: "#0B0B0E"
             Rectangle {
                 x: 30
-                y: 25
+                y: 10
                 width: 72
                 height: 36
                 radius: 11
@@ -76,7 +51,7 @@ Item {
             }
             Text {
                 x: 124
-                y: 21
+                y: 9
                 width: Math.max(160, overlay.width - 500)
                 text: novaHome.pageTitle
                 color: "white"
@@ -85,48 +60,17 @@ Item {
                 font.weight: Font.DemiBold
                 elide: Text.ElideRight
             }
-            Rectangle {
-                x: overlay.width - width - 40
-                y: 25
-                width: Math.min(285, Math.max(175, overlay.width * 0.24))
-                height: 37
-                color: "#33313F"
-                radius: 10
-                border.color: searchInput.activeFocus ? "#BAA1ED" : "#5D586D"
-                Text {
-                    x: 13
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Buscar títulos..."
-                    color: "#C0B9CC"
-                    font.family: "Segoe UI"
-                    font.pixelSize: 14
-                    visible: searchInput.text.length === 0
-                }
-                TextInput {
-                    id: searchInput
-                    anchors.fill: parent
-                    anchors.leftMargin: 13
-                    anchors.rightMargin: 13
-                    verticalAlignment: TextInput.AlignVCenter
-                    color: "white"
-                    font.family: "Segoe UI"
-                    font.pixelSize: 14
-                    clip: true
-                    selectByMouse: true
-                    onAccepted: novaHome.search(text)
-                }
-            }
         }
         GridView {
             id: entries
             x: 34
-            y: 112
+            y: 138
             width: Math.max(200, parent.width - 66)
-            height: Math.max(220, parent.height - 161)
+            height: Math.max(220, parent.height - 181)
             model: novaHome.items
             currentIndex: novaHome.selectedItem
-            cellWidth: 224
-            cellHeight: novaHome.pageTitle === "TV en vivo" ? 205 : 314
+            cellWidth: 248
+            cellHeight: novaHome.pageTitle === "TV en vivo" ? 214 : 324
             clip: true
             cacheBuffer: 450
             boundsBehavior: Flickable.StopAtBounds
@@ -135,8 +79,10 @@ Item {
                 required property var modelData
                 required property int index
                 entry: modelData
-                channel: modelData.kind === 2
-                focused: entries.currentIndex === index
+                channel: modelData.kind === 2 || novaHome.pageTitle === "TV en vivo"
+                live: modelData.kind === 2 || (channel && modelData.kind === 0)
+                now: overlay.now
+                focused: overlay.gridFocused && entries.currentIndex === index
                 onActivated: novaHome.openItem(index)
             }
             onCurrentIndexChanged: {
@@ -268,7 +214,7 @@ Item {
                 text: novaHome.remoteConnected ? "iPhone conectado" :
                     novaHome.remoteReady ? "Usa la misma red Wi-Fi en ambos equipos." :
                                            "Control no disponible. Revisa el puerto 47831."
-                color: novaHome.remoteConnected ? "#89E9B8" : "#ADA8BF"
+                color: novaHome.remoteConnected ? "#A78BFA" : "#ADA8BF"
                 font.family: "Segoe UI"
                 font.pixelSize: 14
             }
@@ -287,12 +233,4 @@ Item {
         }
     }
 
-    Shortcut {
-        sequence: "Escape"
-        onActivated: {
-            if(overlay.pairingVisible) overlay.pairingVisible = false
-            else if(novaHome.featuredInfoVisible) novaHome.closeFeaturedInfo()
-            else novaHome.back()
-        }
-    }
 }

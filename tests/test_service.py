@@ -81,7 +81,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             assert all(x not in request for x in ['originalCountry','tags','year','audio'])
                             if request['columnId']==300:
                                 assert request['pageNum'] in [1,2]
-                                data={'assetList':[{'contentId':'movie-test','name':'Pelicula de prueba','posterList':[{'fileUrl':'https://images.example.invalid/movie.jpg'}],'description':'Ficha sintetica','type':'1','programType':'Largometraje'}],
+                                data={'assetList':[{'contentId':'movie-test','name':'Pelicula de prueba','posterList':[{'fileUrl':'https://images.example.invalid/movie.jpg'},{'fileUrl':'https://images.example.invalid/wide.jpg','width':1920,'height':1080}],'description':'Ficha sintetica','type':'1','programType':'Largometraje'}],
                                     'assetListTotalSize':25}
                             else:
                                 assert request['columnId']==120 and request['pageNum']==1
@@ -138,6 +138,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         assert request['columnId']==200 and request['pageNum']==1 and request['pageSize']==3000
                         assert request['dataVersion']=='' and request['expireTimeStr']==''
                         data={'channelList':[{'channelCode':'channel-test','name':'Canal de Prueba ñ',
+                            'currentProgram':{'name':'Noticias','startTime':1700000000,'endTime':1700003600},
                             'posterList':[{'fileUrl':'https://images.example.invalid/channel.png'}],'liveAddressList':[{'playCode':'https://must-not-use.example.invalid'}]},
                             {'channelCode':'locked','name':'Locked','isLock':True}]}
                         response={'returnCode':'0','data':encrypt(data)}

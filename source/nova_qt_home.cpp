@@ -35,7 +35,13 @@ struct HomeSnapshot {
 QVariantMap itemFor(const xs::Entry& e){
     const bool cover=(e.artwork.rfind("https://",0)==0||
                       e.artwork.rfind("http://",0)==0)&&e.artwork.size()<1800;
-    return {{QStringLiteral("title"),QString::fromStdString(e.title)},
+    QVariantList schedule;
+    for(const auto& program:e.schedule)
+        schedule.append(QVariantMap{{"title",QString::fromStdString(program.title)},
+                                    {"start",QString::fromStdString(program.start)},
+                                    {"end",QString::fromStdString(program.end)}});
+    return {{QStringLiteral("schedule"),schedule},
+            {QStringLiteral("title"),QString::fromStdString(e.title)},
             {QStringLiteral("artwork"),cover?QString::fromStdString(e.artwork):QString()},
             {QStringLiteral("kind"),static_cast<int>(e.kind)},
             {QStringLiteral("description"),QString::fromStdString(e.description)}};
@@ -219,12 +225,12 @@ void NovaQtHome::refreshContinue(){
         // The saved library deliberately stores metadata, not authenticated
         // streaming URLs. Reattach matching artwork from the active catalog.
         for(const auto& candidate:series_entries_){
-            if(candidate.content_id==entry.content_id&&!candidate.artwork.empty()){
+            if((candidate.content_id==entry.content_id||candidate.content_id==entry.series_id)&&!candidate.artwork.empty()){
                 entry.artwork=candidate.artwork;break;
             }
         }
         for(const auto& candidate:movie_entries_){
-            if(candidate.content_id==entry.content_id&&!candidate.artwork.empty()){
+            if((candidate.content_id==entry.content_id||candidate.content_id==entry.series_id)&&!candidate.artwork.empty()){
                 entry.artwork=candidate.artwork;break;
             }
         }
@@ -243,22 +249,24 @@ void NovaQtHome::refreshContinue(){
 
 void NovaQtHome::updateFeatured(){
     std::vector<xs::Entry> choices;
-    // Prefer real titles with artwork + actual synopsis: both buttons
-    // refer to this same catalog object, never to an unrelated wallpaper.
-    for(const auto* group:{&movie_entries_,&series_entries_})
-        for(const auto& item:*group)
-            if(!item.artwork.empty()&&!item.description.empty())
-                choices.push_back(item);
-    if(choices.empty())
-        for(const auto* group:{&movie_entries_,&series_entries_})
-            for(const auto& item:*group)
-                if(!item.artwork.empty())choices.push_back(item);
+    int bestScore=-1;
+    for(const auto* group:{&movie_entries_,&series_entries_}){
+        for(const auto& item:*group){
+            const int score=(item.backdrop.empty()?0:4)+(item.description.empty()?0:2)
+                          +(item.artwork.empty()?0:1);
+            if(score<bestScore)continue;
+            if(score>bestScore){choices.clear();bestScore=score;}
+            choices.push_back(item);
+        }
+    }
+    if(choices.empty()&&!channel_entries_.empty())choices.push_back(channel_entries_.front());
     featured_entry_=xs::Entry{};
     featured_backdrop_.clear();
     if(choices.empty()){emit changed();return;}
     const int index=QRandomGenerator::global()->bounded(static_cast<int>(choices.size()));
     featured_entry_=choices[static_cast<size_t>(index)];
-    featured_backdrop_=QString::fromStdString(featured_entry_.artwork);
+    featured_backdrop_=QString::fromStdString(featured_entry_.backdrop.empty()?
+        featured_entry_.artwork:featured_entry_.backdrop);
     // Request the original image on TMDb only when this provider URL
     // explicitly supports size variants. Never upscale a low-res thumbnail.
     if(featured_backdrop_.contains(QStringLiteral("image.tmdb.org/t/p/"))){
@@ -410,6 +418,11 @@ void NovaQtHome::openHomeCard(int row,int index){
     selected_home_card_=index;
     activate(entries[static_cast<size_t>(index)]);
 }
+void NovaQtHome::selectGridItem(int index){
+    if(!browsing_||page_.entries.empty())return;
+    selected_item_=std::clamp(index,0,static_cast<int>(page_.entries.size())-1);
+    emit changed();
+}
 void NovaQtHome::openItem(int index){
     if(loading_||!browsing_||index<0||
        static_cast<size_t>(index)>=page_.entries.size())return;
@@ -538,22 +551,7 @@ void NovaQtHome::search(const QString& query){
 }
 void NovaQtHome::navigate(int dx,int dy){
     if(player_.playing()){if(dx)player_.seek(dx*15);return;}
-    if(browsing_){
-        const int columns=std::max(1,static_cast<int>((window_?window_->width():1280)-80)/204);
-        const int delta=dy*columns+dx;
-        selected_item_=std::clamp(selected_item_+delta,0,
-                                  std::max(0,static_cast<int>(page_.entries.size())-1));
-    }else{
-        if(dy){selected_section_=std::clamp(selected_section_+dy,0,2);
-               selected_home_card_=0;}
-        if(dx){
-            const auto& entries=selected_section_==0?channel_entries_:
-                                selected_section_==1?series_entries_:movie_entries_;
-            selected_home_card_=std::clamp(selected_home_card_+dx,0,
-                std::max(0,static_cast<int>(entries.size())-1));
-        }
-    }
-    emit changed();
+    emit directionPressed(dx,dy);
 }
 void NovaQtHome::clickPointer(bool down){
     if(!window_)return;
@@ -624,10 +622,10 @@ void NovaQtHome::pollRemote(){
             case SDLK_RIGHT:navigate(1,0);break;
             case SDLK_RETURN:
                 if(player_.playing())player_.togglePause();
-                else if(browsing_)openItem(selected_item_);
-                else openHomeCard(selected_section_,selected_home_card_);
+                else emit selectPressed();
                 break;
-            case SDLK_b:case SDLK_ESCAPE:back();break;
+            case SDLK_b:case SDLK_ESCAPE:
+                if(player_.playing())player_.stop();else emit backPressed();break;
             case SDLK_F4:home();break;
             case SDLK_F5:openSection(0);break;
             case SDLK_F6:openSection(2);break;

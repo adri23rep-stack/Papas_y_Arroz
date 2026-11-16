@@ -5,6 +5,7 @@
 
 namespace xs {
 enum class EntryKind { Media, Category, Channel, Section, VodCategory, Asset, Episode, SearchPage, VodPage, LiveSection, SearchAction, Donation, Favorites, Resume, ProviderDirectory, Provider };
+struct Airing { std::string title, start, end; };
 struct Entry {
     std::string title;
     std::string source;
@@ -16,7 +17,8 @@ struct Entry {
     std::string program_type{};
     std::string query{};
     int page=1;
-    std::string artwork{},artwork_cache{},description{};
+    std::string artwork{},artwork_cache{},description{},backdrop{};
+    std::vector<Airing> schedule{};
 };
 struct Catalog { std::vector<Entry> entries; std::vector<std::string> warnings; std::string title{},description{},artwork{},artwork_cache{}; };
 std::string artwork_key(const std::string& url);

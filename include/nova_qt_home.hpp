@@ -82,6 +82,7 @@ public:
     Q_INVOKABLE void openDemo(int index);
     Q_INVOKABLE void openSection(int row);
     Q_INVOKABLE void openHomeCard(int row,int index);
+    Q_INVOKABLE void selectGridItem(int index);
     Q_INVOKABLE void openItem(int index);
     Q_INVOKABLE void back();
     Q_INVOKABLE void home();
@@ -91,6 +92,9 @@ public:
     void setWindow(QQuickWindow* window){window_=window;}
 signals:
     void changed();
+    void directionPressed(int dx,int dy);
+    void selectPressed();
+    void backPressed();
 private:
     struct History {xs::Catalog catalog;int selected=0;};
     void updateRemote();

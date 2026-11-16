@@ -2,6 +2,13 @@ import QtQuick
 
 Item {
     id: hero
+    property int selectedAction: -1
+    function activate(index) {
+        if (novaHome.loading) return
+        if (!novaHome.featuredReady) novaHome.refresh()
+        else if (index === 1) novaHome.moreInfoFeatured()
+        else novaHome.playFeatured()
+    }
     property real railTop: 460
     height: railTop + 85
     width: parent ? parent.width : 1280
@@ -12,11 +19,16 @@ Item {
     }
     Image {
         id: backdrop
-        anchors.fill: parent
+        // Portrait-only titles keep a portrait on the right. Never enlarge
+        // a catalog thumbnail into a full-screen landscape.
+        readonly property bool wide: implicitWidth >= 1200 && implicitWidth >= implicitHeight * 1.45
+        anchors.right: parent.right
+        anchors.rightMargin: wide ? 0 : parent.width * 0.09
+        anchors.verticalCenter: parent.verticalCenter
+        width: wide ? parent.width : Math.min(parent.width * 0.36, implicitWidth)
+        height: wide ? parent.height : Math.min(parent.height * 0.83, implicitHeight)
         source: novaHome.featuredBackdrop
-        fillMode: Image.PreserveAspectCrop
-        sourceSize.width: 2560
-        sourceSize.height: 1440
+        fillMode: wide ? Image.PreserveAspectCrop : Image.PreserveAspectFit
         asynchronous: true
         cache: true
         smooth: true
@@ -47,7 +59,8 @@ Item {
     }
     Text {
         x: 55
-        y: Math.max(137,hero.railTop - 255)
+        anchors.bottom: featuredTitle.top
+        anchors.bottomMargin: 8
         width: Math.min(710,hero.width - 110)
         text: novaHome.featuredReady ? "DESTACADO" :
               novaHome.loading ? "CONECTANDO" :
@@ -63,8 +76,9 @@ Item {
         id: featuredTitle
         objectName: "novaFeaturedTitle"
         x: 53
-        y: Math.max(165,hero.railTop - 224)
-        width: Math.min(780, hero.width - 105)
+        anchors.bottom: synopsis.top
+        anchors.bottomMargin: 10
+        width: Math.min(710, hero.width * 0.62)
         text: novaHome.featuredReady ? novaHome.featuredTitle :
               novaHome.catalogConnected ? "Explora tu catálogo" : "Catálogo desconectado"
         font.family: "Segoe UI"
@@ -82,7 +96,7 @@ Item {
         id: synopsis
         x: 56
         y: Math.max(248,hero.railTop - 132)
-        width: Math.min(560,hero.width - 112)
+        width: Math.min(560,hero.width * 0.55)
         height: 53
         text: novaHome.featuredReady
             ? (novaHome.featuredDescription || "Sin sinopsis disponible en el catálogo.")
@@ -102,8 +116,10 @@ Item {
         y: Math.max(319,hero.railTop - 67)
         spacing: 13
         Rectangle {
-            width: 186
-            height: 47
+            border.width: hero.selectedAction === 0 ? 3 : 0
+            border.color: "#A78BFA"
+            width: 194
+            height: 50
             radius: 12
             antialiasing: true
             color: novaHome.loading ? "#4A4850" :
@@ -114,7 +130,7 @@ Item {
             }
             Text {
                 anchors.centerIn: parent
-                text: novaHome.featuredReady ? "▶  Reproducir" : "↻  Reintentar"
+                text: novaHome.featuredReady ? "▶︎  Reproducir" : "↻  Reintentar"
                 color: "#17131D"
                 font.family: "Segoe UI"
                 font.pixelSize: 17
@@ -135,12 +151,12 @@ Item {
         Rectangle {
             visible: novaHome.featuredReady
             width: 144
-            height: 47
+            height: 50
             radius: 12
             antialiasing: true
             color: moreMouse.containsMouse ? "#4E475B" : "#A52B2933"
-            border.width: 1
-            border.color: "#57535F"
+            border.width: hero.selectedAction === 1 ? 2 : 0
+            border.color: "#A78BFA"
             Behavior on color { ColorAnimation { duration: 170 } }
             Text {
                 anchors.centerIn: parent

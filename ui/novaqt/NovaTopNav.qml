@@ -7,6 +7,72 @@ Item {
     property bool searchOpen: false
     z: 18
 
+    signal pairRequested()
+    property int selected: -1
+    signal tabChosen(int index)
+    function submitSearch() {
+        if (searchInput.text.trim().length < 2) return
+        novaHome.search(searchInput.text)
+        searchOpen = false
+    }
+    function activateTab(index) {
+        tabChosen(index)
+        if (index === 4) {
+            searchOpen = !searchOpen
+            if (searchOpen) searchInput.forceActiveFocus()
+            return
+        }
+        searchOpen = false
+        if (index === 0) novaHome.home()
+        else novaHome.openSection(index - 1)
+    }
+    Rectangle {
+        width: parent.width
+        height: 68
+        gradient: Gradient {
+            GradientStop { position: 0; color: "#EE0B0B0E" }
+            GradientStop { position: 1; color: "#C50B0B0E" }
+        }
+    }
+    Rectangle {
+        id: pairButton
+        objectName: "novaPairButton"
+        anchors.right: parent.right
+        anchors.rightMargin: 28
+        y: 13
+        width: 42
+        height: 42
+        radius: 12
+        color: pairMouse.containsMouse || nav.selected === 5 ? "#37313F" : "#222227"
+        border.width: nav.selected === 5 ? 2 : 0
+        border.color: "#A78BFA"
+        Accessible.role: Accessible.Button
+        Accessible.name: "Vincular iPhone por QR o PIN"
+        Accessible.onPressAction: nav.pairRequested()
+        Canvas {
+            anchors.centerIn: parent
+            width: 21
+            height: 21
+            onPaint: {
+                const ctx = getContext("2d")
+                ctx.fillStyle = "#F4F3F7"
+                for (const corner of [[0,0], [12,0], [0,12]]) {
+                    ctx.fillRect(corner[0], corner[1], 9, 9)
+                    ctx.clearRect(corner[0]+2, corner[1]+2, 5, 5)
+                    ctx.fillRect(corner[0]+3, corner[1]+3, 3, 3)
+                }
+                ctx.fillRect(12,12,3,6); ctx.fillRect(15,15,6,3)
+                ctx.fillRect(18,12,3,3); ctx.fillRect(12,18,6,3)
+            }
+        }
+        MouseArea {
+            id: pairMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: nav.pairRequested()
+        }
+    }
     Row {
         x: 53
         y: 22
@@ -39,7 +105,7 @@ Item {
                     height: 2
                     y: 29
                     radius: 1
-                    opacity: tab.active || tabMouse.containsMouse ? 1 : 0
+                    opacity: (nav.selected >= 0 ? nav.selected === tab.index : tab.active) || tabMouse.containsMouse ? 1 : 0
                     color: "#A78BFA"
                     Behavior on opacity { NumberAnimation { duration: 180 } }
                 }
@@ -48,16 +114,7 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if(tab.index === 0) novaHome.home()
-                        else if(tab.index === 1) novaHome.openSection(0)
-                        else if(tab.index === 2) novaHome.openSection(1)
-                        else if(tab.index === 3) novaHome.openSection(2)
-                        else {
-                            nav.searchOpen = !nav.searchOpen
-                            if(nav.searchOpen) searchInput.forceActiveFocus()
-                        }
-                    }
+                    onClicked: nav.activateTab(tab.index)
                 }
             }
         }
@@ -90,10 +147,7 @@ Item {
             font.pixelSize: 15
             clip: true
             selectByMouse: true
-            onAccepted: {
-                novaHome.search(text)
-                nav.searchOpen = false
-            }
+            onAccepted: nav.submitSearch()
         }
     }
 }

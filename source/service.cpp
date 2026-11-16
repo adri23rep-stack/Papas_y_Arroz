@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <climits>
+#include <charconv>
 #include <cstdlib>
 #include <ctime>
 #include <chrono>
@@ -443,12 +444,35 @@ static std::string clean_description(std::string value){
     if(value.size()>1800){size_t n=1800;while(n>0&&(static_cast<unsigned char>(value[n])&0xc0)==0x80)--n;value.resize(n);}return value;
 }
 static void artwork(const Json& item,Entry& e){
-    for(const char* k:{"showIconUrl","posterUrl","showPosterUrl"}){
-        const auto u=text(item,k);if(valid_source(u)&&(u.rfind("http://",0)==0||u.rfind("https://",0)==0)){e.artwork=u;break;}
+    const auto imageUrl=[](const std::string& url){
+        return valid_source(url)&&(url.rfind("https://",0)==0||url.rfind("http://",0)==0);
+    };
+    for(const char* key:{"backdropUrl","horizontalPosterUrl","backgroundUrl"}){
+        const auto url=text(item,key);
+        if(imageUrl(url)){e.backdrop=url;break;}
+    }
+    const bool channel=e.kind==EntryKind::Channel;
+    const auto first=channel?"showIconUrl":"posterUrl";
+    for(const char* key:{first,"showPosterUrl","showIconUrl","posterUrl"}){
+        const auto url=text(item,key);
+        if(imageUrl(url)){e.artwork=url;break;}
     }
     const auto list=item.find("posterList");
-    if(e.artwork.empty()&&list!=item.end()&&list->is_array())for(const auto& poster:*list){
-        const auto u=text(poster,"fileUrl");if(valid_source(u)&&(u.rfind("http://",0)==0||u.rfind("https://",0)==0)){e.artwork=u;break;}
+    int bestWidth=0;
+    if(list!=item.end()&&list->is_array())for(const auto& poster:*list){
+        const auto url=text(poster,"fileUrl");
+        if(!imageUrl(url))continue;
+        if(e.artwork.empty())e.artwork=url;
+        const auto dimension=[&](const char* key){
+            const auto value=text(poster,key);
+            int n=0;
+            const auto result=std::from_chars(value.data(),value.data()+value.size(),n);
+            return result.ec==std::errc()&&result.ptr==value.data()+value.size()?n:0;
+        };
+        const int w=dimension("width"), h=dimension("height");
+        if(w>=1280&&h>0&&double(w)/h>=1.45&&w>bestWidth){
+            e.backdrop=url;bestWidth=w;
+        }
     }
     e.artwork_cache=artwork_key(e.artwork);e.description=clean_description(text(item,"description",text(item,"descriptionCompt")));
 }
@@ -514,6 +538,19 @@ BrowseResult service_channels(const std::shared_ptr<ServiceSession>& s,int id) {
         if(code.empty()||code.size()>512||protected_item(item)){out.catalog.warnings.push_back("Canal restringido o incompatible omitido.");continue;}
         if(out.catalog.entries.size()>=3000){out.catalog.warnings.push_back("Limite de canales alcanzado.");break;}
         Entry e;e.title=title(item);e.kind=EntryKind::Channel;e.column_id=id;e.channel_code=code;artwork(item,e);
+        const auto addProgram=[&](const Json& program){
+            const auto name=clean_description(text(program,"programName",text(program,"name")));
+            if(!name.empty())
+                e.schedule.push_back({name,text(program,"startTime"),text(program,"endTime")});
+        };
+        const auto current=item.find("currentProgram");
+        if(current!=item.end()&&current->is_object())addProgram(*current);
+        const auto programs=item.find("programList");
+        if(programs!=item.end()&&programs->is_array())for(const auto& program:*programs){
+            if(e.schedule.size()>=96)break;
+            if(!text(program,"startTime").empty()&&!text(program,"endTime").empty())
+                addProgram(program);
+        }
         out.catalog.entries.push_back(std::move(e));
     }
     s->channels[id]=out.catalog;

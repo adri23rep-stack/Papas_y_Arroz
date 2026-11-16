@@ -2,6 +2,13 @@ import QtQuick
 
 Item {
     id: rail
+    property int selected: -1
+    property double now: 0
+    function openCard(index) {
+        if (demo) novaHome.openDemo(index)
+        else if (sectionId === -1) novaHome.openContinue(index)
+        else novaHome.openHomeCard(sectionId, index)
+    }
     property string heading: ""
     property var entries: []
     property bool channel: false
@@ -18,7 +25,7 @@ Item {
         y: 0
         text: rail.heading
         font.family: "Segoe UI"
-        font.pixelSize: 27
+        font.pixelSize: 30
         font.weight: Font.DemiBold
         color: "#F4F3F7"
         renderType: Text.QtRendering
@@ -60,7 +67,7 @@ Item {
     ListView {
         id: strip
         x: 43
-        y: 44
+        y: 49
         width: Math.max(0,rail.width - 58)
         height: rail.channel ? 204 : 314
         model: rail.entries
@@ -72,22 +79,17 @@ Item {
         maximumFlickVelocity: 2200
         flickDeceleration: 4800
         cacheBuffer: 350
-        currentIndex: rail.sectionId >= 0 && novaHome.selectedSection === rail.sectionId
-            ? novaHome.selectedHomeCard : -1
+        currentIndex: rail.selected
 
         delegate: NovaCard {
             required property var modelData
             required property int index
             entry: modelData
             channel: rail.channel
-            focused: rail.sectionId >= 0 &&
-                novaHome.selectedSection === rail.sectionId &&
-                novaHome.selectedHomeCard === index
-            onActivated: {
-                if(rail.demo) novaHome.openDemo(index)
-                else if(rail.sectionId === -1) novaHome.openContinue(index)
-                else novaHome.openHomeCard(rail.sectionId,index)
-            }
+            live: rail.channel && !rail.demo
+            now: rail.now
+            focused: rail.selected === index
+            onActivated: rail.openCard(index)
         }
         onCurrentIndexChanged: {
             if(currentIndex>=0 && count>0)
