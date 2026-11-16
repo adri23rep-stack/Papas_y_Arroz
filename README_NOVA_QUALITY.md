@@ -48,6 +48,15 @@ garantizar reconexión de una URL que haya caducado o que el proveedor rechace.
 - El diagnóstico informa **VSR solicitado** o **confirmado por MPV** si aparece el aviso del driver. Solicitarlo no asegura mejora perceptible, ni garantiza que esté activado en NVIDIA App.
 - Si el filtro D3D11 falla, se intenta restaurar el modo anterior preservando reproducción y posición. Los problemas de controlador o red pueden requerir intervención.
 
+## TV en vivo: retraso de 15 segundos para mayor estabilidad
+
+- Nova solicita **15 segundos de datos descargados** antes de empezar el canal. No es un temporizador fijo: si el proveedor no deja precargar todo, MPV puede comenzar con menos. El retraso respecto a la señal en directo también depende del servidor.
+- Se configura `cache-pause-initial=yes`, `cache-pause-wait=15`, `cache-secs=30` y `demuxer-readahead-secs=30`. Hay un máximo de **128 MiB** para paquetes futuros y **4 MiB** para retroceso; no se escribe la caché a disco.
+- MPV muestra aviso de carga del búfer y duración aproximada precargada. Si la red se corta, vuelve a esperar datos sin desactivar inmediatamente RIFE.
+- Cuando MPV está pausado **por falta de datos de caché**, Nova suspende temporalmente su detección de desfase GPU: la espera intencional no debe interpretarse como interpolación lenta.
+- Solo afecta **TV en vivo**; no cambia el almacenamiento ni el inicio de películas, series o videos locales.
+- **Importante:** los 15 s alivian tirones por red. No arreglan un procesamiento RIFE más lento que el tiempo real ni mejoran por sí mismos una fuente cuya resolución sea baja; esas situaciones necesitan ajustes específicos.
+
 ## MotionBoost (fotogramas y movimiento)
 
 - `motion_mode=0`: desactivado, reproduce FPS de origen.
@@ -80,6 +89,7 @@ Licencia y atribución de cada dependencia en su repositorio original.
 - Repetir cambios rápidos y confirmar un único reinicio tras la última selección.
 - En la RTX 3060, activar NVIDIA VSR, probar 720p sobre pantalla 1080p, comprobar indicador NVIDIA y diagnóstico de filtro.
 - Probar RTX VSR + RIFE 2x durante varios minutos y verificar que, ante un retraso sostenido, se restaure la calidad anterior sin perder reproducción.
+- Probar canal en vivo con RIFE+RTX VSR: esperar hasta ~15 segundos de precarga, verificar estado de caché y que los 2 modos no se desactiven al estar cargando. Probar también uno con red lenta y otro con segmentos HLS cortos.
 - Probar canal en vivo (sin seek), salida por CPU y un shader deliberadamente
   ausente para observar fallback sin cerrar Nova.
 - Comprobar diagnóstico: origen, salida, decodificador real (`hwdec-current`)
