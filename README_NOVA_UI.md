@@ -16,9 +16,14 @@ Windows experience before real device and remote-control testing.
 
 ## What NOVA has now
 
-- New vertical navigation with six familiar destinations.
-- New featured-content area with real catalogue title, description and art.
-- Home rails: live TV, movies and series, using the existing artwork cache.
+- New home screen with a full-width catalogue artwork backdrop, randomly chosen
+  from a real movie or series for each Windows app launch.
+- The image fades completely into a dark background at the FIRST row.
+- Three uniform horizontal carousels, in order: TV, Series, Movies.
+  Scroll with the wheel over a row, drag horizontally, or use left/right.
+- The icon and heading of each row open the corresponding full catalogue.
+- The old layout is still available through F8; other catalog views are
+  intentionally unchanged until we design them together.
 - Browse grids and posters with a strong selection focus.
 - The existing pairing overlay and secure iPhone remote state.
 - Full separation between UI layout (`include/nova_layout.hpp`) and
@@ -37,7 +42,7 @@ platforms, or fake programme data have been added.
 ## Remaining work before replacing Cinematic
 
 - Validate new Windows binaries and remote/mouse focus on an actual PC.
-- Add fluid scrolling and responsive layouts for alternate display sizes.
+- Adapt the home layout for alternate logical resolutions after user feedback.
 - Design dedicated settings and player controls to match the NOVA visual style.
 - Improve transitions and polished interactive states without affecting
   playback responsiveness.
