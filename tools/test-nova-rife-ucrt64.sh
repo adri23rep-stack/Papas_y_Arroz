@@ -6,6 +6,9 @@ stage="dist/Xuper-TV-NovaQt-Smoke/Xuper-TV-NovaQt-Preview"
 cp -a dist/Xuper-TV-NovaQt-GPU-RIFE-Addon/Xuper-TV-NovaQt-Preview/. "$stage/"
 cp tests/nova_rife_frames.vpy /ucrt64/bin/mpv.exe "$stage/"
 cd "$stage"
+/ucrt64/bin/ffmpeg.exe -hide_banner -loglevel error -y -f lavfi \
+  -i "testsrc2=size=640x360:rate=24" -t 30 -c:v mpeg4 test.mp4
+/usr/bin/timeout --kill-after=5s 40s ./XuperTVNovaQt.exe --smoke-video-fullscreen
 for fps in 24 60; do
   /ucrt64/bin/ffmpeg.exe -hide_banner -loglevel error -y \
     -f lavfi -i "testsrc2=size=160x96:rate=$fps" -t 1 -c:v ffv1 "input-$fps.mkv"

@@ -6,6 +6,9 @@
 #include "nova_gpu.hpp"
 #include <QCoreApplication>
 #include <QDir>
+#include <QGuiApplication>
+#include <QKeyEvent>
+#include <QScreen>
 #include <QFileInfo>
 #include <QTemporaryDir>
 #include <QByteArray>
@@ -33,6 +36,7 @@ NovaQtPlayer::~NovaQtPlayer(){
 
 void NovaQtPlayer::finish(const QString& message){
     QMetaObject::invokeMethod(this,[this,message]{
+        if(videoWindow_)videoWindow_->hide();
         playing_.store(false);
         notice_=message;
         emit changed();
@@ -43,6 +47,20 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
     if(playing_.load()||!result.ok||!xs::valid_source(result.source))return;
     if(thread_.joinable())thread_.join();
     stop_.store(false);
+    if(!videoWindow_){
+        videoWindow_=std::make_unique<QWindow>();
+        videoWindow_->installEventFilter(this);
+    }
+    auto* screen=QGuiApplication::focusWindow()?QGuiApplication::focusWindow()->screen():QGuiApplication::primaryScreen();
+    videoWindow_->setScreen(screen);
+    const QRect area=screen->availableGeometry();
+    QRect bounds(QPoint(),QSize(960,540).boundedTo(area.size()));
+    bounds.moveCenter(area.center());
+    videoWindow_->setTitle(title);
+    videoWindow_->showNormal();
+    videoWindow_->setGeometry(bounds);
+    videoWindow_->requestActivate();
+    videoWindowId_=static_cast<std::int64_t>(videoWindow_->winId());
     title_=title;
     notice_=QStringLiteral("Abriendo reproductor...");
     playing_.store(true);
@@ -85,10 +103,39 @@ void NovaQtPlayer::setSpeed(int percent){
     mpv_set_property_async(handle_,0,"speed",MPV_FORMAT_DOUBLE,&speed);
 }
 void NovaQtPlayer::toggleFullscreen(){
-    QMutexLocker lock(&mutex_);
-    if(!handle_)return;
-    const char* args[]={"cycle","fullscreen",nullptr};
-    mpv_command_async(handle_,0,args);
+    if(!videoWindow_ || !videoWindow_->isVisible())return;
+    if(videoWindow_->visibility()==QWindow::FullScreen){
+        if(restoreMaximized_)videoWindow_->showMaximized();
+        else videoWindow_->showNormal();
+    }else{
+        restoreMaximized_=videoWindow_->visibility()==QWindow::Maximized;
+        videoWindow_->showFullScreen();
+    }
+}
+
+bool NovaQtPlayer::eventFilter(QObject* object,QEvent* event){
+    if(object!=videoWindow_.get())return QObject::eventFilter(object,event);
+    if(event->type()==QEvent::Close){
+        stop();
+    }else if(event->type()==QEvent::MouseButtonDblClick){
+        toggleFullscreen();
+        return true;
+    }else if(event->type()==QEvent::KeyPress){
+        auto* key=static_cast<QKeyEvent*>(event);
+        switch(key->key()){
+        case Qt::Key_F: case Qt::Key_F11:
+            if(!key->isAutoRepeat())toggleFullscreen();
+            return true;
+        case Qt::Key_Escape:
+            if(videoWindow_->visibility()==QWindow::FullScreen)toggleFullscreen();
+            else stop();
+            return true;
+        case Qt::Key_Space: togglePause();return true;
+        case Qt::Key_Left: seek(-5);return true;
+        case Qt::Key_Right: seek(5);return true;
+        }
+    }
+    return QObject::eventFilter(object,event);
 }
 void NovaQtPlayer::selectTrack(int kind,int id,uint32_t generation){
     QMutexLocker lock(&mutex_);
@@ -335,6 +382,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                      opt("keep-open","no") &&
                      opt("title",title.toUtf8().constData()) &&
                      opt("vo","gpu") &&
+                     opt("wid",std::to_string(videoWindowId_).c_str()) &&
 #ifdef Q_OS_WIN
                      // Keep presentation composed by Windows during monitor-sized resizes.
                      opt("d3d11-exclusive-fs","no") &&

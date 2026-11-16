@@ -9,6 +9,9 @@
 #include <QQmlContext>
 #include <QQuickWindow>
 #include <QTimer>
+#include <QScreen>
+#include <QImage>
+#include <QPixmap>
 #include <QSurfaceFormat>
 #include <cstdio>
 #include <cstring>
@@ -38,6 +41,35 @@ int main(int argc,char** argv){
     QDir::setCurrent(QCoreApplication::applicationDirPath());
 
     checkpoint("application_ready");
+    if(argc>1 && std::strcmp(argv[1],"--smoke-video-fullscreen")==0){
+        NovaQtPlayer player;
+        xs::SourceResult source;
+        source.ok=true;
+        source.source="test.mp4";
+        player.play(source,QStringLiteral("Nova fullscreen test"),false);
+        QTimer poll;
+        int stage=0, moving=0;
+        QImage previous;
+        QObject::connect(&poll,&QTimer::timeout,&app,[&]{
+            auto* window=player.videoWindow();
+            if(!window || !player.playing()){app.exit(4);return;}
+            if((window->visibility()==QWindow::FullScreen)!=(stage==1))return;
+            const auto size=window->size();
+            const auto image=window->screen()->grabWindow(window->winId(),size.width()/2-64,
+                size.height()/2-48,128,96).toImage();
+            if(!image.isNull() && !previous.isNull() && image!=previous)++moving;
+            previous=image;
+            if(moving<3)return;
+            std::fprintf(stderr,"Moving video verified in stage %d\\n",stage);
+            if(++stage==3){app.quit();return;}
+            player.toggleFullscreen();
+            previous=QImage();
+            moving=0;
+        });
+        poll.start(250);
+        QTimer::singleShot(25000,&app,[&]{app.exit(5);});
+        return app.exec();
+    }
     NovaQtHome home;
     QQmlApplicationEngine engine;
     // windeployqt puts importable modules beside this executable in /qml.
