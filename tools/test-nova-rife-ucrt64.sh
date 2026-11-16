@@ -22,7 +22,9 @@ for fps in 60 24; do
   # Lavapipe's LLVM runtime is needed only by the 24fps Vulkan test.
   runtime_path=/c/Windows/System32
   [[ "$fps" == 24 ]] && runtime_path="$runtime_path:/ucrt64/bin"
-  PATH="$runtime_path" ./mpv.exe --no-config --no-audio --vo=null --frames=5 \
+  echo "Checking $fps fps input in packaged mpv"
+  PATH="$runtime_path" /usr/bin/timeout --kill-after=10s 150s ./mpv.exe \
+    --msg-level=vapoursynth=debug --no-config --no-audio --vo=null --frames=5 \
     '--vf=vapoursynth=file=nova_rife_frames.vpy:concurrent-frames=2' "input-$fps.mkv"
   /ucrt64/bin/python.exe - "$fps" <<'PY'
 from fractions import Fraction
