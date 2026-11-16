@@ -17,33 +17,31 @@ constexpr SDL_Color focus{181,143,255,255};
 constexpr SDL_Color card{15,16,20,255};
 constexpr SDL_Color icon_fill{26,27,32,245};
 
-// A small curated snapshot from Rotten Tomatoes' 2026 best film/TV
-// collections (November 2026). MetaHub serves landscape backdrops, not
-// low-resolution portrait posters. The list is only visual wallpaper;
-// it never modifies service catalogue titles or playback availability.
-constexpr std::array<const char*,6> best_of_2026{{
-    "tt12042730", // Project Hail Mary
-    "tt33764258", // The Odyssey
-    "tt2056785",  // Wildwood
-    "tt34384661", // Godzilla Minus Zero
-    "tt35538033", // Resident Evil
-    "tt23112594"  // VisionQuest (series)
-}};
-// Landscape-still fallbacks from film sites, not screenshots from our
-// service's tiny cover thumbnails. They are loaded remotely, not bundled.
-constexpr std::array<const char*,3> verified_still_urls{{
+// High-resolution LANDSCAPE stills from 2026 film and TV titles in
+// Rotten Tomatoes' year-end guides. These are fetched from their original
+// online hosts, never embedded inside the Windows ZIP. Unlike MetaHub's
+// sometimes-offline thumbnails, these sources point to wide movie stills.
+constexpr std::array<const char*,7> best_of_2026_wallpapers{{
+    // The Odyssey (2026), Eye Filmmuseum — 1920x1080
     "https://assets.eyefilm.nl/images/production/_1920x1080_crop_center-center_none/1632957/still_The-Odyssey-Christopher-Nolan-US-GB-2026-1.webp",
+    // Wildwood (2026), 1920x1080 original promotional backdrop
+    "https://d32qys9a6wm9no.cloudfront.net/images/movies/backdrop/ZVofAle5TZmIEieUj7WVjT2NYNyBAux8_1920x1080.jpg?t=1778746400",
+    // Project Hail Mary (2026), promotional landscape still
+    "https://www.mensjournal.com/.image/c_fill%2Cg_faces%3Acenter/NDI6MDAwMDAwMDAxMTE2OTA4/project-hail-mary-1-header.jpg",
+    // VisionQuest (2026), series promotional still — 1536x646
+    "https://cdn.observatoriodocinema.com.br/2025/10/vision-quest-1536x646.jpeg",
+    // Wildwood (2026), TMDb-origin original landscape key art
     "https://img.kinobaza.com.ua/t/p/original/sl5NJ1vtyhP9Vr88bB4blULsJYp.jpg",
-    "https://cdn.observatoriodocinema.com.br/2025/10/vision-quest-1536x646.jpeg"
+    // The Odyssey (2026), Seattle International Film Festival — 1600x900
+    "https://www.siff.net/images/CINEMA/2026/Films%20Jun-Dec/CIN_TheOdyssey_1600x900.png",
+    // Godzilla Minus Zero (2026), wide theatrical image
+    "https://www.slashfilm.com/img/gallery/godzilla-minus-zero-will-do-something-no-godzilla-movie-has-done-in-over-20-years/l-intro-1762215147.jpg"
 }};
-constexpr int wallpaper_count=static_cast<int>(best_of_2026.size()+verified_still_urls.size());
+constexpr int wallpaper_count=static_cast<int>(best_of_2026_wallpapers.size());
 
 std::string wallpaper_url(int n){
     const int index=(n%wallpaper_count+wallpaper_count)%wallpaper_count;
-    if(index<static_cast<int>(best_of_2026.size()))
-        return "https://images.metahub.space/background/original/"+
-               std::string(best_of_2026[static_cast<size_t>(index)])+"/img";
-    return verified_still_urls[static_cast<size_t>(index-best_of_2026.size())];
+    return best_of_2026_wallpapers[static_cast<size_t>(index)];
 }
 
 int corner_inset(int y,int height,int radius){
