@@ -31,7 +31,7 @@ static size_t receive(char* p,size_t s,size_t n,void* u){auto* b=static_cast<std
 struct JpegError {jpeg_error_mgr base;jmp_buf jump;};
 static void jpeg_fail(j_common_ptr p){longjmp(reinterpret_cast<JpegError*>(p->err)->jump,1);}
 static void jpeg_silent(j_common_ptr){}
-static SDL_Surface* decode(const std::string& bytes){
+static SDL_Surface* decode(const std::string& bytes,bool high_resolution=false){
     if(bytes.size()<8)return nullptr;
     SDL_Surface* surface=nullptr;
     if(png_sig_cmp(reinterpret_cast<png_const_bytep>(bytes.data()),0,8)==0){
@@ -48,7 +48,9 @@ static SDL_Surface* decode(const std::string& bytes){
         jpeg_create_decompress(&info);jpeg_mem_src(&info,reinterpret_cast<const unsigned char*>(bytes.data()),bytes.size());jpeg_read_header(&info,TRUE);
         if(!info.image_width||!info.image_height||info.image_width>4096||info.image_height>4096){jpeg_destroy_decompress(&info);return nullptr;}
         info.out_color_space=JCS_RGB;info.scale_num=1;info.scale_denom=1;
-        while(info.image_width/info.scale_denom>768||info.image_height/info.scale_denom>1024)info.scale_denom*=2;
+        const unsigned max_width=high_resolution?1920u:768u;
+        const unsigned max_height=high_resolution?1080u:1024u;
+        while(info.image_width/info.scale_denom>max_width||info.image_height/info.scale_denom>max_height)info.scale_denom*=2;
         jpeg_start_decompress(&info);pending=SDL_CreateRGBSurfaceWithFormat(0,info.output_width,info.output_height,24,SDL_PIXELFORMAT_RGB24);
         if(!pending){jpeg_destroy_decompress(&info);return nullptr;}
         while(info.output_scanline<info.output_height){auto* row=static_cast<JSAMPLE*>(pending->pixels)+info.output_scanline*pending->pitch;jpeg_read_scanlines(&info,&row,1);}
@@ -58,8 +60,10 @@ static SDL_Surface* decode(const std::string& bytes){
         surface=SDL_CreateRGBSurfaceWithFormat(0,w,h,32,SDL_PIXELFORMAT_RGBA32);
         if(surface&&!WebPDecodeRGBAInto(reinterpret_cast<const uint8_t*>(bytes.data()),bytes.size(),static_cast<uint8_t*>(surface->pixels),surface->h*surface->pitch,surface->pitch)){SDL_FreeSurface(surface);return nullptr;}
     }
-    if(surface&&(surface->w>512||surface->h>768)){
-        const double scale=std::min(512.0/surface->w,768.0/surface->h);
+    const int target_width=high_resolution?1920:512;
+    const int target_height=high_resolution?1080:768;
+    if(surface&&(surface->w>target_width||surface->h>target_height)){
+        const double scale=std::min(static_cast<double>(target_width)/surface->w,static_cast<double>(target_height)/surface->h);
         auto* small=SDL_CreateRGBSurfaceWithFormat(0,std::max(1,int(surface->w*scale)),std::max(1,int(surface->h*scale)),32,SDL_PIXELFORMAT_RGBA32);
         if(small){SDL_BlitScaled(surface,nullptr,small,nullptr);SDL_FreeSurface(surface);surface=small;}
     }return surface;
@@ -72,7 +76,7 @@ static void trim_cache(){
 }
 struct Artwork::Impl {
     SDL_Renderer* renderer;std::mutex mutex;std::condition_variable wake;bool stop=false;std::thread worker;
-    struct Job{std::string url,key;};struct Ready{std::string key;SDL_Surface* surface;};
+    struct Job{std::string url,key;bool high_resolution=false;};struct Ready{std::string key;SDL_Surface* surface;};
     struct Texture{SDL_Texture* value;uint64_t used;};
     std::deque<Job> jobs;std::deque<Ready> ready;std::set<std::string> pending,failed;std::map<std::string,Texture> textures;uint64_t clock=0;
     explicit Impl(SDL_Renderer* r):renderer(r){
@@ -88,7 +92,7 @@ struct Artwork::Impl {
             if(stat(path.c_str(),&st)==0&&st.st_size>0&&static_cast<size_t>(st.st_size)<=limit&&(j.url.empty()||std::time(nullptr)-st.st_mtime<30*86400)){
                 std::ifstream f(path,std::ios::binary);bytes.assign(std::istreambuf_iterator<char>(f),{});
             }
-            SDL_Surface* surface=decode(bytes);
+            SDL_Surface* surface=decode(bytes,j.high_resolution);
             if(!surface&&!j.url.empty()){
                 bytes.clear();auto* c=curl_easy_init();if(c){
                     curl_easy_setopt(c,CURLOPT_URL,j.url.c_str());curl_easy_setopt(c,CURLOPT_CONNECTTIMEOUT,4L);curl_easy_setopt(c,CURLOPT_TIMEOUT,8L);
@@ -103,7 +107,7 @@ struct Artwork::Impl {
 #endif
                     curl_easy_setopt(c,CURLOPT_NOPROGRESS,0L);curl_easy_setopt(c,CURLOPT_XFERINFOFUNCTION,progress);curl_easy_setopt(c,CURLOPT_XFERINFODATA,this);
                     long code=0;const auto rc=curl_easy_perform(c);curl_easy_getinfo(c,CURLINFO_RESPONSE_CODE,&code);curl_easy_cleanup(c);
-                    if(rc==CURLE_OK&&code==200)surface=decode(bytes);
+                    if(rc==CURLE_OK&&code==200)surface=decode(bytes,j.high_resolution);
                 }
                 if(surface){const auto tmp=path+".tmp";std::ofstream f(tmp,std::ios::binary);f.write(bytes.data(),bytes.size());f.close();if(f.good()){std::remove(path.c_str());std::rename(tmp.c_str(),path.c_str());}trim_cache();}
             }
@@ -114,12 +118,17 @@ struct Artwork::Impl {
 };
 Artwork::Artwork(SDL_Renderer* r):impl(new Impl(r)){}
 Artwork::~Artwork()=default;
-SDL_Texture* Artwork::get(const std::string& url,const std::string& key){
+SDL_Texture* Artwork::get(const std::string& url,const std::string& key,bool high_resolution){
     auto& p=*impl;if(key.size()!=16||key.find_first_not_of("0123456789abcdef")!=std::string::npos)return nullptr;
     const auto i=p.textures.find(key);if(i!=p.textures.end()){i->second.used=++p.clock;return i->second.value;}
     if(!url.empty()&&(!valid_source(url)||(url.rfind("http://",0)!=0&&url.rfind("https://",0)!=0)))return nullptr;
     std::lock_guard<std::mutex> lock(p.mutex);if(p.failed.count(key)||p.pending.count(key)||p.jobs.size()>=20)return nullptr;
-    p.pending.insert(key);p.jobs.push_back({url,key});p.wake.notify_one();return nullptr;
+    p.pending.insert(key);p.jobs.push_back({url,key,high_resolution});p.wake.notify_one();return nullptr;
+}
+bool Artwork::failed(const std::string& key) const{
+    auto& p=*impl;
+    std::lock_guard<std::mutex> lock(p.mutex);
+    return p.failed.count(key)>0;
 }
 bool Artwork::poll(){auto& p=*impl;std::deque<Impl::Ready> ready;{std::lock_guard<std::mutex> lock(p.mutex);ready.swap(p.ready);}
     for(auto& r:ready){p.pending.erase(r.key);if(!r.surface){p.failed.insert(r.key);continue;}auto* t=SDL_CreateTextureFromSurface(p.renderer,r.surface);SDL_FreeSurface(r.surface);if(!t){p.failed.insert(r.key);continue;}
