@@ -21,7 +21,7 @@ public:
     bool playing() const {return playing_.load();}
     QString title() const {return title_;}
     QString notice() const {return notice_;}
-    void play(const xs::SourceResult& result,const QString& title,bool live);
+    void play(const xs::SourceResult& result,const QString& title,bool live,double resumeSeconds=0);
     Q_INVOKABLE void stop();
     Q_INVOKABLE void togglePause();
     Q_INVOKABLE void setVolume(int value);
@@ -35,7 +35,7 @@ signals:
 private:
     void command(const char* name,const char* argument);
     void finish(const QString& message);
-    void playWorker(xs::SourceResult result,QString title,bool live);
+    void playWorker(xs::SourceResult result,QString title,bool live,double resumeSeconds);
     std::thread thread_;
     mutable QMutex mutex_;
     mpv_handle* handle_=nullptr;
