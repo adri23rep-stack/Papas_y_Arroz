@@ -58,8 +58,26 @@ $env:NOVA_REPO_PATH = $root
 $env:NOVA_CLEAN = if ($Clean) { '1' } else { '0' }
 Write-Host ('[NOVA] Fuentes: ' + $root) -ForegroundColor Cyan
 Write-Host '[NOVA] Instalando dependencias y compilando con CMake/Ninja...' -ForegroundColor Cyan
-$command = 'cd "$(cygpath -u "$NOVA_REPO_PATH")" && bash tools/compilar-nova-ucrt64.sh'
-& $bash -lc $command
+# IMPORTANT: Never pass a nested cd/cygpath expression through bash -c.
+# Windows PowerShell 5.1 can strip its quotes and break Bash parsing.
+# Instead, convert the script path to POSIX once, then run the FILE directly.
+# This also works when the project folder contains spaces or accents.
+$cygpath = Join-Path (Split-Path -Parent $bash) 'cygpath.exe'
+if (-not (Test-Path $cygpath)) {
+    throw 'MSYS2 incompleto: falta cygpath.exe junto a bash.exe.'
+}
+$script = Join-Path $root 'tools\compilar-nova-ucrt64.sh'
+if (-not (Test-Path $script)) {
+    throw 'Falta tools\compilar-nova-ucrt64.sh. Descarga la rama completa.'
+}
+$msysScript = (& $cygpath -u $script | Select-Object -First 1)
+$cygpathExit = $LASTEXITCODE
+if ($cygpathExit -ne 0 -or [string]::IsNullOrWhiteSpace($msysScript)) {
+    throw 'No se pudo convertir la ruta del compilador a MSYS2.'
+}
+Write-Host ('[NOVA] Script local: ' + $msysScript) -ForegroundColor DarkCyan
+# Bash login loads /ucrt64/bin before compiling; no string is evaluated.
+& $bash --login $msysScript
 $exit = $LASTEXITCODE
 if ($exit -ne 0) {
     throw ("La compilacion termino con error $exit. El texto de la consola indica el paso que fallo.")
