@@ -31,6 +31,14 @@ int main(int argc,char** argv){
     checkpoint("application_ready");
     NovaQtHome home;
     QQmlApplicationEngine engine;
+    // windeployqt puts importable modules beside this executable in /qml.
+    // MSYS2's Qt may otherwise keep an absolute build-machine QML path.
+    const QString portableQml=QDir(QCoreApplication::applicationDirPath())
+                                  .absoluteFilePath(QStringLiteral("qml"));
+    engine.addImportPath(portableQml);
+    checkpoint(QFile::exists(QDir(portableQml).filePath(
+               QStringLiteral("QtQuick/qmldir")))?
+               "qtquick_module_present":"qtquick_module_missing");
     engine.rootContext()->setContextProperty(QStringLiteral("novaHome"),&home);
     QObject::connect(&engine,&QQmlEngine::warnings,&engine,
                      [smoke](const QList<QQmlError>& warnings){
