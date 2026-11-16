@@ -1,7 +1,9 @@
 # Experimental private iPhone player
 
-This feature is isolated to `feature/private-iphone-player` and includes
-the live TV recovery mitigation from `fix/live-tv-recovery`.
+The Windows-side authenticated mobile catalogue/source endpoints are integrated
+in `windows-desktop-preview`. The private SwiftUI/PIN/AVPlayer interface lives
+in the separate `adri23rep-stack/Apple-Controller` repository on
+`feature/remote-no-scroll-layout`. The PC also includes bounded live TV recovery.
 
 ## Access
 
@@ -40,5 +42,5 @@ The optional private code is an **app-side privacy gate**, not a new
 authorization level on the Windows server. The bearer token and service
 account identity must never be placed in media URLs.
 
-Keep the normal release and `main` unchanged. Test on iPhone + Windows
-before considering additional authorization and relay support.
+Keep `main` unchanged. Test paired iPhone + Windows together before any
+release, especially mobile source restrictions, authorization, and LAN privacy.
