@@ -251,7 +251,41 @@ void NovaQtHome::updateFeatured(){
 }
 
 void NovaQtHome::playFeatured(){
-    if(!featured_entry_.title.empty())activate(featured_entry_);
+    if(featured_entry_.title.empty()||loading_)return;
+    const auto chosen=featured_entry_;
+    if(chosen.kind!=xs::EntryKind::Asset||!session_){
+        activate(chosen);
+        return;
+    }
+    // "Reproducir" should actually play the first available episode/part,
+    // instead of merely opening the series directory.
+    loading_=true;
+    status_=QStringLiteral("Preparando reproducción...");
+    emit changed();
+    const auto session=session_;
+    auto* watcher=new QFutureWatcher<xs::BrowseResult>(this);
+    connect(watcher,&QFutureWatcher<xs::BrowseResult>::finished,this,
+            [this,watcher,chosen](){
+        const auto result=watcher->result();
+        loading_=false;
+        if(result.ok){
+            const auto it=std::find_if(result.catalog.entries.begin(),
+                result.catalog.entries.end(),[](const xs::Entry& e){
+                    return e.kind==xs::EntryKind::Episode||
+                           e.kind==xs::EntryKind::Media||
+                           e.kind==xs::EntryKind::Channel;
+                });
+            if(it!=result.catalog.entries.end())playEntry(*it);
+            else showCatalog(result.catalog,true);
+        }else{
+            status_=QString::fromStdString(result.status);
+            emit changed();
+        }
+        watcher->deleteLater();
+    });
+    watcher->setFuture(QtConcurrent::run([session,chosen](){
+        return xs::service_browse_remote(session,chosen);
+    }));
 }
 void NovaQtHome::openContinue(int index){
     if(index<0||static_cast<size_t>(index)>=continue_entries_.size())return;
