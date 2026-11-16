@@ -81,6 +81,51 @@ void NovaQtPlayer::toggleFullscreen(){
         mpv_set_property_async(handle_,0,"fullscreen",MPV_FORMAT_FLAG,&fullscreen);
     }
 }
+void NovaQtPlayer::selectTrack(int kind,int id,uint32_t generation){
+    QMutexLocker lock(&mutex_);
+    const auto snapshot=xs::RemoteServer::shared().playback_options();
+    if(!handle_||!snapshot.active||snapshot.generation!=generation||(kind!=1&&kind!=2))return;
+    const auto track=id<0?std::string("no"):std::to_string(id);
+    mpv_set_property_string(handle_,kind==1?"aid":"sid",track.c_str());
+    if(kind==2&&id>=0)mpv_set_property_string(handle_,"sub-visibility","yes");
+}
+
+static void publishTracks(mpv_handle* mpv,const QString& title){
+    xs::RemotePlaybackSnapshot state;
+    state.title=title.toStdString();
+    mpv_node tracks{};
+    if(mpv_get_property(mpv,"track-list",MPV_FORMAT_NODE,&tracks)<0)return;
+    bool hasSub=false;
+    if(tracks.format==MPV_FORMAT_NODE_ARRAY){
+        for(int i=0;i<tracks.u.list->num;++i){
+            const auto& row=tracks.u.list->values[i];
+            if(row.format!=MPV_FORMAT_NODE_MAP)continue;
+            xs::RemotePlaybackChoice choice;
+            std::string type,lang,name;
+            for(int j=0;j<row.u.list->num;++j){
+                const std::string key=row.u.list->keys[j];
+                const auto& value=row.u.list->values[j];
+                if(key=="id"&&value.format==MPV_FORMAT_INT64)choice.id=int(value.u.int64);
+                if(key=="selected"&&value.format==MPV_FORMAT_FLAG)choice.selected=value.u.flag;
+                if(value.format!=MPV_FORMAT_STRING)continue;
+                if(key=="type")type=value.u.string;
+                if(key=="lang")lang=value.u.string;
+                if(key=="title")name=value.u.string;
+            }
+            if(type!="audio"&&type!="sub")continue;
+            choice.kind=type=="audio"?"audio":"subtitle";
+            choice.label=lang;
+            if(!name.empty())choice.label+=(lang.empty()?"":" - ")+name;
+            if(choice.label.empty())choice.label="Pista "+std::to_string(choice.id);
+            if(type=="sub")hasSub|=choice.selected;
+            (type=="audio"?state.audio:state.subtitles).push_back(std::move(choice));
+        }
+    }
+    mpv_free_node_contents(&tracks);
+    state.subtitles.insert(state.subtitles.begin(),{-1,"subtitle","Desactivados",!hasSub});
+    xs::RemoteServer::shared().publish_playback_options(std::move(state));
+}
+
 void NovaQtPlayer::applySetting(int id,int value){
     if(id==xs::remote_setting_index("volume")){setVolume(value);return;}
     if(id==xs::remote_setting_index("speed")){setSpeed(value);return;}
@@ -207,6 +252,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
         notice_=QStringLiteral("Reproduciendo. Esc o Atrás para volver.");
         emit changed();
     },Qt::QueuedConnection);
+    xs::RemoteServer::shared().begin_playback(title.toStdString());
+    mpv_observe_property(mpv,41,"track-list",MPV_FORMAT_NONE);
     QString endMessage=QStringLiteral("Volviste al catálogo.");
     double lastPosition=0.0;
     bool reachedEnd=false;
@@ -216,6 +263,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
         if(mpv_get_property(mpv,"time-pos",MPV_FORMAT_DOUBLE,&now)>=0&&
            now>=0.0&&now<86400.0)lastPosition=now;
         if(!event)continue;
+        if(event->event_id==MPV_EVENT_FILE_LOADED||(event->event_id==MPV_EVENT_PROPERTY_CHANGE&&event->reply_userdata==41))publishTracks(mpv,title);
         if(event->event_id==MPV_EVENT_END_FILE){
             const auto* end=static_cast<const mpv_event_end_file*>(event->data);
             reachedEnd=end&&end->reason==MPV_END_FILE_REASON_EOF;
@@ -229,6 +277,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
         QMutexLocker lock(&mutex_);
         handle_=nullptr;
     }
+    xs::RemoteServer::shared().end_playback();
     mpv_terminate_destroy(mpv);
     // Clear the active-player state BEFORE notifying the catalog so a new
     // selection from iPhone can start immediately after this stream ends.
