@@ -133,6 +133,19 @@ Item {
             font.pixelSize: 11
             elide: Text.ElideRight
         }
+        Text {
+            x: 4
+            y: card.artHeight + 30
+            width: card.artWidth - 8
+            visible: !card.channel && typeof card.entry.resumeSeconds === "number" &&
+                     card.entry.resumeSeconds > 5
+            text: "REANUDAR · " + Math.floor(card.entry.resumeSeconds / 60) + " min"
+            color: "#A78BFA"
+            font.family: "Segoe UI"
+            font.pixelSize: 11
+            font.weight: Font.DemiBold
+            elide: Text.ElideRight
+        }
         // Program progress is shown ONLY when the service gives real
         // scheduling data; no synthetic schedule/progress is fabricated.
         Rectangle {
