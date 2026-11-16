@@ -38,40 +38,26 @@ garantizar reconexión de una URL que haya caducado o que el proveedor rechace.
 
 ## MotionBoost (fotogramas y movimiento)
 
-MotionBoost es independiente de los cinco perfiles de nitidez. PC e iPhone
-comparten el nuevo ajuste `motion_mode` (0-2), que se guarda en
-`remote_playback_settings.txt`. El motor usa el mismo reinicio seguro de MPV
-y conserva la posición, audio, subtítulos, volumen y pausa.
+- `motion_mode=0`: desactivado, reproduce FPS de origen.
+- `motion_mode=1`: MPV GPU temporal (mezcla frames, no inventa movimiento).
+- `motion_mode=2`: **RIFE ncnn Vulkan (GPU) x2**, con
+  VapourSynth + complemento `nova-gpu`. 24 FPS → objetivo de 48,
+  30 FPS → objetivo de 60. Este procesamiento se ejecuta en la GPU,
+  pero la CPU aún participa en decodificación, transferencias y sincronía.
+- Se eliminó por completo `minterpolate` CPU de Nova para evitar el
+  congelamiento de video y audio detectado en pruebas reales.
+- La opción RIFE no debe arrancar si faltan plugin, modelo o runtime.
+  Nova mantiene el video normal y muestra el motivo.
+- Puede reducir fluidez si el GPU no logra procesar a tiempo.
+  Se necesita prueba con la RTX 3060 real; no se garantizan 60 FPS.
 
-| Modo | Técnica | Limitaciones |
-|---|---|---|
-| 0 Desactivado | FPS del archivo original | Ninguna carga adicional |
-| 1 Suavizado MPV | Interpolación temporal y sincronización con pantalla | Mezcla fotogramas, **no** estima movimiento real ni garantiza 60 FPS |
-| 2 Movimiento 60 FPS (experimental) | FFmpeg `minterpolate` con compensación de movimiento `mci` | Procesa principalmente en **CPU**, costoso a 1080p o para canales en vivo |
+Instalación: la compilación de Windows separa el complemento GPU de la
+interfaz Qt y el addon de reproducción, para evitar paquetes gigantes.
+El complemento solo se instala cuando el usuario lo extrae de manera
+explícita. Modelo por defecto: RIFE v4.6 (Vulkan).
 
-La opción 2 sí genera cuadros calculados entre los originales y fija
-60 FPS como objetivo del filtro, pero **no garantiza 60 FPS fluidos en tiempo real**.
-El resultado depende de la CPU, del video y de la frecuencia del monitor.
-Puede introducir deformaciones, retrasos y desincronización si se satura.
-La interfaz muestra `estimated-vf-fps` (FPS estimados tras el filtro), no un
-contador de FPS realmente presentados por el monitor. Para medir fluidez
-real hay que probar en el equipo y observar fotogramas perdidos y audio.
-
-**RTX 3060:** la aceleración automática sigue disponible para decodificar
-video, pero el filtro `minterpolate` NO usa los Tensor Cores ni
-NVIDIA Optical Flow de la GPU. Integrar RIFE en GPU requerirá otro motor
-VapourSynth/RIFE y un paquete verificado, no incluido en esta entrega.
-No confundir MotionBoost con DLSS Frame Generation de videojuegos.
-
-Los cambios entre modos se agrupan durante 450 ms y reinician **solo** MPV.
-Un filtro no compatible intenta restaurar el perfil anterior. Los canales
-en vivo vuelven a conectar a la señal actual; no intentan volver al mismo
-segundo ni pueden garantizar la misma latencia.
-
-Para comprobar que se generaron fotogramas, el workflow incluye una prueba
-con fuente sintética 24 FPS y salida interpolada 60 FPS mediante FFmpeg,
-además de una prueba con el puente `lavfi` de MPV. Son pruebas funcionales
-del filtro, no benchmarks en una RTX 3060 real.
+Código del plugin: https://github.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan
+Licencia y atribución de cada dependencia en su repositorio original.
 
 ## Validación
 
