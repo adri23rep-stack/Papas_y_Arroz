@@ -48,6 +48,8 @@ private:
     int hit_nova(const Catalog& catalog,size_t selected,int x,int y)const;
     bool image_cover(const std::string& url,const std::string& key,SDL_Rect bounds);
     std::string nova_backdrop_url,nova_backdrop_key;
+    int nova_backdrop_choice=-1;
+    int nova_backdrop_attempt=0;
 #endif
     bool image(const std::string& url,const std::string& key,SDL_Rect bounds);
 };
