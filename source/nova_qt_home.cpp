@@ -93,8 +93,10 @@ HomeSnapshot loadHome(){
     // A first empty category must not hide channels in the next category.
     int checkedLive=0;
     for(const auto& category:out.root.entries){
-        if(category.kind!=xs::EntryKind::Category||checkedLive++>=6||
-           out.tv_entries.size()>=72)break;
+        // service_root puts VOD sections first, before live categories.
+        // Skip those sections rather than ending the live-channel scan.
+        if(category.kind!=xs::EntryKind::Category)continue;
+        if(checkedLive++>=6||out.tv_entries.size()>=72)break;
         const auto response=xs::service_channels(out.session,category.column_id);
         if(response.ok){
             for(const auto& e:response.catalog.entries)
