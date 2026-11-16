@@ -72,7 +72,7 @@ target_sources(XuperTVDesktop PRIVATE
 )
 # Muted secondary decoder is a Windows-only experimental UI feature.
 if(WIN32)
-  target_sources(XuperTVDesktop PRIVATE source/live_preview.cpp source/remote_server.cpp source/view_cinematic.cpp source/remote_catalog.cpp source/youtube_remote.cpp source/gpu_readback.cpp source/remote_browse.cpp)
+  target_sources(XuperTVDesktop PRIVATE source/live_preview.cpp source/remote_server.cpp source/view_cinematic.cpp source/view_nova.cpp source/remote_catalog.cpp source/youtube_remote.cpp source/gpu_readback.cpp source/remote_browse.cpp)
   target_link_libraries(XuperTVDesktop PRIVATE ws2_32 bcrypt shell32 user32 opengl32 crypt32 ole32 PkgConfig::QRENCODE)
   # The native engine currently builds as an independent decoder pilot.
   # It cannot accidentally replace, break, or steal XuperTV's working playback.
@@ -132,6 +132,9 @@ if(BUILD_TESTING)
   add_executable(cinematic_home_test tests/cinematic_home_test.cpp)
   target_include_directories(cinematic_home_test PRIVATE include)
   add_test(NAME cinematic_home_test COMMAND cinematic_home_test)
+  add_executable(nova_layout_test tests/nova_layout_test.cpp)
+  target_include_directories(nova_layout_test PRIVATE include)
+  add_test(NAME nova_layout_test COMMAND nova_layout_test)
   if(WIN32)
     add_executable(native_subtitles_test tests/native_subtitles_test.cpp)
     target_include_directories(native_subtitles_test PRIVATE include)
@@ -242,7 +245,7 @@ if(BUILD_TESTING)
   # Test cases use assert() for both checks and setup/side effects.
   # Release adds -DNDEBUG, which otherwise skips their setup and crashes
   # when fixtures are renamed before being created.
-  foreach(_test_target IN ITEMS catalog_test playback_state_test playback_error_test saved_catalog_test channel_rail_test cinematic_layout_test cinematic_home_test)
+  foreach(_test_target IN ITEMS catalog_test playback_state_test playback_error_test saved_catalog_test channel_rail_test cinematic_layout_test cinematic_home_test nova_layout_test)
     if(MSVC)
       target_compile_options(${_test_target} PRIVATE /UNDEBUG)
     else()
