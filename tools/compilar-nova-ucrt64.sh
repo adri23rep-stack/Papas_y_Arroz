@@ -128,11 +128,27 @@ fi
 for name in catalog.m3u LICENSE DEPENDENCIAS.md README_NOVA_QT.md; do
     if [[ -f "$name" ]]; then cp "$name" "$output/"; fi
 done
-for name in cacert.pem service.template.json; do
+for name in cacert.pem service.template.json test.mp4; do
     if [[ -f "packaging/runtime/switch/xuperswitch/$name" ]]; then
         cp "packaging/runtime/switch/xuperswitch/$name" "$output/$name"
     fi
 done
+# The original template came from the Nintendo Switch build, where the CA
+# path begins with sdmc:/. Fix ONLY the new public copy for Windows.
+# Existing service.json and device_state.json remain untouched.
+if [[ ! -s "$output/service.template.json" || ! -s "$output/cacert.pem" ]]; then
+    echo "[NOVA] Faltan la plantilla publica o el certificado CA para activar el catalogo." >&2
+    exit 1
+fi
+sed -i 's#sdmc:/switch/xuperswitch/cacert.pem#cacert.pem#g' "$output/service.template.json"
+if grep -q 'sdmc:/switch/xuperswitch/' "$output/service.template.json"; then
+    echo "[NOVA] La plantilla aun usa una ruta de Switch; no es valida para Windows." >&2
+    exit 1
+fi
+if [[ ! -s "$output/test.mp4" ]]; then
+    echo "[NOVA] Falta test.mp4: no se puede verificar la reproduccion local." >&2
+    exit 1
+fi
 if [[ -d licenses ]]; then
     mkdir -p "$output/licenses"
     cp -a licenses/. "$output/licenses/"
