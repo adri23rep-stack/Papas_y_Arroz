@@ -18,6 +18,8 @@ int main(){
         assert(xs::nova_hit(home,0,0,tile.x+tile.w/2,tile.y+tile.h/2)==static_cast<int>(tile.index));
     }
     assert(xs::nova_hit(home,0,0,20,20)==-1);
+    assert(xs::nova_left_edge(home,1,0));
+    assert(!xs::nova_left_edge(home,2,0));
     assert(xs::nova_move(home,0,0,0,1)!=0);
     assert(xs::nova_move(home,1,0,1,0)==2);
     xs::Catalog movies;movies.title="Películas";
