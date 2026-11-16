@@ -121,5 +121,25 @@ int main(){
     assert(page.items[0].second.kind==EntryKind::Channel);
     assert(browse.select(category_gen,0,next,err)==BrowseSelection::Play);
     assert(saw_play_event());
+    // A private phone browser is entirely independent of Windows playback.
+    xs::RemoteBrowse phone;
+    phone.set_session(std::make_shared<ServiceSession>(),root);
+    assert(phone.start(gen,err,"",true));
+    assert(phone.select(gen,1,next,err)==BrowseSelection::Loading);
+    page=ready(phone,next);
+    assert(page.state=="ready");
+    assert(phone.select(next,0,category_gen,err)==BrowseSelection::Loading);
+    page=ready(phone,category_gen);
+    assert(page.items[0].second.kind==EntryKind::Channel);
+    assert(phone.select(category_gen,0,next,err)==BrowseSelection::Play);
+    Entry direct;std::shared_ptr<ServiceSession> isolated;
+    assert(phone.mobile_selection(next,0,direct,isolated));
+    assert(direct.kind==EntryKind::Channel&&isolated!=nullptr);
+    SDL_Event no_mobile_event{};bool unexpected=false;
+    while(SDL_PollEvent(&no_mobile_event))
+        if(no_mobile_event.type==SDL_USEREVENT&&
+           no_mobile_event.user.code==REMOTE_OPEN_BROWSE)unexpected=true;
+    assert(!unexpected);
+    phone.stop();
     browse.stop();SDL_Quit();return 0;
 }

@@ -202,6 +202,7 @@ void RemoteServer::stop(){
     if(!running_.exchange(false))return;
     youtube_mode_=false;
     browse_.stop();
+    mobile_browse_.stop();
     catalog_.stop();
     if(listener_!=static_cast<uintptr_t>(~uintptr_t{0})){
         shutdown(static_cast<SOCKET>(listener_),SD_BOTH);
@@ -309,10 +310,16 @@ void RemoteServer::handle(uintptr_t id){
     const bool browse_results=request.rfind("POST /catalog/browse/results HTTP/1.",0)==0;
     const bool browse_select=request.rfind("POST /catalog/browse/select HTTP/1.",0)==0;
     const bool browse_back=request.rfind("POST /catalog/browse/back HTTP/1.",0)==0;
+    const bool mobile_start=request.rfind("POST /mobile/catalog/start HTTP/1.",0)==0;
+    const bool mobile_results=request.rfind("POST /mobile/catalog/results HTTP/1.",0)==0;
+    const bool mobile_select=request.rfind("POST /mobile/catalog/select HTTP/1.",0)==0;
+    const bool mobile_back=request.rfind("POST /mobile/catalog/back HTTP/1.",0)==0;
+    const bool mobile_source=request.rfind("POST /mobile/source HTTP/1.",0)==0;
     const bool settings_get=request.rfind("POST /settings/get HTTP/1.",0)==0;
     const bool settings_set=request.rfind("POST /settings/set HTTP/1.",0)==0;
     if(!pairing&&!input&&!catalog_search&&!catalog_results&&!catalog_open&&
        !browse_start&&!browse_results&&!browse_select&&!browse_back&&
+       !mobile_start&&!mobile_results&&!mobile_select&&!mobile_back&&!mobile_source&&
        !settings_get&&!settings_set){
         reply(client,400,{{"error","Unknown endpoint"}});return;
     }
@@ -376,7 +383,7 @@ void RemoteServer::handle(uintptr_t id){
         const uint64_t value=it->get<uint64_t>();
         return value>max_value?fallback:value;
     };
-    if(browse_start){
+    if(browse_start||mobile_start){
         uint32_t gen=0;std::string error;
         const auto requested=payload.find("provider");
         if(requested!=payload.end()&&!requested->is_string()){
@@ -387,20 +394,24 @@ void RemoteServer::handle(uintptr_t id){
         if(provider.size()>32){
             reply(client,400,{{"error","Plataforma inválida."}});return;
         }
-        if(!browse_.start(gen,error,provider)){
+        auto& browser=mobile_start?mobile_browse_:browse_;
+        if(!browser.start(gen,error,provider,mobile_start)){
             reply(client,400,{{"error",error}});return;
         }
         reply(client,200,{{"generation",gen},
             {"state",provider.empty()?"ready":"loading"}});return;
     }
-    if(browse_results||browse_select||browse_back){
+    if(browse_results||browse_select||browse_back||
+       mobile_results||mobile_select||mobile_back||mobile_source){
+        auto& browser=(mobile_results||mobile_select||mobile_back||mobile_source)?
+             mobile_browse_:browse_;
         const uint64_t raw_gen=get_unsigned("generation",UINT32_MAX,0);
         if(raw_gen==0){reply(client,400,{{"error","Pagina invalida."}});return;}
         const uint32_t gen=static_cast<uint32_t>(raw_gen);
-        if(browse_results){
+        if(browse_results||mobile_results){
             const size_t offset=static_cast<size_t>(get_unsigned("offset",12000,0));
             const size_t limit=static_cast<size_t>(get_unsigned("limit",60,48));
-            const auto view=browse_.snapshot(gen,offset,limit);
+            const auto view=browser.snapshot(gen,offset,limit);
             Json entries=Json::array();
             for(const auto& item:view.items){
                 const Entry& entry=item.second;
@@ -431,8 +442,8 @@ void RemoteServer::handle(uintptr_t id){
                 {"auto_played",view.auto_played},{"items",std::move(entries)}});return;
         }
         uint32_t next_gen=0;std::string error;
-        if(browse_back){
-            if(!browse_.back(gen,next_gen,error)){
+        if(browse_back||mobile_back){
+            if(!browser.back(gen,next_gen,error)){
                 reply(client,400,{{"error",error}});return;
             }
             reply(client,200,{{"generation",next_gen},{"state","ready"}});return;
@@ -441,13 +452,52 @@ void RemoteServer::handle(uintptr_t id){
         if(index==UINT64_MAX){
             reply(client,400,{{"error","Elemento invalido."}});return;
         }
-        const auto action=browse_.select(gen,static_cast<size_t>(index),next_gen,error);
+        if(mobile_source){
+            Entry entry;
+            std::shared_ptr<ServiceSession> session;
+            if(!mobile_browse_.mobile_selection(gen,static_cast<size_t>(index),entry,session)){
+                reply(client,400,{{"error","El título ya no está disponible. Vuelve al catálogo."}});
+                return;
+            }
+            SourceResult source;
+            if(entry.kind==EntryKind::Media&&valid_source(entry.source)){
+                source.ok=true;source.source=entry.source;
+            }else{
+                // Resolve through the user's ALREADY authenticated PC session,
+                // not arbitrary input URLs. No credentials are sent to the phone.
+                try{source=service_source_remote(session,entry,0);}
+                catch(...){source.status="No se pudo consultar esta transmisión.";}
+            }
+            if(!source.ok||source.source.empty()){
+                reply(client,400,{{"error",source.status.empty()?
+                    "No hay una señal reproducible.":source.status}});return;
+            }
+            // AVPlayer cannot reliably attach Ranger/content-licence headers.
+            // Do NOT expose their values or invent any DRM/proxy bypass.
+            if(!source.headers.empty()){
+                reply(client,400,{{"error",
+                    "Esta transmisión necesita autorización especial. Por ahora solo se reproduce en Windows."}});
+                return;
+            }
+            if(source.source.rfind("https://",0)!=0||source.source.size()>2048||
+               source.source.find_first_of("\r\n\t")!=std::string::npos){
+                reply(client,400,{{"error",
+                    "iPhone admite por ahora enlaces HTTPS directos compatibles con Apple TV/AVPlayer."}});
+                return;
+            }
+            reply(client,200,{{"ok",true},{"title",entry.title},
+                {"url",source.source},{"mode","direct_https"},
+                {"notice","Solo transmisiones directas sin DRM ni cabeceras especiales."}});
+            return;
+        }
+        const auto action=browser.select(gen,static_cast<size_t>(index),next_gen,error);
         if(action==BrowseSelection::Invalid){
             reply(client,400,{{"error",error}});return;
         }
         active_at_=SDL_GetTicks();
         reply(client,200,{{"generation",next_gen},
-            {"state",action==BrowseSelection::Play?"playing":"loading"}});return;
+            {"state",action==BrowseSelection::Play?
+                (mobile_select?"playable":"playing"):"loading"}});return;
     }
     if(catalog_search){
         const auto q=payload.find("query");

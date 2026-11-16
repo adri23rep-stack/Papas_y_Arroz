@@ -54,11 +54,28 @@ static std::string payload(const std::string& response){
 // Keep the LAN protocol test offline: no service credentials or network
 // catalogue calls are used in CI.
 namespace xs {
+struct ServiceSession {};
 BrowseResult service_search_remote(const std::shared_ptr<ServiceSession>&,const std::string&){
     return {};
 }
-BrowseResult service_browse_remote(const std::shared_ptr<ServiceSession>&,const Entry&){
-    return {};
+BrowseResult service_browse_remote(const std::shared_ptr<ServiceSession>&,const Entry& entry){
+    BrowseResult out;out.ok=true;out.catalog.title=entry.title;
+    if(entry.kind==EntryKind::Category){
+        Entry sample;sample.kind=EntryKind::Channel;
+        sample.title="HTTPS directo";sample.channel_code="direct";
+        out.catalog.entries.push_back(sample);
+        sample.title="Autorización especial";sample.channel_code="locked";
+        out.catalog.entries.push_back(sample);
+    }
+    return out;
+}
+SourceResult service_source_remote(const std::shared_ptr<ServiceSession>&,
+                                   const Entry& entry,int){
+    SourceResult out;out.ok=true;
+    out.source="https://example.org/demo.m3u8";
+    if(entry.channel_code=="locked")
+        out.headers={{"Content-License","test-secret-header"}};
+    return out;
 }
 }
 #define REQUIRE(condition) do{std::fprintf(stderr,"Checking %d: %s\\n",__LINE__,#condition);std::fflush(stderr);if(!(condition)){std::fprintf(stderr,"FAILED at %d: %s\\n",__LINE__,#condition);return 1;}}while(0)
@@ -92,6 +109,10 @@ int main(){
     REQUIRE(!okay(post("/catalog/open",R"({"generation":1,"index":0})",token)));
     REQUIRE(!okay(post("/catalog/browse/start",R"({})")));
     REQUIRE(!okay(post("/catalog/browse/start",R"({})",token))); // no session
+    REQUIRE(!okay(post("/mobile/catalog/start",R"({})"))); // pairing required
+    REQUIRE(!okay(post("/mobile/catalog/start",R"({})",token))); // no session
+    REQUIRE(!okay(post("/mobile/source",R"({"generation":1,"index":0})",token)));
+
     REQUIRE(!okay(post("/catalog/browse/start",R"({"provider":"netflix"})"))); // unauthenticated
     REQUIRE(!okay(post("/catalog/browse/start",R"({"provider":"notreal"})",token)));
     REQUIRE(!okay(post("/catalog/browse/start",R"({"provider":5})",token)));
@@ -115,6 +136,63 @@ int main(){
             saw_setting=true;
     REQUIRE(saw_setting);
     REQUIRE(server.setting_value(xs::remote_setting_index("speed"))==125);
+    xs::Catalog mock_root;
+    xs::Entry live;live.kind=xs::EntryKind::Category;
+    live.title="TV";live.column_id=5;
+    mock_root.entries={live};
+    server.set_session(std::make_shared<xs::ServiceSession>(),mock_root);
+    const auto mobile_start=post("/mobile/catalog/start",R"({})",token);
+    REQUIRE(okay(mobile_start));
+    const auto first=nlohmann::json::parse(payload(mobile_start));
+    auto generation=first["generation"].get<uint32_t>();
+    const auto mobile_page=post("/mobile/catalog/results",
+        std::string("{\"generation\":")+std::to_string(generation)+"}",token);
+    REQUIRE(okay(mobile_page));
+    const auto page=nlohmann::json::parse(payload(mobile_page));
+    REQUIRE(page["items"].is_array());
+    // Index 1 is the category "TV en vivo".
+    const auto live_start=post("/mobile/catalog/select",
+        std::string("{\"generation\":")+std::to_string(generation)+",\"index\":1}",token);
+    REQUIRE(okay(live_start));
+    generation=nlohmann::json::parse(payload(live_start))["generation"].get<uint32_t>();
+    for(int tries=0;tries<50;++tries){
+        const auto reply=post("/mobile/catalog/results",
+            std::string("{\"generation\":")+std::to_string(generation)+"}",token);
+        REQUIRE(okay(reply));
+        if(nlohmann::json::parse(payload(reply))["state"]=="ready")break;
+        SDL_Delay(10);
+    }
+    const auto select_cat=post("/mobile/catalog/select",
+        std::string("{\"generation\":")+std::to_string(generation)+",\"index\":0}",token);
+    REQUIRE(okay(select_cat));
+    generation=nlohmann::json::parse(payload(select_cat))["generation"].get<uint32_t>();
+    for(int tries=0;tries<50;++tries){
+        const auto reply=post("/mobile/catalog/results",
+            std::string("{\"generation\":")+std::to_string(generation)+"}",token);
+        REQUIRE(okay(reply));
+        if(nlohmann::json::parse(payload(reply))["state"]=="ready")break;
+        SDL_Delay(10);
+    }
+    const std::string direct=std::string("{\"generation\":")+
+       std::to_string(generation)+",\"index\":0}";
+    const auto selected=post("/mobile/catalog/select",direct,token);
+    REQUIRE(okay(selected)&&nlohmann::json::parse(payload(selected))["state"]=="playable");
+    REQUIRE(!okay(post("/mobile/source",direct))); // source must be authenticated
+    const auto source=post("/mobile/source",direct,token);
+    REQUIRE(okay(source)&&nlohmann::json::parse(payload(source))["url"]==
+            "https://example.org/demo.m3u8");
+    const std::string restricted=std::string("{\"generation\":")+
+       std::to_string(generation)+",\"index\":1}";
+    REQUIRE(!okay(post("/mobile/source",restricted,token)));
+    REQUIRE(payload(post("/mobile/source",restricted,token)).find("test-secret-header")==
+            std::string::npos);
+    SDL_Event no_mobile_event{};
+    bool played_on_pc=false;
+    while(SDL_PollEvent(&no_mobile_event))
+        if(no_mobile_event.type==SDL_USEREVENT&&
+           no_mobile_event.user.code==xs::REMOTE_OPEN_BROWSE)played_on_pc=true;
+    REQUIRE(!played_on_pc);
+
 
 
     REQUIRE(okay(post("/input",R"({"action":"right"})",token)));
