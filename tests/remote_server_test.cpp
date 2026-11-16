@@ -121,7 +121,10 @@ int main(){
     const auto settings=post("/settings/get",R"({})",token);
     REQUIRE(okay(settings));
     const auto settings_json=nlohmann::json::parse(payload(settings),nullptr,false);
-    REQUIRE(settings_json.contains("settings")&&settings_json["settings"].size()==10);
+    REQUIRE(settings_json.contains("settings")&&settings_json["settings"].size()==xs::kRemoteSettings.size());
+    // Check the new frame interpolation setting is exposed and validated.
+    REQUIRE(okay(post("/settings/set",R"({"key":"motion_mode","value":2})",token)));
+    REQUIRE(!okay(post("/settings/set",R"({"key":"motion_mode","value":3})",token)));
     REQUIRE(!okay(post("/settings/set",R"({"key":"unknown","value":15})",token)));
     REQUIRE(!okay(post("/settings/set",R"({"key":"volume","value":101})",token)));
     REQUIRE(!okay(post("/settings/set",R"({"key":"speed","value":137})",token)));
