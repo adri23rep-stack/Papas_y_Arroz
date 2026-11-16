@@ -351,6 +351,16 @@ LoginAttempt service_bootstrap(const std::string& path) {
         return true;
     };
     if(!load_installation(path,config,out.status,entropy))return out;
+#ifdef _WIN32
+    // The public Switch template used sdmc:/switch/.../cacert.pem.
+    // The Windows portable layout bundles cacert.pem beside the executable.
+    // Existing service.json files must keep their identity and token fields;
+    // correct ONLY this known obsolete CA pathname IN MEMORY, never on disk.
+    if(text(config,"ca_file")=="sdmc:/switch/xuperswitch/cacert.pem"){
+        std::ifstream local_ca("cacert.pem",std::ios::binary);
+        if(local_ca.good())config["ca_file"]="cacert.pem";
+    }
+#endif
     if(!config.is_object()||text(config,"installation_serial").empty()||text(config,"password_salt").empty()){
         out.status="Actualiza todos los archivos del paquete.";return out;
     }
