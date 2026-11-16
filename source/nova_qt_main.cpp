@@ -88,10 +88,10 @@ int main(int argc,char** argv){
         QCoreApplication::processEvents();
         const double rowsTop=window->property("homeRowsTop").toDouble();
         const double blackFadeBottom=window->property("backdropBottom").toDouble();
-        if(compactRows<290||compactRows>355||
-           rowsTop<440||rowsTop>520||
-           rowsTop-compactRows<130||
-           blackFadeBottom<rowsTop+42||blackFadeBottom>rowsTop+44){
+        if(compactRows<450||compactRows>475||
+           rowsTop<550||rowsTop>580||
+           rowsTop-compactRows<90||
+           blackFadeBottom<rowsTop+84||blackFadeBottom>rowsTop+86){
             std::fprintf(stderr,
                          "NOVA_FULLSCREEN_LAYOUT_FAIL compact=%.1f rows=%.1f fade=%.1f\n",
                          compactRows,rowsTop,blackFadeBottom);
