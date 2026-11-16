@@ -277,6 +277,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
     requested_motion_.store(activeMotion);
     int previousPreset=activePreset,previousMotion=activeMotion;
     QString motionFallbackReason;
+    bool fastRife=false;
     bool switching=false, registered=false, reachedEnd=false;
     bool recoveryAttempted=false;
     double lastPosition=resumeSeconds;
@@ -404,7 +405,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     failed=failed||!opt("scale","lanczos");
                 else if(gpuMode){
                     const QByteArray shaderPath=QDir::toNativeSeparators(shader).toUtf8();
-                    failed=failed||!opt("gpu-api","opengl") ||
+                    failed=failed||!opt("gpu-api",gpuRife?"d3d11":"opengl") ||
                            !opt("glsl-shaders",shaderPath.constData()) ||
                            !opt("scale","ewa_lanczossharp") ||
                            !opt("cscale","ewa_lanczos");
@@ -425,7 +426,8 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     const QByteArray bytes=QDir::toNativeSeparators(script).toUtf8();
                     rifeSession=std::make_unique<QTemporaryDir>();
                     if(rifeSession->isValid()){
-                        rifeStatusPath=rifeSession->filePath(QStringLiteral("rife-status"));
+                        rifeStatusPath=rifeSession->filePath(fastRife?QStringLiteral("rife-fast"):
+                            gpuMode?QStringLiteral("rife-balanced"):QStringLiteral("rife-status"));
                         const QByteArray statusPath=QDir::toNativeSeparators(rifeStatusPath).toUtf8();
                         const std::string spec="vapoursynth=file=%"+
                             std::to_string(bytes.size())+"%"+bytes.toStdString()+
@@ -578,6 +580,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                                  gpuRife?QStringLiteral("GPU Vulkan RIFE (verificar FPS reales)"):
                                          QStringLiteral("MPV"));
                         baseDiagnostics=details;
+                        if(gpuRife && (gpuMode||fastRife))baseDiagnostics+=QStringLiteral("\nResolución de cálculo RIFE: hasta %1 px de ancho").arg(fastRife?384:640);
                         if(!motionFallbackReason.isEmpty())baseDiagnostics+="\n"+motionFallbackReason;
                         publish(QStringLiteral("Reproduciendo · %1").arg(
                             QString::fromUtf8(xs::video_preset_label(preset))),details);
@@ -644,6 +647,13 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                         ++badSyncSamples;
                     else badSyncSamples=0;
                     if(badSyncSamples>=3){
+                        if(!fastRife){
+                            capture(mpv);
+                            fastRife=true;
+                            restart=true;
+                            publish(QStringLiteral("Ajustando RIFE para recuperar la sincronización..."));
+                            break;
+                        }
                         failed=true;
                         failure=QStringLiteral(
                             "RIFE GPU no mantiene audio/video sincronizados. Volviendo a reproducción normal.");
@@ -680,6 +690,7 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                     activePreset=wanted;
                     activeMotion=wantedMotion;
                     motionFallbackReason.clear();
+                    fastRife=false;
                     switching=true;
                     recoveryAttempted=false;
                     restart=true;

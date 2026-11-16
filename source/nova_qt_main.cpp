@@ -63,6 +63,7 @@ int main(int argc,char** argv){
             if(!image.isNull() && !previous.isNull() && image!=previous)++moving;
             previous=image;
             if(testRife && moving>=3 && !requested){
+                player.requestQuality(4);
                 if(!player.requestMotion(2)){app.exit(6);return;}
                 requested=true;
                 moving=0;
