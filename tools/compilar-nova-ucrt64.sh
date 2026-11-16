@@ -15,17 +15,31 @@ if [[ ! -f CMakeLists.txt || ! -f ui/novaqt/Main.qml ]]; then
     exit 1
 fi
 
-echo "[NOVA] Actualizando repositorios e instalando dependencias oficiales..."
-# Upgrade first: MSYS2 does not support partial upgrades.
-# When MSYS2's own runtime has just been upgraded the shell may require a
-# restart; simply re-run COMPILAR_NOVA.cmd and the package list resumes.
-pacman -Syu --noconfirm
+# Updating the MSYS2 runtime and immediately forking tools from the
+# SAME Bash process causes intermittent "dofork" / errno 11 failures.
+# PowerShell runs --update-only in one Bash process, waits for it to exit,
+# then starts a fresh Bash process for installation and compilation.
+if [[ "${1:-}" == "--update-only" ]]; then
+    echo "[NOVA] Fase 1/2: actualizando MSYS2..."
+    pacman -Syu --noconfirm
+    echo "[NOVA] MSYS2 actualizado. Reiniciando Bash para compilar..."
+    exit 0
+fi
+echo "[NOVA] Fase 2/2: instalando dependencias oficiales..."
+# SDL2-compat provides SDL2's headers, libs, and CMake config. Other apps
+# (FFmpeg, SDL2_ttf, whisper.cpp) may already depend on SDL2-compat.
+# NEVER try to replace it with the legacy real-SDL2 package automatically.
+sdl2_package="mingw-w64-ucrt-x86_64-sdl2-compat"
+if pacman -Q mingw-w64-ucrt-x86_64-SDL2 >/dev/null 2>&1; then
+    sdl2_package="mingw-w64-ucrt-x86_64-SDL2"
+fi
+echo "[NOVA] SDL2: usando $sdl2_package sin desinstalar nada."
 packages=(
   mingw-w64-ucrt-x86_64-gcc
   mingw-w64-ucrt-x86_64-cmake
   mingw-w64-ucrt-x86_64-ninja
   mingw-w64-ucrt-x86_64-pkgconf
-  mingw-w64-ucrt-x86_64-SDL2
+  "$sdl2_package"
   mingw-w64-ucrt-x86_64-SDL2_ttf
   mingw-w64-ucrt-x86_64-sdl3
   mingw-w64-ucrt-x86_64-mpv
