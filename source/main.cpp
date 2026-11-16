@@ -22,6 +22,7 @@
 #include "video_enhanced.hpp"
 #include "cinematic_home.hpp"
 #include "cinematic_layout.hpp"
+#include "nova_layout.hpp"
 #endif
 #ifdef __SWITCH__
 #include <switch.h>
@@ -275,6 +276,9 @@ int main(int argc,char** argv){
                         else running=false;
                         break;
 #ifdef _WIN32
+                    case SDLK_F8:view.toggle_ui_mode();view.nav_focus=-1;view.show_details=false;
+                        status=view.nova_enabled?"NOVA activada. F8: regresar a la vista anterior.":"Vista original activada. F8: probar NOVA.";
+                        redraw=true;break;
                     case SDLK_F9:view.pairing_visible=!view.pairing_visible;redraw=true;break;
                     case SDLK_F4:nav_action=0;break;
                     case SDLK_F5:nav_action=1;break;
@@ -331,10 +335,16 @@ int main(int argc,char** argv){
         if(donating){if(back||play||login){donating=false;redraw=true;}SDL_Delay(10);continue;}
         if(view.nav_focus>=0){
 #ifdef _WIN32
-            // Top navigation bar: left/right cycles tabs, down returns to cards.
-            if(left||up){view.nav_focus=(view.nav_focus+5)%6;redraw=true;}
-            if(right){view.nav_focus=(view.nav_focus+1)%6;redraw=true;}
-            if(down||back){view.nav_focus=-1;redraw=true;back=false;}
+            if(view.nova_enabled){
+                // NOVA uses a vertical sidebar, not the old horizontal bar.
+                if(up){view.nav_focus=(view.nav_focus+5)%6;redraw=true;}
+                if(down){view.nav_focus=(view.nav_focus+1)%6;redraw=true;}
+                if(right||back){view.nav_focus=-1;redraw=true;back=false;}
+            }else{
+                if(left||up){view.nav_focus=(view.nav_focus+5)%6;redraw=true;}
+                if(right){view.nav_focus=(view.nav_focus+1)%6;redraw=true;}
+                if(down||back){view.nav_focus=-1;redraw=true;back=false;}
+            }
 #else
             if(up){view.nav_focus=(view.nav_focus+5)%6;redraw=true;}if(down){view.nav_focus=(view.nav_focus+1)%6;redraw=true;}
             if(right||back){view.nav_focus=-1;redraw=true;back=false;}
@@ -436,11 +446,16 @@ int main(int argc,char** argv){
             const size_t cols=view.columns(catalog),page=view.page_size(catalog);
 #ifdef _WIN32
             if(xs::is_home(catalog)){
-                if(up)selected=xs::cinematic_move(catalog,selected,view.home_last_index,0,-1);
-                if(down)selected=xs::cinematic_move(catalog,selected,view.home_last_index,0,1);
-                if(left)selected=xs::cinematic_move(catalog,selected,view.home_last_index,-1,0);
-                if(right)selected=xs::cinematic_move(catalog,selected,view.home_last_index,1,0);
-                if(next||previous)selected=xs::cinematic_move(catalog,selected,view.home_last_index,0,next?1:-1);
+                const auto move=[&](int dx,int dy){
+                    return view.nova_enabled?
+                        xs::nova_move(catalog,selected,view.home_last_index,dx,dy):
+                        xs::cinematic_move(catalog,selected,view.home_last_index,dx,dy);
+                };
+                if(up)selected=move(0,-1);
+                if(down)selected=move(0,1);
+                if(left)selected=move(-1,0);
+                if(right)selected=move(1,0);
+                if(next||previous)selected=move(0,next?1:-1);
                 if(up||down||left||right||next||previous)redraw=true;
             }else
 #endif
