@@ -2,7 +2,7 @@ name: Xuper TV Desktop | Windows preview
 
 on:
   push:
-    branches: [windows-desktop-preview, feature/ui-cinematic-tv, feature/apple-controller-server, feature/cinematic-ui-v2, feature/search-remote-catalog, feature/youtube-browser-remote, fix/youtube-hidpi-video, feature/classic-remote-command-support, feature/video-enhanced-stage1, feature/video-enhanced-contrast-stage2, feature/video-enhanced-gpu-stage3, feature/xuper-native-engine-v1, feature/xuper-native-player-v2, feature/iphone-catalog-settings, feature/qr-pairing-remembered, feature/provider-catalog-tiles, fix/live-tv-recovery, feature/private-iphone-player]
+    branches: [windows-desktop-preview, feature/ui-cinematic-tv, feature/apple-controller-server, feature/cinematic-ui-v2, feature/search-remote-catalog, feature/youtube-browser-remote, fix/youtube-hidpi-video, feature/classic-remote-command-support, feature/video-enhanced-stage1, feature/video-enhanced-contrast-stage2, feature/video-enhanced-gpu-stage3, feature/xuper-native-engine-v1, feature/xuper-native-player-v2, feature/iphone-catalog-settings, feature/qr-pairing-remembered, feature/provider-catalog-tiles, fix/live-tv-recovery, feature/private-iphone-player, feature/nova-ui-from-scratch]
     paths:
       - '.github/workflows/bootstrap-windows.yml'
       - 'patches/**'
@@ -11,6 +11,7 @@ on:
       - 'tests/**'
       - 'tools/**'
       - 'README_WINDOWS.md'
+      - 'README_NOVA_UI.md'
       - 'README_VIDEO_ENHANCED.md'
       - 'CMakeLists.txt'
       - 'shaders/**'
@@ -262,6 +263,7 @@ jobs:
           Copy-Item README_QR_PAIRING.md dist/Xuper-TV-Desktop/README_QR_PAIRING.md
           Copy-Item README_PROVIDER_CATALOG.md dist/Xuper-TV-Desktop/README_PROVIDER_CATALOG.md
           Copy-Item README_LIVE_TV.md dist/Xuper-TV-Desktop/README_LIVE_TV.md
+          if (Test-Path 'README_NOVA_UI.md') { Copy-Item README_NOVA_UI.md dist/Xuper-TV-Desktop/README_NOVA_UI.md }
           Write-Host "Bundled service template verified. No APK import required."
       # The account's Actions artifact storage quota is currently exhausted.
       # Instead of silently failing or deleting old user artifacts, stage 3
@@ -313,6 +315,6 @@ jobs:
         if: github.ref_name != 'windows-desktop-preview'
         uses: actions/upload-artifact@v4
         with:
-          name: XuperTV-Live-TV-Recovery-Windows
+          name: ${{ github.ref_name == 'feature/nova-ui-from-scratch' && 'XuperTV-Nova-Windows' || 'XuperTV-Live-TV-Recovery-Windows' }}
           path: dist/Xuper-TV-Desktop/
           if-no-files-found: error
