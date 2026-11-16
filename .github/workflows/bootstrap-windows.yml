@@ -360,7 +360,8 @@ jobs:
             "$qt"/swresample*.dll "$qt"/libavcodec*.dll \
             "$qt"/libavformat*.dll "$qt"/libavutil*.dll \
             "$qt"/libswscale*.dll "$qt"/libswresample*.dll
-          rm -rf "$qt"/shaders
+          # Nova Qt now supports FSRCNNX; keep its shader in the portable build.
+          test -s "$qt/shaders/FSRCNNX_x2_8-0-4-1.glsl"
           rm -f "$qt"/font.ttf
           rm -rf "$qt"/qml/QtQml/DesignSupport             "$qt"/qml/QtQml/XmlListModel             "$qt"/qml/QtQuick/Shapes/DesignHelpers
           # QML app imports QtQuick and QtQuick.Window.
