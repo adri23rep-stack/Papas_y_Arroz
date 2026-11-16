@@ -51,12 +51,35 @@ inline VideoPreset nova_video_preset(int value) {
 inline bool nova_rtx_vsr(VideoPreset preset) {
     return preset == VideoPreset::RtxAiSuperResolution;
 }
-// Avoid wasting GPU time on a 4K upscaled surface that the monitor cannot show.
-// NVIDIA VSR is requested only when the content is smaller than the display.
-inline double nova_rtx_vsr_scale(int srcW, int srcH, int screenW, int screenH) {
-    if (srcW <= 0 || srcH <= 0 || screenW <= 0 || screenH <= 0) return 1.0;
-    const double factor = std::min(double(screenW) / srcW, double(screenH) / srcH);
-    return factor >= 1.10 ? std::min(2.0, factor) : 1.0;
+// RTX VSR neural-network QUALITY (Auto/Manual level 1-4) is selected only
+// inside NVIDIA App; the choices below control OUTPUT SCALE in mpv, not the
+// proprietary NVIDIA quality setting. Avoid unnecessary super-sampling beyond
+// the real display and never exceed x4.
+inline const char* nova_rtx_scale_label(int mode) {
+    switch (mode) {
+        case 1: return "RTX 1.5x";
+        case 2: return "RTX 2x";
+        case 3: return "RTX 3x";
+        case 4: return "RTX 4x (maximo)";
+        default: return "RTX automatico (hasta 2x)";
+    }
+}
+inline double nova_rtx_scale_limit(int mode) {
+    switch (mode) {
+        case 1: return 1.5;
+        case 2: return 2.0;
+        case 3: return 3.0;
+        case 4: return 4.0;
+        default: return 2.0; // previous behavior: backward compatible
+    }
+}
+inline double nova_rtx_vsr_scale(int srcW, int srcH, int screenW, int screenH,
+                                 int mode=0) {
+    if (srcW<=0 || srcH<=0 || screenW<=0 || screenH<=0) return 1.0;
+    const double factor=std::min({double(screenW)/srcW,
+                                  double(screenH)/srcH,
+                                  nova_rtx_scale_limit(mode)});
+    return factor>=1.10?factor:1.0;
 }
 inline bool nova_needs_shader(VideoPreset preset) {
     return preset == VideoPreset::GpuFsrcnnx;
