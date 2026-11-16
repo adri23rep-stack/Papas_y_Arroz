@@ -13,7 +13,9 @@
 #include <fstream>
 
 int main(int argc,char** argv){
-    const bool smoke=argc>1&&std::strcmp(argv[1],"--smoke")==0;
+    const bool smokeFullscreen=argc>1&&std::strcmp(argv[1],"--smoke-fullscreen")==0;
+    const bool smoke=smokeFullscreen||
+                     (argc>1&&std::strcmp(argv[1],"--smoke")==0);
     auto checkpoint=[smoke](const char* message){
         if(!smoke)return;
         std::ofstream report("nova-qt-smoke.log",std::ios::app);
@@ -59,6 +61,24 @@ int main(int argc,char** argv){
     if(engine.rootObjects().isEmpty()){
         std::fputs("NOVA_QT: Could not load QML home.\n",stderr);
         return 2;
+    }
+    if(smokeFullscreen){
+        // Test responsive maximized-window layout without any real display.
+        // The Qt offscreen platform provides a deterministic scene geometry.
+        QObject* window=engine.rootObjects().front();
+        window->setProperty("width",1920);
+        window->setProperty("height",1080);
+        QCoreApplication::processEvents();
+        const double rowsTop=window->property("homeRowsTop").toDouble();
+        const double blackFadeBottom=window->property("backdropBottom").toDouble();
+        if(rowsTop<350||rowsTop>450||
+           blackFadeBottom<rowsTop+42||blackFadeBottom>rowsTop+44){
+            std::fprintf(stderr,
+                         "NOVA_FULLSCREEN_LAYOUT_FAIL rows=%.1f fade=%.1f\n",
+                         rowsTop,blackFadeBottom);
+            return 3;
+        }
+        checkpoint("fullscreen_layout_passed");
     }
     if(smoke){
         QTimer::singleShot(1000,&app,[&app,&checkpoint](){
