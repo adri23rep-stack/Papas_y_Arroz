@@ -15,6 +15,10 @@ int main(){
     assert(!valid_remote_setting(remote_setting_index("video_preset"),6));
     assert(valid_remote_setting(remote_setting_index("motion_mode"),2));
     assert(!valid_remote_setting(remote_setting_index("motion_mode"),3));
+    assert(remote_setting_index("rtx_scale_mode")==11);
+    assert(valid_remote_setting(remote_setting_index("rtx_scale_mode"),0));
+    assert(valid_remote_setting(remote_setting_index("rtx_scale_mode"),4));
+    assert(!valid_remote_setting(remote_setting_index("rtx_scale_mode"),5));
     RemoteSettingsStore settings;
     assert(settings.get(0)==100);
     assert(settings.put(0,42,false));
