@@ -340,6 +340,87 @@ jobs:
           if (Test-Path 'README_NOVA_UI.md') { Copy-Item README_NOVA_UI.md dist/Xuper-TV-Desktop/README_NOVA_UI.md }
           if (Test-Path 'README_NOVA_QT.md') { Copy-Item README_NOVA_QT.md dist/Xuper-TV-Desktop/README_NOVA_QT.md }
           Write-Host "Bundled service template verified. No APK import required."
+      - name: Prepare two independent portable Windows preview packages
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          # Copy only after the combined runtime and service template have
+          # been validated. The user gets ONE download per EXE, never split ZIPs.
+          cp -a dist/Xuper-TV-Desktop dist/Xuper-TV-NovaQt-Preview
+          cp -a dist/Xuper-TV-Desktop dist/Xuper-TV-Classic-Preview
+          qt=dist/Xuper-TV-NovaQt-Preview
+          classic=dist/Xuper-TV-Classic-Preview
+
+          # Qt preview does not run SDL, mpv, or FFmpeg. Leave shared curl,
+          # crypto and compiler runtime dependencies untouched.
+          rm -f "$qt"/XuperTVDesktop.exe "$qt"/XuperNativeProbe.exe \
+            "$qt"/XuperNativePlayer.exe "$qt"/test.mp4
+          rm -f "$qt"/SDL*.dll "$qt"/libmpv*.dll \
+            "$qt"/avcodec*.dll "$qt"/avformat*.dll \
+            "$qt"/avutil*.dll "$qt"/swscale*.dll \
+            "$qt"/swresample*.dll "$qt"/libavcodec*.dll \
+            "$qt"/libavformat*.dll "$qt"/libavutil*.dll \
+            "$qt"/libswscale*.dll "$qt"/libswresample*.dll
+          rm -rf "$qt"/shaders
+          # QML app imports only QtQuick, QtQuick.Window, QtQuick.Effects,
+          # QtQuick.Shapes and QtQml. Remove heavy unused UI styles.
+          rm -rf "$qt"/qml/QtQuick/Controls \
+            "$qt"/qml/QtQuick/Dialogs \
+            "$qt"/qml/QtQuick/LocalStorage \
+            "$qt"/qml/QtQuick/NativeStyle \
+            "$qt"/qml/QtQuick/Particles \
+            "$qt"/qml/QtQuick/Templates \
+            "$qt"/qml/QtQuick/Layouts \
+            "$qt"/qml/QtQuick/VectorImage
+          test -s "$qt/XuperTVNovaQt.exe"
+          for name in QtQuick QtQuick/Window QtQuick/Effects QtQuick/Shapes; do
+            test -s "$qt/qml/$name/qmldir" || {
+              echo "Qt-only preview missing required QML module $name" >&2
+              exit 1
+            }
+          done
+
+          # The classic build keeps playback, remote control, SDL and FFmpeg.
+          # Qt's large QML/runtime directory is not necessary for this EXE.
+          rm -rf "$classic"/qml "$classic"/platforms \
+            "$classic"/tls "$classic"/networkinformation \
+            "$classic"/generic "$classic"/imageformats
+          rm -f "$classic"/XuperTVNovaQt.exe "$classic"/Qt6*.dll \
+            "$classic"/qt.conf
+          test -s "$classic/XuperTVDesktop.exe"
+          test -s "$classic/XuperNativePlayer.exe"
+          echo "Portable package sizes BEFORE compression:"
+          du -sh "$qt" "$classic"
+      - name: Smoke test compact Qt Quick preview independently
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location 'dist/Xuper-TV-NovaQt-Preview'
+          try {
+            $env:Path = "$env:SystemRoot\System32;$env:SystemRoot"
+            $env:QT_QPA_PLATFORM = "offscreen"
+            $env:QT_QUICK_BACKEND = "software"
+            $logOut = Join-Path $env:RUNNER_TEMP 'nova-compact-out.txt'
+            $logErr = Join-Path $env:RUNNER_TEMP 'nova-compact-err.txt'
+            Remove-Item '.\nova-qt-smoke.log' -ErrorAction SilentlyContinue
+            $qt = Start-Process -FilePath '.\XuperTVNovaQt.exe' -ArgumentList @('--smoke') -PassThru -NoNewWindow -RedirectStandardOutput $logOut -RedirectStandardError $logErr
+            $finished = $qt.WaitForExit(20000)
+            if (-not $finished) {
+              Stop-Process -Id $qt.Id -Force -ErrorAction SilentlyContinue
+            }
+            if (Test-Path $logOut) { Get-Content $logOut }
+            if (Test-Path $logErr) { Get-Content $logErr }
+            if (Test-Path '.\nova-qt-smoke.log') {
+              Get-Content '.\nova-qt-smoke.log'
+              Remove-Item '.\nova-qt-smoke.log' -ErrorAction SilentlyContinue
+            }
+            if (-not $finished -or $qt.ExitCode -ne 0) {
+              throw "Compact Qt preview failed its standalone smoke test (exit $($qt.ExitCode))."
+            }
+            Write-Host 'Compact Qt-only Nova preview passed without any SDL runtime.'
+          } finally {
+            Pop-Location
+          }
       # The account's Actions artifact storage quota is currently exhausted.
       # Instead of silently failing or deleting old user artifacts, stage 3
       # can provide its verified ZIP on a dedicated orphan branch. No release.
@@ -354,15 +435,28 @@ jobs:
           # Keep the experimental NOVA download separate from the existing
           # integrated Windows build. Never rewrite main or an unrelated branch.
           $isNova = $env:NOVA_SOURCE_BRANCH -eq 'feature/nova-ui-from-scratch'
-          $name = if ($isNova) { 'XuperTV-NOVA-Windows-Preview.zip' } else { 'XuperTV-Integrated-Windows-Preview.zip' }
           $deliveryBranch = if ($isNova) { 'build/nova-ui-preview' } else { 'build/live-tv-recovery' }
-          $title = if ($isNova) { 'XuperTV Desktop - NOVA experimental UI' } else { 'XuperTV Desktop - integrated Windows preview' }
-          $zip = Join-Path $env:RUNNER_TEMP $name
-          Compress-Archive -Path 'dist/Xuper-TV-Desktop' -DestinationPath $zip -CompressionLevel Optimal
-          $bytes = (Get-Item $zip).Length
-          Write-Host "Portable ZIP size: $bytes bytes"
-          if ($bytes -ge 95000000) {
-            throw "ZIP exceeds safe GitHub single-file limit; not publishing."
+          $title = if ($isNova) { 'XuperTV Desktop - NOVA experimental Qt preview' } else { 'XuperTV Desktop - integrated Windows preview' }
+          $packages = if ($isNova) {
+            @(
+              @{ Name = 'XuperTV-NOVA-Qt-Preview.zip'; Folder = 'dist/Xuper-TV-NovaQt-Preview' },
+              @{ Name = 'XuperTV-NOVA-Windows-Preview.zip'; Folder = 'dist/Xuper-TV-Classic-Preview' }
+            )
+          } else {
+            @(
+              @{ Name = 'XuperTV-Integrated-Windows-Preview.zip'; Folder = 'dist/Xuper-TV-Desktop' }
+            )
+          }
+          $archives = @()
+          foreach ($package in $packages) {
+            $zip = Join-Path $env:RUNNER_TEMP $package.Name
+            Compress-Archive -Path $package.Folder -DestinationPath $zip -CompressionLevel Optimal
+            $bytes = (Get-Item $zip).Length
+            Write-Host "$($package.Name): $bytes bytes"
+            if ($bytes -ge 95000000) {
+              throw "Package $($package.Name) exceeds safe GitHub single-file limit."
+            }
+            $archives += @{ Name = $package.Name; Zip = $zip; Hash = (Get-FileHash -Algorithm SHA256 $zip).Hash }
           }
           $folder = Join-Path $env:RUNNER_TEMP 'delivery'
           git worktree add --detach $folder HEAD
@@ -374,22 +468,28 @@ jobs:
             git rm -r --cached --ignore-unmatch . | Out-Null
             Get-ChildItem -Force | Where-Object { $_.Name -ne '.git' } |
               Remove-Item -Recurse -Force
-            Copy-Item $zip -Destination (Join-Path $folder $name)
-            $hash = (Get-FileHash -Algorithm SHA256 $name).Hash
-            @(
+            $receipt = @(
               $title,
-              'Unsigned portable Windows test build. main remains untouched.',
-              "SHA256: $hash",
+              'Unsigned portable Windows test builds. main remains untouched.',
               "Source branch: $env:NOVA_SOURCE_BRANCH",
               "Source commit: $env:GITHUB_SHA",
-              'Extract the ZIP as one folder. Do not mix DLLs from older builds.'
-            ) | Set-Content -Encoding UTF8 README.txt
-            git add -- $name README.txt
-            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "$title ZIP (automated verified build)"
-            if ($LASTEXITCODE -ne 0) { throw 'Cannot commit delivery package' }
+              'Each ZIP is independent: extract the desired preview into its own folder.',
+              'Qt preview: XuperTVNovaQt.exe (visual-only)',
+              'Classic: XuperTVDesktop.exe (reproducer and iPhone control)'
+            )
+            foreach ($archive in $archives) {
+              Copy-Item $archive.Zip -Destination (Join-Path $folder $archive.Name)
+              $receipt += "$($archive.Name) SHA256: $($archive.Hash)"
+            }
+            $receipt | Set-Content -Encoding UTF8 README.txt
+            git add -A
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "$title ZIPs (automated verified build)"
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot commit delivery packages' }
             git push --force origin HEAD:refs/heads/$deliveryBranch
             if ($LASTEXITCODE -ne 0) { throw 'Cannot publish delivery branch' }
-            Write-Host "Temporary download: https://github.com/$env:GITHUB_REPOSITORY/raw/refs/heads/$deliveryBranch/$name"
+            foreach ($archive in $archives) {
+              Write-Host "Temporary download: https://github.com/$env:GITHUB_REPOSITORY/raw/refs/heads/$deliveryBranch/$($archive.Name)"
+            }
           } finally {
             Pop-Location
           }
