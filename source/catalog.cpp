@@ -47,7 +47,7 @@ std::string search_key(const std::string& text){
     }return out;
 }
 Catalog read_m3u(std::istream& input) {
-    Catalog out; std::string line,title; bool unsupported=false; size_t number=0;
+    Catalog out; std::string line,title,logo; bool unsupported=false; size_t number=0;
     while(std::getline(input,line)) {
         ++number;
         if(number==1 && line.rfind("\xEF\xBB\xBF",0)==0) line.erase(0,3);
@@ -60,6 +60,19 @@ Catalog read_m3u(std::istream& input) {
                 else if(line[i]==',' && !quoted) {comma=i;break;}
             }
             title=comma==std::string::npos?"":trim(line.substr(comma+1));
+            logo.clear();
+            // IPTV-org exposes channel logos in EXTINF metadata. Keep only
+            // valid HTTP(S) artwork; never pass headers or local paths to Qt.
+            const std::string key="tvg-logo=\"";
+            const size_t start=line.find(key);
+            if(start!=std::string::npos && (comma==std::string::npos || start<comma)){
+                const size_t from=start+key.size();
+                const size_t end=line.find('"',from);
+                if(end!=std::string::npos){
+                    auto candidate=line.substr(from,end-from);
+                    if(candidate.size()<1800 && valid_source(candidate))logo=std::move(candidate);
+                }
+            }
             unsupported=false; continue;
         }
         if(line[0]=='#') {
@@ -78,8 +91,9 @@ Catalog read_m3u(std::istream& input) {
             for(char& ch:title) if(static_cast<unsigned char>(ch)<32 || ch==127) ch=' ';
             if(title.size()>180) title.resize(180);
             out.entries.push_back({title,line});
+            out.entries.back().artwork=logo;
         }
-        title.clear(); unsupported=false;
+        title.clear(); logo.clear(); unsupported=false;
     }
     return out;
 }
