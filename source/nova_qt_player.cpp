@@ -67,9 +67,11 @@ void NovaQtPlayer::sendVeyraControl(const QJsonObject& command){
 
 void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool live,double resumeSeconds){
     if(playing_.load()||!result.ok||!xs::valid_source(result.source))return;
-    // The Veyra experiment is opt-in. Keep the proven libmpv path untouched.
-    // Veyra 2.1.9 opens a positional local path or a network URL at startup.
-    if(qEnvironmentVariableIntValue("NOVA_VEYRA_PILOT")==1){
+    // Only patched Veyra receives the media source, via a private pipe.
+    // A failed handshake falls back to mpv once (no retry loop).
+    const bool skipVeyra=skipVeyraOnce_;
+    skipVeyraOnce_=false;
+    if(!skipVeyra && qEnvironmentVariableIntValue("NOVA_VEYRA_PILOT")==1){
         const QString executable=qEnvironmentVariable("NOVA_VEYRA_EXE");
         const QString source=QString::fromStdString(result.source);
         const QUrl url(source);
@@ -77,10 +79,12 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
             (url.scheme()==QStringLiteral("http")||url.scheme()==QStringLiteral("https"));
         const bool allowedNetwork=network &&
             qEnvironmentVariableIntValue("NOVA_VEYRA_ALLOW_NETWORK")==1 &&
-            url.userInfo().isEmpty() && !url.hasQuery() && !url.hasFragment();
+            url.userInfo().isEmpty() && !url.hasFragment() &&
+            (!url.hasQuery() || qEnvironmentVariableIntValue("NOVA_VEYRA_ALLOW_SIGNED_NETWORK")==1);
         const bool local=QFileInfo(source).isFile();
-        // Sources with authorization headers or subtitles are not portable via
-        // Veyra's positional CLI. Fall back to mpv without leaking credentials.
+        // Sources with HTTP auth headers or external subtitle URLs still require
+        // the mpv backend. URLs are NEVER passed on Veyra's process command line.
+        // Parameterised URLs need explicit opt-in (Veyra may log them itself).
         if(!executable.isEmpty() && QFileInfo(executable).isFile() &&
            result.headers.empty() && result.subtitles.empty() &&
            (local || allowedNetwork)){
@@ -89,12 +93,13 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
             if(!veyraProcess_){
                 veyraProcess_=std::make_unique<QProcess>();
                 veyraOutput_.clear();
+                veyraSource_=source;
                 veyraBridgeReady_=false;
                 veyraLastPosition_=-1.0;
                 veyraResumeSeconds_=live?0.0:resumeSeconds;
                 veyraLive_=live;
                 veyraProcess_->setProgram(executable);
-                veyraProcess_->setArguments({source});
+                veyraProcess_->setArguments({}); // source sent only after IPC handshake
                 veyraProcess_->setWorkingDirectory(QFileInfo(executable).absolutePath());
                 veyraProcess_->setProcessChannelMode(QProcess::ForwardedErrorChannel);
                 QProcessEnvironment env=QProcessEnvironment::systemEnvironment();
@@ -117,7 +122,9 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                         const QString type=msg.value(QStringLiteral("type")).toString();
                         if(type==QStringLiteral("nova-ready")){
                             veyraBridgeReady_=true;
-                            notice_=QStringLiteral("Veyra conectado: controles básicos disponibles");
+                            notice_=QStringLiteral("Veyra conectado: controles activos");
+                            sendVeyraControl({{"cmd","open_source"},{"source",veyraSource_}});
+                            veyraSource_.clear();
                             if(veyraResumeSeconds_>0)
                                 sendVeyraControl({{"cmd","resume"},{"seconds",veyraResumeSeconds_}});
                             emit changed();
@@ -155,6 +162,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                         emit finishedPlayback(veyraLive_?-1.0:veyraLastPosition_,false);
                         xs::RemoteServer::shared().end_playback();
                         veyraBridgeReady_=false;
+                        veyraSource_.clear();
                     });
                 veyraProcess_->start();
                 if(veyraProcess_->waitForStarted(3000)){
@@ -163,12 +171,24 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                     notice_=QStringLiteral("Reproduciendo en Veyra (esperando conexión de controles)");
                     playing_.store(true);
                     emit changed();
-                    QTimer::singleShot(10000,this,[this]{
-                        if(veyraProcess_ && veyraProcess_->state()==QProcess::Running &&
-                           !veyraBridgeReady_){
-                            notice_=QStringLiteral("Veyra abierto sin puente Nova: controles solo en Veyra");
-                            emit changed();
-                        }
+                    QTimer::singleShot(10000,this,[this,result,title,live,resumeSeconds]{
+                        // Old/unpatched Veyra cannot accept the source by pipe.
+                        // Kill ONLY the child we spawned; then transparently retry
+                        // with Nova's original MPV backend.
+                        if(!veyraProcess_ || veyraProcess_->state()!=QProcess::Running ||
+                           veyraBridgeReady_)return;
+                        veyraProcess_->disconnect(this);
+                        veyraProcess_->kill();
+                        veyraProcess_->waitForFinished(1000);
+                        veyraProcess_.reset();
+                        veyraSource_.clear();
+                        veyraOutput_.clear();
+                        xs::RemoteServer::shared().end_playback();
+                        playing_.store(false);
+                        notice_=QStringLiteral("Veyra no respondió; regresando a MPV");
+                        emit changed();
+                        skipVeyraOnce_=true;
+                        play(result,title,live,resumeSeconds);
                     });
                     return;
                 }
