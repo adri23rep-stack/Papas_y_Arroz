@@ -316,7 +316,7 @@ QString generatePairingQr(const std::string& address,const std::string& pin){
 NovaQtHome::NovaQtHome(QObject* parent):QObject(parent),player_(this){
     connect(&player_,&NovaQtPlayer::changed,this,&NovaQtHome::changed);
     connect(&player_,&NovaQtPlayer::finishedPlayback,this,[this](double seconds,bool ended){
-        if(!active_entry_.content_id.empty()){
+        // A separate Veyra process cannot report its playback position yet.\n        if(seconds>=0.0 && !active_entry_.content_id.empty()){
             playback_history_.save(active_entry_.content_id,seconds,
                 playback_history_.speed,playback_history_.volume,
                 playback_history_.auto_next,ended);
