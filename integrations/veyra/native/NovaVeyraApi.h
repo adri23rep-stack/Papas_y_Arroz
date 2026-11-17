@@ -39,6 +39,15 @@ typedef struct NovaVeyraSettings {
     uint32_t software_decode; // 0 uses hardware if possible
 } NovaVeyraSettings;
 
+// Veyra reports real track indices, not positional 1-based guesses.
+typedef struct NovaVeyraAudioTrack {
+    uint32_t size;
+    int32_t stream_index;
+    uint32_t channels;
+    uint32_t selected;
+    char label_utf8[128];
+} NovaVeyraAudioTrack;
+
 typedef struct NovaVeyraSnapshot {
     uint32_t size; // sizeof(NovaVeyraSnapshot) required
     uint32_t transport; // NOVA_VEYRA_*; from real Veyra snapshot
@@ -94,6 +103,11 @@ NOVA_VEYRA_EXPORT int NOVA_VEYRA_CALL nova_veyra_settings(
     void* engine, const NovaVeyraSettings* settings);
 NOVA_VEYRA_EXPORT int NOVA_VEYRA_CALL nova_veyra_snapshot(
     void* engine, NovaVeyraSnapshot* out);
+NOVA_VEYRA_EXPORT uint32_t NOVA_VEYRA_CALL nova_veyra_audio_count(void* engine);
+NOVA_VEYRA_EXPORT int NOVA_VEYRA_CALL nova_veyra_audio_at(
+    void* engine, uint32_t position, NovaVeyraAudioTrack* out);
+NOVA_VEYRA_EXPORT int NOVA_VEYRA_CALL nova_veyra_select_audio(
+    void* engine, int32_t stream_index);
 #ifdef __cplusplus
 } // extern "C"
 #endif
