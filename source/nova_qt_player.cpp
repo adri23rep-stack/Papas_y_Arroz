@@ -124,7 +124,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                         }else if(type==QStringLiteral("nova-status") && veyraBridgeReady_){
                             const double pos=msg.value(QStringLiteral("position")).toDouble(-1);
                             if(!veyraLive_ && msg.value(QStringLiteral("hasSource")).toBool() &&
-                               std::isfinite(pos) && pos>=0)
+                               std::isfinite(pos) && pos>3.0)
                                 veyraLastPosition_=pos;
                             const QJsonArray audio=msg.value(QStringLiteral("audioTracks")).toArray();
                             xs::RemotePlaybackSnapshot state;
