@@ -124,3 +124,33 @@ privados. No necesitas virtualizacion, root ni el APK para probarlo.
 Si ambos perfiles devuelven `portal200001`, habremos descartado esta prueba
 de metadatos, no identificado toda la diferencia del cliente Android.
 La reproduccion con RIFE/RTX AI no se modifica.
+
+### Segundo perfil de prueba: Android TV (Amlogic)
+
+El APK Focuz contiene `FocuzIdentityHelper.ensureProfile`, que prepara
+metadatos sinteticos de la familia Amlogic/S905X3/Android 11 y los mantiene
+consistentes durante la sesion. La ruta `Lbc/f.g0` utiliza este perfil
+cuando construye `SnTokenBean` (registro del dispositivo). Esta observacion
+no demuestra que copiar el perfil conceda autorizacion del servicio.
+
+Para probar solo esos metadatos publicos en Nova Windows, sin copiar
+identidades, sesiones, tokens ni el mecanismo de rotacion de pruebas de Focuz:
+
+```powershell
+$env:NOVA_DEVICE_PROFILE = "android-tv-test"
+.\XuperTVNovaQt.exe
+```
+
+El error, si lo hay, mostrara `[Android TV de prueba]`. Para restaurar
+el modo normal, cierra Nova y ejecuta:
+
+```powershell
+Remove-Item Env:\NOVA_DEVICE_PROFILE -ErrorAction SilentlyContinue
+.\XuperTVNovaQt.exe
+```
+
+No se editan `service.json`, `device_state.json` ni datos del reproductor.
+Un rechazo `portal200001` en este perfil **no** prueba que el problema
+sea el hardware: tambien pueden influir version, autorizacion, requisitos del
+proveedor y la secuencia completa de registro. Evita reenviar identificadores
+y no uses ni imites la rotacion de sesiones de prueba.
