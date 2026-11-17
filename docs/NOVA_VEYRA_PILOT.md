@@ -18,7 +18,7 @@ Nova a la base Veyra. No afirma tener la misma integración de controles del rep
 
 1. Construir la rama para Windows con `COMPILAR_NOVA_WINDOWS.cmd`.
 2. Instalar Veyra 2.1.9 (se revisó el código fuente adjunto de esa versión);
-   localizar su **ejecutable Qt/QML** real. La edición clásica puede no aceptar
+   localizar su **ejecutable Qt/QML** real (al compilar el código fuente se llama\n   `veyra_qml_ui.exe`; el instalador podría cambiarle el nombre). La edición clásica puede no aceptar
    argumentos de entrada.
 3. Usar una ruta absoluta al .exe de Veyra. No se descarga ni instala Veyra desde Nova.
 
@@ -28,7 +28,7 @@ Ajustar la ruta al ejecutable de Veyra:
 
 ```powershell
 $env:NOVA_VEYRA_PILOT = '1'
-$env:NOVA_VEYRA_EXE = 'C:\Ruta\A\VeyraQml.exe'
+$env:NOVA_VEYRA_EXE = 'C:\Ruta\A\veyra_qml_ui.exe'
 # Abrir Nova compilado desde esta rama, desde su carpeta de ejecución:
 .\XuperTVNovaQt.exe
 ```
