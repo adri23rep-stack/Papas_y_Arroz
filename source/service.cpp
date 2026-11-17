@@ -3,6 +3,7 @@
 #include "ranger_codec.hpp"
 #include "trace.hpp"
 #include "installation.hpp"
+#include "service_device_profile.hpp"
 #include <curl/curl.h>
 #define JSON_NOEXCEPTION 1
 #include "json.hpp"
@@ -67,7 +68,7 @@ static bool request(const std::string& url,const std::string* post,const Json& c
     if(post) {
         headers=curl_slist_append(headers,"Content-Type: application/json;charset=utf-8");
         for(const auto& pair:{std::pair<const char*,std::string>{"apk",text(config,"app_id")},
-                             {"apkVer",text(config,"apk_version")},{"spkgVer","Horizon homebrew"}}) {
+                             {"apkVer",text(config,"apk_version")},{"spkgVer",service_device_profile(text(config,"_nova_device_profile")=="android-test").http_package_version}}) {
             if(pair.second.find_first_of("\r\n")==std::string::npos)
                 headers=curl_slist_append(headers,(std::string(pair.first)+": "+pair.second).c_str());
         }
@@ -190,7 +191,8 @@ static const char* service_stage(const char* route) {
 }
 static bool api_post(const Json& config,const Json& common,const char* route,Json payload,Json& data,std::string& status) {
         const auto fail=[&](const std::string& reason){
-            status=std::string(service_stage(route))+": "+reason;
+            status=std::string(service_stage(route))+
+                (text(config,"_nova_device_profile")=="android-test"?" [Android de prueba]":"")+": "+reason;
             return false;
         };
         for(auto it=common.begin();it!=common.end();++it)payload[it.key()]=it.value();
@@ -390,6 +392,14 @@ LoginAttempt service_bootstrap(const std::string& path) {
     if(!config.is_object()||text(config,"installation_serial").empty()||text(config,"password_salt").empty()){
         out.status="Actualiza todos los archivos del paquete.";return out;
     }
+    // Diagnostic-only Windows profile. The choice is process-local and is
+    // never saved to service.json/device_state.json, nor used by Switch builds.
+    const bool android_test=nova_android_test_profile_enabled();
+    const auto device_profile=service_device_profile(android_test);
+    if(android_test){
+        config["_nova_device_profile"]="android-test";
+        trace("service:android_test_profile_enabled");
+    }
     const auto hosts=config.find("portal_hosts");const std::string key=text(config,"key_base64");
     if(hosts==config.end()||!hosts->is_array()||hosts->empty()||key.empty()){
         out.status="Configuracion del servicio incompleta.";return out;
@@ -404,19 +414,21 @@ LoginAttempt service_bootstrap(const std::string& path) {
     auto counter=state.find("open_count");
     if(counter!=state.end()&&counter->is_number_unsigned())open_count=std::min(counter->get<unsigned>(),2147483646u)+1;
     Json common={{"loginType",text(config,"login_type","2")},{"appLanguage",text(config,"language","es")},
-        {"apkVersion",text(config,"apk_version")},{"sysVersion","Horizon"},{"appId",text(config,"app_id")},
-        {"hardwareInfo","Tegra X1"},{"model","Nintendo Switch"},{"product","Horizon homebrew"},
+        {"apkVersion",text(config,"apk_version")},{"sysVersion",device_profile.sys_version},{"appId",text(config,"app_id")},
+        {"hardwareInfo",device_profile.hardware_info},{"model",device_profile.model},{"product",device_profile.product},
         {"cpu","arm64-v8a"},{"B29",""},{"reserve1",text(config,"device_id")},{"portalCode",""},
         {"deviceToken",""},{"sn",text(state,"sn")},{"drmId",""},{"sdkVer",0}};
     auto post=[&](const char* route,Json payload,Json& data){
         return api_post(config,common,route,std::move(payload),data,out.status);
     };
-    Json device={{"androidId",""},{"wifiMac",text(config,"device_id")},{"etheMac",""},
+    Json device={{"androidId",android_test?local_test_android_id(text(config,"installation_serial")):std::string{}},
+        {"wifiMac",text(config,"device_id")},{"etheMac",""},
         {"serialNumber",text(config,"installation_serial")},{"diskInfo",""},{"ramSize",""},
-        {"romSize",""},{"gatewayMac",""},{"cpuId",""},{"display","Horizon"},
-        {"brand","Nintendo"},{"verId","Horizon"},{"cpuAbi","arm64-v8a"},{"hardware","Tegra X1"},
-        {"manufacturer","Nintendo"},{"fingerprint",""},{"host",""},{"device","Nintendo Switch"},
-        {"board","nx"},{"tags","homebrew"}};
+        {"romSize",""},{"gatewayMac",""},{"cpuId",""},{"display",device_profile.display},
+        {"brand",device_profile.brand},{"verId",device_profile.ver_id},{"cpuAbi","arm64-v8a"},
+        {"hardware",device_profile.hardware},{"manufacturer",device_profile.manufacturer},
+        {"fingerprint",""},{"host",""},{"device",device_profile.device},
+        {"board",device_profile.board},{"tags",device_profile.tags}};
     Json token_data;
     if(!post("/api/portalCore/v3/snToken",device,token_data))return out;
     const std::string token=text(token_data,"snToken");const bool existing=text(token_data,"isNew")=="1";
