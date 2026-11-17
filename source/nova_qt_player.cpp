@@ -87,6 +87,8 @@ bool NovaQtPlayer::setVeyraSetting(const QString& key,int value){
         bool accepted=false;
         if(key=="veyra_multiplier" && value>=2 && value<=6)
             accepted=nativeVeyra_->multiplier(unsigned(value));
+        else if(key=="veyra_sr_quality" && value>=0)
+            accepted=nativeVeyra_->srQuality(unsigned(value));
         else if((value==0||value==1) && key=="veyra_fg")
             accepted=nativeVeyra_->change(NOVA_VEYRA_FEATURE_FG,value!=0);
         else if((value==0||value==1) && key=="veyra_sr")
@@ -218,6 +220,9 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                         if(std::isfinite(snap.position_seconds)&&snap.position_seconds>=0)
                             nativeVeyraLastPosition_=snap.position_seconds;
                         QVariantMap state;
+                        state.insert("nativeEngine",true);
+                        state.insert("srQuality",int(snap.applied_sr_quality));
+                        state.insert("requestedSrQuality",int(snap.desired_sr_quality));
                         state.insert("fgBackend",QStringLiteral("DLSS"));
                         state.insert("fgEnabled",bool(snap.fg_active));
                         state.insert("srEnabled",bool(snap.sr_active));
