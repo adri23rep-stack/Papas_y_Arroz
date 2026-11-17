@@ -28,7 +28,7 @@ struct Session {
 bool checked(const NovaVeyraSettings* options){
     if(!options || options->size!=sizeof(NovaVeyraSettings))return false;
     if(options->features & ~(NOVA_VEYRA_FEATURE_NR|NOVA_VEYRA_FEATURE_SR|NOVA_VEYRA_FEATURE_FG|NOVA_VEYRA_FEATURE_HDR))return false;
-    if(options->fg_backend>NOVA_VEYRA_FG_AMD_FRC || options->sr_quality>4)return false;
+    if(options->fg_backend>NOVA_VEYRA_FG_AMD_FRC || !veyra::engine::validVideoSrQuality(options->sr_quality))return false;
     if(options->software_decode>1)return false;
     if((options->features&NOVA_VEYRA_FEATURE_FG)!=0){
         if(options->fg_multiplier<2||options->fg_multiplier>8)return false;
@@ -130,6 +130,8 @@ int NOVA_VEYRA_CALL nova_veyra_snapshot(void* ptr,NovaVeyraSnapshot* out){
         out->source_frames=s.frames;
         out->generated_frames=s.generated;
         out->session_id=s.sessionId;
+        out->applied_sr_quality=s.applied.videoSrQuality;
+        out->desired_sr_quality=s.desired.videoSrQuality;
         return 1;
     } catch (...) {return 0;}
 }
