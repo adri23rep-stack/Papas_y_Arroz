@@ -53,35 +53,48 @@ foreach($parent in @($nova,$veyra,$source,$build,$ffmpeg)){
     throw 'Output may not be inside, contain or overwrite any input folder.'
  }
 }
-$depOutput=(& dumpbin.exe /DEPENDENTS $dll 2>&1 | Out-String)
-if($LASTEXITCODE -ne 0){throw "dumpbin could not inspect real native DLL: $dll"}
-$dependencyNames=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
-foreach($line in ($depOutput -split "\r?\n")){
- if($line -match '^\s*([a-zA-Z0-9_.+-]+\.dll)\s*$'){
-    [void]$dependencyNames.Add($Matches[1])
- }
-}
-if($dependencyNames.Count -eq 0){throw 'No PE import dependencies found; DLL is not a valid compiled Veyra module.'}
+# Follow the entire PE import tree: FFmpeg DLLs themselves depend on more
+# FFmpeg/codec libraries. A direct-only check can produce a broken ZIP.
 $system='^(api-ms-win-|ext-ms-win-|kernel32\.dll$|user32\.dll$|gdi32\.dll$|advapi32\.dll$|shell32\.dll$|ole32\.dll$|oleaut32\.dll$|combase\.dll$|bcrypt\.dll$|crypt32\.dll$|version\.dll$|ntdll\.dll$|d3d11\.dll$|d3d12\.dll$|dxgi\.dll$|dxguid\.dll$|winmm\.dll$|ws2_32\.dll$|secur32\.dll$|cfgmgr32\.dll$|mfplat\.dll$|mf\.dll$|mfuuid\.dll$|mmdevapi\.dll$|avrt\.dll$|windowscodecs\.dll$|shlwapi\.dll$|setupapi\.dll$|rpcrt4\.dll$|comdlg32\.dll$)'
 $dependencyPaths=@{}
-$missing=New-Object System.Collections.Generic.List[string]
-foreach($name in $dependencyNames){
- if($name -match $system){continue}
- $atNova=Join-Path $nova $name
- if(Test-Path -LiteralPath $atNova -PathType Leaf){
-   $dependencyPaths[$name]=$atNova
-   continue
+$missing=[System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$visited=[System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$pending=[System.Collections.Generic.Queue[string]]::new()
+$pending.Enqueue($dll)
+$rootScan=$true
+while($pending.Count -gt 0){
+ $current=$pending.Dequeue()
+ if(-not $visited.Add($current)){continue}
+ $depOutput=(& dumpbin.exe /DEPENDENTS $current 2>&1 | Out-String)
+ if($LASTEXITCODE -ne 0){throw "dumpbin could not inspect a DLL: $current"}
+ $directImports=0
+ foreach($line in ($depOutput -split "\r?\n")){
+  if($line -notmatch '^\s*([a-zA-Z0-9_.+-]+\.dll)\s*$'){continue}
+  ++$directImports
+  $name=$Matches[1]
+  if($name -match $system){continue}
+  if(Test-Path -LiteralPath (Join-Path "$env:SystemRoot\System32" $name) -PathType Leaf){continue}
+  if($dependencyPaths.ContainsKey($name)){continue}
+  $found=$null
+  foreach($folder in @($nova,(Join-Path $ffmpeg 'bin'),$veyra,(Join-Path $veyra 'bin'))){
+   $candidate=Join-Path $folder $name
+   if(Test-Path -LiteralPath $candidate -PathType Leaf){$found=$candidate;break}
+  }
+  if(-not $found){
+   [void]$missing.Add($name)
+  }else{
+   $dependencyPaths[$name]=$found
+   $pending.Enqueue($found)
+  }
  }
- $found=$null
- foreach($folder in @((Join-Path $ffmpeg 'bin'),$veyra,(Join-Path $veyra 'bin'))){
-   $maybe=Join-Path $folder $name
-   if(Test-Path -LiteralPath $maybe -PathType Leaf){$found=$maybe;break}
+ if($rootScan -and $directImports -eq 0){
+    throw 'No PE imports found: nova_veyra_native.dll is not a valid compiled adapter.'
  }
- if(-not $found){$missing.Add($name)}else{$dependencyPaths[$name]=$found}
+ $rootScan=$false
 }
 if($missing.Count){
  foreach($name in $missing){Write-Warning "Native DLL dependency missing: $name"}
- throw 'Cannot stage or claim native GPU works with missing imported DLLs.'
+ throw 'Cannot stage Veyra GPU: required transitive PE libraries missing.'
 }
 $requiredShaders=(Get-ChildItem -LiteralPath $shaders -Filter '*.dxil' -File -ErrorAction Stop)
 if($requiredShaders.Count -lt 15){throw "Incomplete original Veyra shader build: $shaders"}
