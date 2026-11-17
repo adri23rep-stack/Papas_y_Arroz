@@ -364,6 +364,42 @@ Item {
                     color: "#B9B4C5"; font.pixelSize: 12
                 }
             }
+            // Shown ONLY when the user explicitly starts the stock Win32
+            // pilot. Catalog URL validation remains unchanged; this one
+            // fixed local test.mp4 is already allowed by catalog.cpp.
+            Rectangle {
+                visible: novaHome.win32PilotEnabled
+                x: 24
+                y: qualityPanel.height - 58
+                width: qualityPanel.width - 48
+                height: 44
+                radius: 10
+                color: win32SampleMouse.containsMouse ? "#514079" : "#40305E"
+                border.color: "#AA90F5"
+                Accessible.role: Accessible.Button
+                Accessible.name: "Probar Veyra con test.mp4 local"
+                Accessible.onPressAction: {
+                    if (novaHome.playLocalPilotSample())
+                        overlay.qualityVisible = false
+                }
+                Text {
+                    anchors.centerIn: parent
+                    text: "Probar Veyra Win32 · test.mp4"
+                    color: "white"
+                    font.pixelSize: 15
+                    font.family: "Segoe UI"
+                }
+                MouseArea {
+                    id: win32SampleMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (novaHome.playLocalPilotSample())
+                            overlay.qualityVisible = false
+                    }
+                }
+            }
         }
     }
 
