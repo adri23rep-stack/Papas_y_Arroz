@@ -106,6 +106,10 @@ jobs:
           [System.Management.Automation.Language.Parser]::ParseFile(
             "tools/Fetch-NovaVeyraPublicSDKs.ps1", [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count) { throw "Veyra public SDK helper has syntax errors: $errors" }
+          $tokens = $null; $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "tools/Stage-NovaVeyraLocal.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count) { throw "Veyra local stager has syntax errors: $errors" }
           $sdkPreview = & ./tools/Fetch-NovaVeyraPublicSDKs.ps1 -Destination (Join-Path $env:RUNNER_TEMP 'missing-nova-sdk') -CheckOnly | Out-String
           if ($sdkPreview -notmatch 'v310.7.0' -or $sdkPreview -notmatch 'n13.0.19.0') {
             throw "Public SDK dry-run did not preserve required pinned versions"
