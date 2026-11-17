@@ -1,140 +1,140 @@
-# Nova + Veyra: primer experimento de reproducción
+# Nova + Veyra 2.1.9 — integración experimental (solo Windows)
 
-**Estado:** piloto experimental, NO es un port completo ni se ha compilado/probado en una GPU Windows.
-**Rama:** `feature/nova-veyra-engine` (separada de `main`).
+**Rama:** feature/nova-veyra-engine. **Base:** main de Papas_y_Arroz.  
+**Estado:** fuentes modificadas y pruebas CI configuradas; **sin validar todavía en RTX 3060 real**.
+**Importante:** esta etapa conecta DOS procesos, no incorpora el renderizador D3D12 de
+Veyra dentro de Qt/MPV de Nova. MPV sigue siendo el reproductor predeterminado.
 
-## Qué hace esta primera implementación
+## Qué hace realmente
 
-Nova Qt mantiene su catálogo, servicio y protocolo con iPhone. Con el opt-in habilitado,
-al seleccionar un medio compatible intenta abrir **la aplicación instalada de Veyra**
-con la fuente elegida como argumento. El motor GPU, ajustes y filtros usados son los
-del Veyra instalado por el usuario. Si no es elegible o no arranca, Nova vuelve a MPV.
+Nova conserva catálogo, favoritos, lista de episodios, QR y servidor de control iPhone.
+Con el piloto activado, intenta lanzar una **copia compilada y parcheada** de
+Veyra 2.1.9. Después de establecer comunicación por tubería local, Nova envía
+la fuente y recibe estado, progreso y pistas. No se usa OBS ni un puerto de red.
 
-No se han copiado fuentes de Veyra dentro del repositorio. Esta primera iteración
-usa una **integración de procesos separados**, antes de decidir si migramos el UI de
-Nova a la base Veyra. No afirma tener la misma integración de controles del reproductor.
+Funciones ya enlazadas por código:
+- Reproducir/pausar, detener, saltar +/- segundos, volumen, velocidad.
+- Elegir audio y subtítulos **que el motor Veyra detecte y pueda decodificar**.
+- Regresar a un segundo guardado y actualizar Continuar viendo si Veyra reportó progreso.
+- Pantalla completa (F11) y cambio de monitor (F10) del reproductor Veyra.
+- Estado informativo: FPS de entrada/entrega, generación de FPS, SR, NR y HDR.
+- El adaptador Veyra acepta comandos explícitos para FG/SR/NR/HDR y multiplicador
+  de frames; **todavía NO hay selector conectado a esos comandos en la UI/iPhone**.
+  Veyra utiliza su propio preset guardado.
 
-## Requisitos
+Protecciones:
+- Piloto apagado por defecto; las pruebas no modifican main.
+- MPV se usa si el EXE no arranca, el puente no responde en 10 segundos,
+  el medio no es compatible o faltan permisos de envío.
+- El enlace de reproducción se manda por la entrada estándar **después** de que
+  Veyra confirma el puente; no va en argumentos de arranque.
+- Fuentes con cabeceras HTTP de autorización o subtítulos entregados por el
+  servicio de Nova quedan en MPV: todavía no hay traducción fiel.
+- El avance desconocido no pone Continuar viendo en 0.
 
-1. Construir la rama para Windows con `COMPILAR_NOVA_WINDOWS.cmd`.
-2. Instalar Veyra 2.1.9 (se revisó el código fuente adjunto de esa versión);
-   localizar su **ejecutable Qt/QML** real (al compilar el código fuente se llama\n   `veyra_qml_ui.exe`; el instalador podría cambiarle el nombre). La edición clásica puede no aceptar
-   argumentos de entrada.
-3. Usar una ruta absoluta al .exe de Veyra. No se descarga ni instala Veyra desde Nova.
+## Preparar dos copias de compilación (no alterar el Veyra que ya funciona)
 
-## Prueba en PowerShell (primero con un archivo local)
+1. Extrae el ZIP de fuentes del usuario Veyra-NRVideo-main.zip en una carpeta
+   aparte (la fuente revisada es Veyra 2.1.9, Qt QML).
+2. Abre PowerShell en la raíz de Nova, rama feature/nova-veyra-engine.
+3. Verifica las anclas del parche; si la versión no coincide, DETENTE:
 
-Ajustar la ruta al ejecutable de Veyra:
+\`\`\`powershell
+python .\tools\Apply-VeyraNovaBridge.py --check "C:\Proyectos\Veyra-NRVideo-main"
+\`\`\`
 
-```powershell
+4. Instala el pequeño adaptador **solo en esa copia de fuentes**:
+
+\`\`\`powershell
+python .\tools\Apply-VeyraNovaBridge.py "C:\Proyectos\Veyra-NRVideo-main"
+\`\`\`
+
+5. Compila Veyra usando **Visual Studio/MSVC x64** y los requisitos propios de
+   su repositorio. Objetivo Qt: veyra_qml_ui.exe. Su CMakePresets.json incluye
+   la configuración x64-release (Ninja). Esto es un proyecto distinto de Nova
+   y puede necesitar DLL, runtimes y modelos propios de Veyra.
+6. Compila Nova desde esta rama con COMPILAR_NOVA_WINDOWS.cmd. No reemplaces
+   ni borres service.json ni el emparejamiento existente.
+7. En la carpeta del EXE de Nova, configura tu ruta REAL de Veyra parcheado:
+
+\`\`\`powershell
 $env:NOVA_VEYRA_PILOT = '1'
-$env:NOVA_VEYRA_EXE = 'C:\Ruta\A\veyra_qml_ui.exe'
-# Abrir Nova compilado desde esta rama, desde su carpeta de ejecución:
+$env:NOVA_VEYRA_EXE = 'C:\Proyectos\Veyra-NRVideo-main\out\build\x64-release\veyra_qml_ui.exe'
 .\XuperTVNovaQt.exe
-```
+\`\`\`
 
-Seleccionar en Nova un archivo local que exista (si está disponible en el catálogo).
-Veyra debería abrirse con la reproducción. Cerrar Veyra debería actualizar el estado
-de Nova. **Los controles del iPhone todavía no controlan la instancia de Veyra.**
+Si el EXE está en otra ruta, corrige la variable: NO uses esa ruta como
+suposición del lugar final del compilador.
 
-Para probar una URL de emisión pública **sin credenciales, consulta ni cabeceras**:
+### Probar una fuente HTTP/HTTPS pública sin credenciales
 
-```powershell
+\`\`\`powershell
 $env:NOVA_VEYRA_ALLOW_NETWORK = '1'
 .\XuperTVNovaQt.exe
-```
+\`\`\`
 
-El piloto no enviará a Veyra fuentes con cabeceras HTTP de autenticación,
-subtítulos separados, URL con usuario/contraseña, consulta o fragmento; en esos
-casos seguirá usando MPV. Esta restricción evita filtrar datos confidenciales a
-la línea de comandos de otro proceso. Incluso las URLs permitidas podrían
-contener identificadores en su ruta; probar únicamente con fuentes públicas.
+Por defecto no se envían URLs con parámetros de consulta. **Solo si sabes que
+el enlace es tuyo/autorizado y aceptas que Veyra podría registrar la URL en
+sus propios diagnósticos**, puedes habilitar además:
 
-Desactivar todo (las variables solo afectan la sesión actual de PowerShell):
+\`\`\`powershell
+$env:NOVA_VEYRA_ALLOW_SIGNED_NETWORK = '1'
+.\XuperTVNovaQt.exe
+\`\`\`
 
-```powershell
+Esto NO añade soporte para cabeceras HTTP especiales ni garantiza que un
+proveedor permita la reproducción. Mantener esas fuentes en MPV es intencional.
+
+### Desactivar por completo
+
+\`\`\`powershell
 Remove-Item Env:\NOVA_VEYRA_PILOT -ErrorAction SilentlyContinue
 Remove-Item Env:\NOVA_VEYRA_EXE -ErrorAction SilentlyContinue
 Remove-Item Env:\NOVA_VEYRA_ALLOW_NETWORK -ErrorAction SilentlyContinue
-```
+Remove-Item Env:\NOVA_VEYRA_ALLOW_SIGNED_NETWORK -ErrorAction SilentlyContinue
+\`\`\`
 
-## Pendientes antes de considerar Veyra como motor predeterminado
+Deshacer solo el parche de la copia de Veyra, sin tocar Nova ni el Veyra que
+ya tenías instalado:
 
-- Seleccionar la base arquitectónica final: portar la UI/control de Nova al
-  proyecto Veyra o implementar IPC local entre ambos procesos.
-- Conectar **pausa, volumen, seek, cambio de canal, pistas, subtítulos,
-  pantalla completa y cambio de monitor** sin usar teclas simuladas.
-- Conservar el minuto reproducido y la sesión tras cambiar de motor.\n  El piloto conserva el valor anterior en Nova y no guarda el progreso que se\n  alcanza dentro de Veyra.
-- Resolver autorización y fuentes protegidas **sin exponer tokens** en argumentos,
-  registros ni configuraciones.
-- Validar canales HLS, MPEG-TS, audio multilingüe, subtítulos y cambio rápido de
-  canal; medir GPU, latencia, FPS entregados, audio y reconexiones.
-- Evaluar licencias antes de integrar código: Veyra es GPL-3.0; la invocación
-  externa aquí no supone incorporar su código en la compilación de Nova.
+\`\`\`powershell
+python .\tools\Apply-VeyraNovaBridge.py --restore "C:\Proyectos\Veyra-NRVideo-main"
+\`\`\`
 
-## Cómo evaluar el piloto
+## Límites conocidos y tareas de Astra
 
-1. Con la variable apagada, confirmar que MPV sigue funcionando como antes.
-2. Activar piloto con una película local y ver si Veyra abre y muestra imagen/audio.
-3. Cerrar Veyra y confirmar que Nova no se cierra.
-4. Probar un canal público sin autenticación, solo si se habilitó red.
-5. Probar un canal protegido y confirmar que Nova vuelve a MPV.
-6. Repetir sin Veyra disponible: MPV debe seguir abriendo el medio.
+- **Sin pruebas de compilación/reproducción Veyra modificada.** La CI Windows
+  actualmente compila Nova y ejecuta pruebas offline del instalador del parche.
+  No compila automáticamente el Veyra gigante ni ejecuta GPU NVIDIA.
+- Los comandos de mejora de imagen están implementados en el puente, pero
+  falta crear y conectar controles de Nova/iPhone para ellos.
+- Si una fuente exige cabeceras HTTP, DRM o subtítulos separados de la API,
+  sigue con MPV hasta que exista un soporte seguro y verificable.
+- No están migrados cuadros de ajustes ni la interfaz de Nova dentro del
+  proceso de Veyra. Sigue siendo una ventana de video independiente.
+- Queda probar seek/HLS en vivo, reconexión, sincronización audio/video,
+  pausa, cambio rápido de episodios, TV con streaming irregular y múltiples
+  pantallas.
+- Veyra (incluido el adaptador que se compila en él) se distribuye bajo
+  GPL-3.0: respetar licencias y avisos al publicar un paquete derivado.
+  El código Veyra NO se ha copiado ni enlazado como biblioteca en Nova.
 
-**No hacer merge en main** hasta completar la prueba real en RTX 3060.
+## Validación de regresión
 
-## Iteración 2: control real de Veyra mediante canal privado
+Ejecutar primero:
+\`\`\`powershell
+python -m unittest discover -s tests -p test_veyra_bridge_installer.py -v
+\`\`\`
 
-**Implementación en la rama:** integraciones en:
-- integrations/veyra/NovaStdioBridge.hpp
-- tools/Apply-VeyraNovaBridge.py
+Y después en una PC con RTX 3060:
+1. Sin variables, MPV de Nova abre el catálogo, funciona iPhone y pantalla completa.
+2. Veyra parcheado abre una película local; imagen/audio y filtros iguales a Veyra.
+3. Pausa, seek, volumen, pista audio y subtítulo desde iPhone.
+4. F10/F11, dos monitores, reanudar una película desde minuto guardado.
+5. Cerrar el Veyra hijo: Nova continúa abierto, sin memoria corrupta.
+6. EXE Veyra sin parche, ausente o que falla: MPV recupera reproducción.
+7. HLS público sin auth; probar cambios rápidos de canal y desincronización.
+8. Probar token/cabeceras: MPV debe conservar esas fuentes sin filtrarlas.
 
-El puente recibe órdenes JSON por la entrada estándar de Veyra y devuelve su
-estado por la salida estándar. No abre puertos locales ni de red, no usa OBS y
-solo se activa cuando Nova lanza Veyra con NOVA_VEYRA_STDIO=1.
-
-**Advertencia:** una instalación estándar de Veyra NO incluye este puente.
-Hay que compilar una copia independiente de Veyra con el parche para controlar
-el reproductor desde Nova/iPhone.
-
-### Preparación en Windows
-
-1. Extraer el ZIP de código fuente Veyra en una carpeta distinta del programa
-   Veyra que ya tienes funcionando.
-2. Desde la raíz del repositorio Nova en esta rama, ejecutar en PowerShell:
-
-    python .\tools\Apply-VeyraNovaBridge.py "C:\Ruta\Veyra-NRVideo-main"
-
-3. Compilar el proyecto Veyra con sus instrucciones oficiales de CMake y
-   Visual Studio. El objetivo Qt se llama veyra_qml_ui.exe.
-4. Compilar Nova desde esta rama con COMPILAR_NOVA_WINDOWS.cmd.
-5. Abrir Nova desde la carpeta donde se compiló con las variables siguientes:
-
-    $env:NOVA_VEYRA_PILOT='1'
-    $env:NOVA_VEYRA_EXE='C:\Ruta\VeyraBuild\veyra_qml_ui.exe'
-    .\XuperTVNovaQt.exe
-
-El script realiza una copia de respaldo de apps/veyra-qml/main.cpp llamada
-main.cpp.nova-pre-bridge.bak. No modifica el Veyra ya instalado.
-
-### Funciones ahora enlazadas en código (pendientes de prueba Windows)
-
-- Reproducción/pausa, volumen, velocidad y salto de tiempo desde Nova/iPhone.
-- Selección de pista de audio usando los índices publicados por Veyra.
-- Posición y duración devueltas por Veyra.
-- Continuar viendo: guarda la posición conocida al cerrar Veyra en videos
-  a demanda; en TV en vivo no intenta guardar segundos.
-- MPV sigue como modo predeterminado. Si no arranca el EXE externo, MPV es el
-  camino de respaldo. Si arranca Veyra sin el parche, reproducirá pero no
-  responderá a los nuevos controles de Nova.
-
-### Todavía pendiente
-
-- Compilar ambas aplicaciones y validar en una PC Windows/RTX 3060.
-- Control remoto de subtítulos, cambio de monitor y pantalla completa de Veyra.
-- Configuración de filtros VFG/SR/HDR desde el iPhone.
-- Transferencia segura de fuentes que requieren autorización, sin exponer tokens
-  ni contraseñas en la línea de comandos o registros.
-- Comprobar cierre del motor, reconexiones de TV en vivo y sincronización A/V.
-
-No fusionar a main hasta superar estas pruebas.
+**No hacer merge a main antes de superar compilación, smoke y pruebas reales.**
+Consulta docs/NOVA_VEYRA_HANDOFF_ASTRA.md para el siguiente trabajo técnico.
