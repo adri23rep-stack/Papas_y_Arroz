@@ -511,7 +511,7 @@ void NovaQtHome::playFeatured(){
     }));
 }
 bool NovaQtHome::playLocalPilotSample(){
-    if(!win32PilotEnabled() || player_.playing() || loading_)return false;
+    if(!veyraPilotTestAvailable() || player_.playing() || loading_)return false;
     // Existing catalog safety deliberately allows only the fixed test.mp4
     // sample, never arbitrary local paths from a remote playlist.
     const QString local=QDir::current().absoluteFilePath("test.mp4");
