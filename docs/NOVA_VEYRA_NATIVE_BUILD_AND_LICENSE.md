@@ -97,3 +97,47 @@ bajo acuerdos que lo prohíban.**
 El módulo de prueba no supone ni garantiza que el equipo supere límites
 de DLSS, HDR o FPS. La interfaz debe mostrar el estado real
 `applied` y las capacidades que notifique Veyra, no inventarlas.
+
+## Empaquetado local del motor REAL (después de compilar la DLL)
+
+El instalador `tools/Stage-NovaVeyraNative.ps1` prepara una **carpeta
+nueva**, nunca reescribe la instalación existente. Usa los DXIL compilados
+por el código fuente de Veyra y verifica los archivos DLL importados con
+`dumpbin /DEPENDENTS`. Copia únicamente archivos instalables de Nova,
+no `service.json`, identidades, ajustes, cache, sesiones ni tokens.
+Los archivos propietarios de NVIDIA se copian **solo** de la instalación
+portable que ya posee el usuario, para su propia prueba; **no** se suben
+al repositorio ni a Github Actions.
+
+```powershell
+.\tools\Stage-NovaVeyraNative.ps1 -NovaDirectory "C:\RUTA_REAL\Nova" -NativeBuildDirectory "C:\RUTA_REAL\out\nova-native-gpu" -VeyraSource "C:\RUTA_REAL\Veyra-NRVideo-main" -PortableVeyraDirectory "C:\RUTA_REAL\Veyra-2.1.9-NVIDIA-win64-portable" -FfmpegRoot "C:\RUTA_REAL\vcpkg\installed\x64-windows" -Output "C:\NovaVeyraNativoPrueba" -CheckOnly
+```
+
+Sin `-CheckOnly`, produce `Start-NovaVeyraNative.ps1`. Ese lanzador
+marca `NOVA_VEYRA_NATIVE_STRICT=1`: ante un error de DLL o de D3D12,
+muestra el error **sin cambiar silenciosamente a MPV**. Con la DLL
+cargada, el botón **Probar Veyra · test.mp4** del panel de calidad
+ejecuta el archivo local incluido con Nova. Se pueden comprobar:
+reproducción, conteo real de cuadros, generación de FPS, audio y cierre.
+
+El original Veyra resuelve shaders y binarios NGX respecto a la carpeta
+del **EXE huésped**. Por eso la preparación pone los DXIL en
+`Nova/shaders` y los activos NVIDIA autorizados en
+`runtime_local/nvidia` o `runtime/experimental`, no junto al
+source de Veyra. Si la DLL depende de versiones incompatibles de FFmpeg
+o Qt, el preparador detiene el proceso por colisión de hash.
+
+La comprobación Windows `veyra-native-source-contract.yml` ya compila
+`NovaVeyraNative.obj` con MSVC a partir de las cabeceras exactas del
+motor real. **No** enlaza `veyra_engine` ni puede sustituir las
+pruebas físicas de GPU.
+
+## Restricción externa que no se puede saltar
+
+Para compilar el motor original con NVOF real falta **NVIDIA Optical
+Flow SDK 5.0.7**, disponible bajo condiciones propias de NVIDIA:
+https://developer.nvidia.com/opticalflow/download .
+La copia de `veyra_qml_ui.exe` no aporta sus archivos de desarrollo.
+No hay permiso para asumir que aceptar la licencia en nombre del usuario
+sea automático, ni para redistribuir ese SDK dentro de un repositorio
+público. El script no lo descargará de fuentes dudosas.
