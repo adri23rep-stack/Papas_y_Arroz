@@ -101,7 +101,8 @@ public:
             !qEnvironmentVariable("NOVA_VEYRA_PROXY_SCRIPT").isEmpty();
     }
     bool veyraPilotTestAvailable() const {
-        return win32PilotEnabled() || qmlPilotEnabled();
+        return win32PilotEnabled() || qmlPilotEnabled() ||
+            !qEnvironmentVariable("NOVA_VEYRA_NATIVE_DLL").isEmpty();
     }
     QVariantMap veyraState() const {return player_.veyraState();}
     Q_INVOKABLE void setVeyraSetting(const QString& key,int value){player_.setVeyraSetting(key,value);}
