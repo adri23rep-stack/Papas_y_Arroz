@@ -55,9 +55,19 @@ Cuando diga que reconoce el EXE oficial, ejecuta igual **sin**
 & 'C:\NovaVeyraWin32Prueba\Start-NovaVeyraWin32.ps1'
 ```
 
-Abre **primero un archivo de prueba local** desde el catálogo de Nova
-(entrada que apunte a un archivo real del PC). Si se abre la ventana
-Win32 de Veyra, prueba pausa y pantalla completa.
+Para no debilitar la seguridad de las listas de reproducción, Nova sigue
+rechazando rutas locales arbitrarias procedentes del catálogo. Haz esta
+prueba concreta:
+
+1. Copia cualquier MP4 de prueba **propio** y renómbralo exactamente
+   `test.mp4` en la misma carpeta que `XuperTVNovaQt.exe`.
+2. Inicia `Start-NovaVeyraWin32.ps1`.
+3. Abre el panel de **Calidad de video** en Nova.
+4. Pulsa **Probar Veyra Win32 · test.mp4**.
+5. Revisa si el Veyra de prueba aparece con imagen/audio. Prueba pausa y F11.
+
+Si no aparece el botón, verifica que usas la última compilación de la rama.
+No copies ni subas videos privados a GitHub.
 
 La preparación verifica SHA-256 de `Veyra.exe` contra el valor publicado
 para el producto oficial 2.1.9:
