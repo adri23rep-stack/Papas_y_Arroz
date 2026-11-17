@@ -99,6 +99,147 @@ bool NovaQtPlayer::setVeyraSetting(const QString& key,int value){
 
 void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool live,double resumeSeconds){
     if(playing_.load()||!result.ok||!xs::valid_source(result.source))return;
+    // NEW: link Veyra's real EngineController into this process. This is the
+    // original D3D12/NGX/NVOF/shader pipeline, not MPV/RIFE or an IPC QML shim.
+    // It is opt-in until an NVIDIA/MSVC GPU build is validated on the RTX 3060.
+    // Never allow a network URL with arbitrary auth headers into this test.
+    const QString nativeDll=qEnvironmentVariable("NOVA_VEYRA_NATIVE_DLL");
+    if(!skipVeyraOnce_ && !nativeDll.isEmpty() &&
+       QFileInfo(nativeDll).isAbsolute() && QFileInfo(nativeDll).isFile() &&
+       !live && result.headers.empty() && result.subtitles.empty()){
+        const QString source=QString::fromStdString(result.source);
+        const QUrl url(source);
+        const bool safeHttp=url.isValid() &&
+            (url.scheme()=="http"||url.scheme()=="https") &&
+            qEnvironmentVariableIntValue("NOVA_VEYRA_NATIVE_ALLOW_NETWORK")==1 &&
+            url.userInfo().isEmpty()&&!url.hasFragment()&&!url.hasQuery();
+        const bool local=QFileInfo(source).isFile();
+        if(local||safeHttp){
+            auto candidate=std::make_unique<NovaVeyraNativeLoader>();
+            if(candidate->load(nativeDll)){
+                if(!videoWindow_){
+                    videoWindow_=std::make_unique<QWindow>();
+                    videoWindow_->installEventFilter(this);
+                }
+                auto* screen=QGuiApplication::focusWindow()
+                    ?QGuiApplication::focusWindow()->screen():QGuiApplication::primaryScreen();
+                videoWindow_->setScreen(screen);
+                const QRect area=screen->availableGeometry();
+                QRect bounds(QPoint(),QSize(960,540).boundedTo(area.size()));
+                bounds.moveCenter(area.center());
+                videoWindow_->setTitle(title);
+                videoWindow_->setGeometry(bounds);
+                videoWindow_->showNormal();
+                videoWindow_->requestActivate();
+                videoWindowId_=static_cast<std::int64_t>(videoWindow_->winId());
+                NovaVeyraSettings options{};
+                options.size=sizeof(options);
+                options.fg_backend=NOVA_VEYRA_FG_DLSS;
+                options.fg_multiplier=2;
+                options.sr_quality=2;
+                options.features=0; // First establish real decode before GPU features.
+                if(candidate->open(reinterpret_cast<void*>(videoWindow_->winId()),source,options)){
+                    nativeVeyra_=std::move(candidate);
+                    nativeVeyraStarted_=false;
+                    nativeVeyraPaused_=false;
+                    nativeVeyraLastPosition_=-1.0;
+                    veyraState_.clear();
+                    veyraBridgeReady_=false;
+                    veyraClock_.start();
+                    title_=title;
+                    notice_=QStringLiteral("Motor Veyra nativo · inicializando DirectX 12");
+                    diagnostics_=QStringLiteral("Veyra EngineController original (sin MPV)");
+                    playing_.store(true);
+                    xs::RemoteServer::shared().begin_playback(title.toStdString());
+                    emit changed();
+                    nativeVeyraPoll_.disconnect(this);
+                    connect(&nativeVeyraPoll_,&QTimer::timeout,this,
+                            [this,result,title,live,resumeSeconds]{
+                        if(!nativeVeyra_)return;
+                        NovaVeyraSnapshot snap{};
+                        const bool readable=nativeVeyra_->snapshot(snap);
+                        const bool broken=!readable||snap.failed||
+                            snap.transport==NOVA_VEYRA_FAILED||
+                            (!nativeVeyraStarted_ && veyraClock_.elapsed()>25000);
+                        if(broken){
+                            nativeVeyraPoll_.stop();
+                            nativeVeyra_.reset();
+                            veyraState_.clear();
+                            veyraBridgeReady_=false;
+                            playing_.store(false);
+                            xs::RemoteServer::shared().end_playback();
+                            if(videoWindow_)videoWindow_->hide();
+                            skipVeyraOnce_=true; // the failed native path is never retried
+                            play(result,title,live,resumeSeconds);
+                            notice_=QStringLiteral("Veyra nativo falló; recuperado con MPV.");
+                            emit changed();
+                            return;
+                        }
+                        if(snap.transport==NOVA_VEYRA_ENDED){
+                            const double pos=snap.duration_seconds>0?snap.duration_seconds:
+                                nativeVeyraLastPosition_;
+                            nativeVeyraPoll_.stop();
+                            nativeVeyra_.reset();
+                            veyraState_.clear();
+                            veyraBridgeReady_=false;
+                            playing_.store(false);
+                            xs::RemoteServer::shared().end_playback();
+                            if(videoWindow_)videoWindow_->hide();
+                            emit changed();
+                            emit finishedPlayback(pos,true);
+                            return;
+                        }
+                        if(!snap.running)return;
+                        nativeVeyraStarted_=true;
+                        veyraBridgeReady_=true;
+                        nativeVeyraPaused_=snap.transport==NOVA_VEYRA_PAUSED;
+                        if(std::isfinite(snap.position_seconds)&&snap.position_seconds>=0)
+                            nativeVeyraLastPosition_=snap.position_seconds;
+                        QVariantMap state;
+                        state.insert("fgBackend",QStringLiteral("DLSS"));
+                        state.insert("fgEnabled",bool(snap.fg_active));
+                        state.insert("srEnabled",bool(snap.sr_active));
+                        state.insert("nrEnabled",bool(snap.nr_active));
+                        state.insert("hdrEnabled",bool(snap.hdr_active));
+                        state.insert("fgMultiplier",int(2));
+                        state.insert("sourceFps",snap.source_fps);
+                        state.insert("submitFps",snap.submit_fps);
+                        state.insert("submitFpsKnown",bool(snap.submit_fps_known));
+                        QVariantList multipliers;
+                        if(snap.fg_max_generated>0){
+                            for(unsigned n:{2u,3u,4u,6u})
+                                if(n<=snap.fg_max_generated+1)
+                                    multipliers.push_back(QVariantMap{
+                                        {"id",QString::number(n)},{"label",QString::number(n)+"x"}});
+                        }
+                        state.insert("fgMultiplierChoices",multipliers);
+                        veyraState_=state;
+                        diagnostics_=QStringLiteral("Veyra D3D12 · fuente %1 FPS · salida %2")
+                            .arg(snap.source_fps,0,'f',1)
+                            .arg(snap.submit_fps_known?QString::number(snap.submit_fps,'f',1):
+                                 QStringLiteral("sin medir"));
+                        xs::RemotePlaybackSnapshot remoteState;
+                        remoteState.title=title_.toStdString();
+                        remoteState.engine="veyra";
+                        remoteState.veyraSettings={{int(snap.fg_active),int(snap.sr_active),
+                            int(snap.nr_active),int(snap.hdr_active),2}};
+                        for(const auto& item:multipliers){
+                            bool ok=false;
+                            const int n=item.toMap().value("id").toString().toInt(&ok);
+                            if(ok)remoteState.veyraMultipliers.push_back(n);
+                        }
+                        xs::RemoteServer::shared().publish_playback_options(std::move(remoteState));
+                        emit changed();
+                    });
+                    nativeVeyraPoll_.start(250);
+                    return;
+                }
+                videoWindow_->hide();
+                candidate->close();
+            }
+        }
+    }
+    // Legacy experimental IPC remains opt-in, but isn't the integration plan.
     // Only patched Veyra receives the media source, via a private pipe.
     // A failed handshake falls back to mpv once (no retry loop).
     const bool skipVeyra=skipVeyraOnce_;
