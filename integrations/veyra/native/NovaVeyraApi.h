@@ -9,6 +9,7 @@
 #define NOVA_VEYRA_FEATURE_NR 0x01u
 #define NOVA_VEYRA_FEATURE_SR 0x02u
 #define NOVA_VEYRA_FEATURE_FG 0x04u
+#define NOVA_VEYRA_FEATURE_HDR 0x08u
 
 // Values match Veyra's FrameGenerationBackend (EnhancementSettings.h).
 #define NOVA_VEYRA_FG_DLSS 0u
