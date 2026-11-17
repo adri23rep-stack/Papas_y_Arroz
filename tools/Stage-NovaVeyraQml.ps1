@@ -62,7 +62,7 @@ New-Item -ItemType Directory -Path $stage | Out-Null
 # No app profiles, videos, logs, user captures or configuration files.
 $folders=@('qml','platforms','QtQuick','QtQml','QtGraphicalEffects',
   'imageformats','iconengines','styles','tls','translations','runtime',
-  'runtime_local','licenses','assets','resources','networkinformation','media')
+  'runtime_local','licenses','assets','resources','networkinformation','media','shaders')
 foreach($name in $folders) {
   $src=Join-Path $donor $name
   if(Test-Path -LiteralPath $src -PathType Container) {
