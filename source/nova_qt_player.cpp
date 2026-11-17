@@ -228,7 +228,8 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                         state.insert("srEnabled",bool(snap.sr_active));
                         state.insert("nrEnabled",bool(snap.nr_active));
                         state.insert("hdrEnabled",bool(snap.hdr_active));
-                        state.insert("fgMultiplier",int(2));
+                        state.insert("fgMultiplier",int(snap.applied_fg_multiplier));
+                        state.insert("requestedFgMultiplier",int(snap.desired_fg_multiplier));
                         state.insert("sourceFps",snap.source_fps);
                         state.insert("submitFps",snap.submit_fps);
                         state.insert("submitFpsKnown",bool(snap.submit_fps_known));
@@ -249,7 +250,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                         remoteState.title=title_.toStdString();
                         remoteState.engine="veyra";
                         remoteState.veyraSettings={{int(snap.fg_active),int(snap.sr_active),
-                            int(snap.nr_active),int(snap.hdr_active),2}};
+                            int(snap.nr_active),int(snap.hdr_active),int(snap.applied_fg_multiplier)}};
                         // The original EngineController supplies stream indices,
                         // languages and selected track. These feed the iPhone.
                         for(const auto& track:nativeVeyra_->audioTracks()){
