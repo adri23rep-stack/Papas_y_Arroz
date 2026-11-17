@@ -81,6 +81,12 @@ $mainText=$mainText.Substring(0,$anchor.Index)+$modified+$mainText.Substring($an
 [IO.File]::WriteAllText($destMain,$mainText,[Text.UTF8Encoding]::new($false))
 Copy-Item -LiteralPath $bridge -Destination (Join-Path $qmlDest 'NovaControl.qml')
 Copy-Item -LiteralPath $config -Destination (Join-Path $qmlDest 'NovaBridgeConfig.js')
+# Veyra loads Main through its qmldir module; register the added local type.
+$qmldir=Join-Path $qmlDest 'qmldir'
+if(-not (Test-Path -LiteralPath $qmldir -PathType Leaf)) {
+  throw 'The official Veyra QML module is missing qmldir; no module can load.'
+}
+Add-Content -LiteralPath $qmldir -Value 'NovaControl 1.0 NovaControl.qml' -Encoding UTF8
 Copy-Item -LiteralPath $proxy -Destination (Join-Path $out 'nova_veyra_qml_proxy.py')
 # This launcher leaves all permanent Nova/Veyra configs untouched and passes
 # only local executable paths to the Python proxy. Network signed URLs
