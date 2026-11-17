@@ -1,6 +1,6 @@
 # Xuper TV Desktop — Windows Preview 0.1
 
-Adaptación experimental para Windows de **Xuper TV by JonaRuacho 0.14.1**. El código original pertenece a su autor y conserva la licencia MIT. Esta rama es de pruebas, **sin release**.
+Adaptación experimental para Windows de **Xuper TV by JonaRuacho 0.14.1**. El código original pertenece a su autor y conserva la licencia MIT en `LICENSE.MIT-UPSTREAM`. **Esta rama experimental combinada con Veyra adopta GNU GPLv3** (`LICENSE`). El motor Veyra original procede de `Likely7/Veyra-NRVideo` GPLv3, y sus SDK NVIDIA y bibliotecas de terceros conservan sus licencias propias. Esta rama es de pruebas, **sin release**: todavía no se distribuye la DLL GPU de Veyra ni se afirma que la RTX 3060 ya la esté usando. Consulta [auditoría nativa](docs/NOVA_VEYRA_ENGINE_SOURCE_AUDIT.md).
 
 ## Primer inicio automático: sin APK ni cuenta
 
