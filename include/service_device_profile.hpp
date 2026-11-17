@@ -35,7 +35,26 @@ inline bool nova_android_test_profile_enabled() {
 #endif
 }
 
-inline ServiceDeviceProfile service_device_profile(bool android_test) {
+inline bool android_tv_test_profile_requested(const char* value) {
+    return value && std::string(value) == "android-tv-test";
+}
+
+inline bool nova_android_tv_test_profile_enabled() {
+#ifdef _WIN32
+    return android_tv_test_profile_requested(std::getenv("NOVA_DEVICE_PROFILE"));
+#else
+    return false;
+#endif
+}
+
+inline ServiceDeviceProfile service_device_profile(bool android_test, bool android_tv_test=false) {
+    if (android_tv_test) {
+        // Public, synthetic TV box metadata based on the APK's Amlogic family.
+        // This is NOT a copied Focuz identity, fingerprint, or trial session.
+        return {"11", "amlogic", "S905X3", "franklin",
+                "RQ3A.211001.001", "Amlogic", "RQ3A.211001.001", "amlogic",
+                "Amlogic", "franklin", "franklin", "release-keys", "Android 11"};
+    }
     if (android_test) {
         // Synthetic public metadata for an Android 7.1.1 / OnePlus A5000
         // compatibility experiment, NOT an actual BlueStacks fingerprint.
