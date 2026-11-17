@@ -132,6 +132,7 @@ private:
     std::vector<xs::Entry> continue_entries_;
     xs::Entry featured_entry_,active_entry_;
     std::optional<xs::Entry> queued_remote_entry_;
+    std::optional<xs::Entry> next_episode_; // Only from the current series page
     QString featured_backdrop_;
     std::vector<xs::Entry> channel_entries_,series_entries_,movie_entries_,demo_entries_;
     xs::Catalog page_,root_;
