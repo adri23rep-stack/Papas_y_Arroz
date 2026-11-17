@@ -38,6 +38,7 @@ public:
     bool requestMotion(int value);
     static bool gpuRifeReady();
     void toggleFullscreen();
+    void cycleMonitor();
     QWindow* videoWindow() const { return videoWindow_.get(); }
     void selectTrack(int kind,int id,uint32_t generation);
 signals:
@@ -50,7 +51,6 @@ private:
     QByteArray veyraOutput_;
     QString veyraSource_;
     bool skipVeyraOnce_=false;
-    void cycleVeyraMonitor();
     bool veyraBridgeReady_=false;
     bool veyraLive_=false;
     double veyraLastPosition_=-1.0;
