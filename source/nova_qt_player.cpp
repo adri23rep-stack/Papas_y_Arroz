@@ -754,6 +754,15 @@ static void publishTracks(mpv_handle* mpv,const QString& title){
 
 void NovaQtPlayer::requestQuality(int value){
     if(value<0||value>4)return;
+    if(nativeVeyra_){
+        // Lanczos, CAS and FSRCNNX belong to the separate MPV renderer.
+        // Never trigger a libmpv restart during a native D3D12 session.
+        xs::RemoteServer::shared().set_setting_value(
+            xs::remote_setting_index("video_preset"),requested_quality_.load());
+        notice_=QStringLiteral("Los perfiles Lanczos/CAS/FSRCNNX son de MPV; Veyra tiene sus controles SR, NR y FPS.");
+        emit changed();
+        return;
+    }
     // No restart, and no misleading status, when selecting the same mode.
     if(requested_quality_.exchange(value)==value)return;
     restart_revision_.fetch_add(1);
@@ -765,6 +774,15 @@ bool NovaQtPlayer::gpuRifeReady(){
 }
 bool NovaQtPlayer::requestMotion(int value){
     if(value<0||value>2)return false;
+    if(nativeVeyra_){
+        // The old options mean MPV SmoothDisplay and Vulkan RIFE, not DLSS FG.
+        // Do not advertise a different algorithm under their old labels.
+        xs::RemoteServer::shared().set_setting_value(
+            xs::remote_setting_index("motion_mode"),requested_motion_.load());
+        notice_=QStringLiteral("RIFE/Vulkan son de MPV; usa Generación de cuadros en ajustes Veyra.");
+        emit changed();
+        return false;
+    }
     if(value==2&&!gpuRifeReady()){
         // The server may have saved the iPhone's selection before this
         // request reaches the UI thread. Undo it without restarting playback.
