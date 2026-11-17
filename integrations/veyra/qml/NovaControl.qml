@@ -98,7 +98,7 @@ Item {
                 fgMultiplier: veyra.fgMultiplier,
                 fgMultiplierChoices: veyra.fgMultiplierChoices,
                 fgMaxMultiplier: veyra.fgMaxMultiplier,
-                fgBackend: veyra.fgBackend,
+                fgBackend: veyra.fgBackendName,
                 srEnabled: veyra.srEnabled,
                 nrEnabled: veyra.nrEnabled,
                 hdrEnabled: veyra.videoHdr,
