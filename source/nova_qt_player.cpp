@@ -152,11 +152,13 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                         notice_=QStringLiteral("Veyra terminó la reproducción");
                         emit changed();
                         emit finishedPlayback(veyraLive_?-1.0:veyraLastPosition_,false);
+                        xs::RemoteServer::shared().end_playback();
                         veyraBridgeReady_=false;
                     });
                 veyraProcess_->start();
                 if(veyraProcess_->waitForStarted(3000)){
                     title_=title;
+                    xs::RemoteServer::shared().begin_playback(title.toStdString());
                     notice_=QStringLiteral("Reproduciendo en Veyra (esperando conexión de controles)");
                     playing_.store(true);
                     emit changed();
