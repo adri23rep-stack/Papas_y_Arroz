@@ -364,11 +364,11 @@ Item {
                     color: "#B9B4C5"; font.pixelSize: 12
                 }
             }
-            // Shown ONLY when the user explicitly starts the stock Win32
-            // pilot. Catalog URL validation remains unchanged; this one
+            // Shown ONLY during the isolated Veyra Win32 or QML pilot.
+            // Catalog URL validation remains unchanged; this one
             // fixed local test.mp4 is already allowed by catalog.cpp.
             Rectangle {
-                visible: novaHome.win32PilotEnabled
+                visible: novaHome.veyraPilotTestAvailable
                 x: 24
                 y: qualityPanel.height - 58
                 width: qualityPanel.width - 48
@@ -384,7 +384,7 @@ Item {
                 }
                 Text {
                     anchors.centerIn: parent
-                    text: "Probar Veyra Win32 · test.mp4"
+                    text: "Probar Veyra · test.mp4"
                     color: "white"
                     font.pixelSize: 15
                     font.family: "Segoe UI"
