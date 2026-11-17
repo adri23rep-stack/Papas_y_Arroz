@@ -64,7 +64,7 @@ if($CheckOnly){
   return
 }
 $cmakeSource=Join-Path $repo 'integrations\veyra\native'
-$args=@(
+$cmakeArgs=@(
   '-S',$cmakeSource,'-B',$build,'-G','Ninja',
   '-DCMAKE_BUILD_TYPE=Release',
   ("-DVEYRA_SOURCE_ROOT="+$source),
@@ -77,7 +77,7 @@ $args=@(
   '-DVEYRA_ENABLE_NVOF=ON',
   ('-DVEYRA_ENABLE_DEINTERLACE='+$(if($DisableDeinterlace){'OFF'}else{'ON'}))
 )
-& cmake.exe @args
+& cmake.exe @cmakeArgs
 if($LASTEXITCODE -ne 0){throw 'Veyra native engine CMake configure failed.'}
 if($ConfigureOnly){Write-Output 'Configured. No GPU DLL compiled yet.';return}
 & cmake.exe --build $build --target nova_veyra_native --parallel 2
