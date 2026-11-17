@@ -5,6 +5,9 @@
 // The bridge never logs a media URL, token, or authentication header.
 #include <QByteArray>
 #include <QFileInfo>
+#include <QGuiApplication>
+#include <QQuickWindow>
+#include <QScreen>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -20,8 +23,8 @@
 
 class NovaStdioBridge final : public QObject {
 public:
-    NovaStdioBridge(veyra::ui::QmlPlayerBridge& player, QObject* parent)
-        : QObject(parent), player_(player) {
+    NovaStdioBridge(veyra::ui::QmlPlayerBridge& player, QQuickWindow* window, QObject* parent)
+        : QObject(parent), player_(player), window_(window) {
         if (qEnvironmentVariableIntValue("NOVA_VEYRA_STDIO") != 1) return;
         input_ = GetStdHandle(STD_INPUT_HANDLE);
         output_ = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -66,7 +69,18 @@ private:
             {"position", std::isfinite(position) ? (position > 0.0 ? position : 0.0) : 0.0},
             {"duration", std::isfinite(duration) ? (duration > 0.0 ? duration : 0.0) : 0.0},
             {"audioTracks", QJsonArray::fromVariantList(player_.audioTracks())},
-            {"selectedAudioTrack", player_.selectedAudioTrack()}
+            {"selectedAudioTrack", player_.selectedAudioTrack()},
+            {"subtitleTracks", QJsonArray::fromVariantList(player_.subtitleTracks())},
+            {"selectedSubtitle", player_.subtitlePrimary()},
+            {"fgEnabled", player_.fgEnabled()},
+            {"fgMultiplier", player_.fgMultiplier()},
+            {"fgMaxMultiplier", player_.fgMaxMultiplier()},
+            {"srEnabled", player_.srEnabled()},
+            {"nrEnabled", player_.nrEnabled()},
+            {"hdrEnabled", player_.videoHdr()},
+            {"sourceFps", player_.sourceFps()},
+            {"submitFps", player_.submitFps()},
+            {"submitFpsKnown", player_.submitFpsKnown()}
         });
     }
     void execute(const QJsonObject& object) {
@@ -96,6 +110,54 @@ private:
                 const int index = object.value("index").toInt(-1);
                 if (index >= 0) player_.setSelectedAudioTrack(index);
             }
+        } else if (cmd == QLatin1String("subtitle_track")) {
+            if (object.value("index").isDouble()) {
+                const int index = object.value("index").toInt(-2);
+                if (index == -1) {
+                    player_.setSubtitlePrimary(-1);
+                } else if (index >= 0) {
+                    const QVariantList tracks = player_.subtitleTracks();
+                    if (index < tracks.size() && tracks.at(index).toMap().value("usable").toBool())
+                        player_.setSubtitlePrimary(index);
+                }
+            }
+        } else if (cmd == QLatin1String("fullscreen")) {
+            if (!window_) return;
+            const bool enabled = object.contains("enabled") ?
+                object.value("enabled").toBool() : !window_->isFullScreen();
+            if (enabled) window_->showFullScreen();
+            else window_->showNormal();
+        } else if (cmd == QLatin1String("next_monitor")) {
+            if (!window_) return;
+            const auto screens = QGuiApplication::screens();
+            if (screens.size() < 2) return;
+            const int current = screens.indexOf(window_->screen());
+            const int next = (current + 1) % screens.size();
+            const bool fullscreen = window_->isFullScreen();
+            if (fullscreen) window_->showNormal();
+            window_->setScreen(screens.at(next));
+            if (fullscreen) window_->showFullScreen();
+            else {
+                QRect geometry = window_->geometry();
+                geometry.moveCenter(screens.at(next)->availableGeometry().center());
+                window_->setGeometry(geometry);
+            }
+        } else if (cmd == QLatin1String("gpu_feature")) {
+            // Explicit opt-in commands ONLY. Never change Veyra's saved preset
+            // merely because Nova has launched.
+            const QString feature = object.value("name").toString();
+            const QJsonValue enabled = object.value("enabled");
+            if (feature == QLatin1String("fg") && enabled.isBool())
+                player_.setFgEnabled(enabled.toBool());
+            else if (feature == QLatin1String("sr") && enabled.isBool())
+                player_.setSrEnabled(enabled.toBool());
+            else if (feature == QLatin1String("nr") && enabled.isBool())
+                player_.setNrEnabled(enabled.toBool());
+            else if (feature == QLatin1String("hdr") && enabled.isBool())
+                player_.setVideoHdr(enabled.toBool());
+        } else if (cmd == QLatin1String("fg_multiplier")) {
+            const int n = object.value("value").toInt(-1);
+            if (n >= 1 && n <= player_.fgMaxMultiplier()) player_.setFgMultiplier(n);
         }
     }
     void pollInput() {
@@ -103,7 +165,7 @@ private:
         if (!PeekNamedPipe(input_, nullptr, 0, nullptr, &available, nullptr) || !available) return;
         char block[4096];
         DWORD received = 0;
-        const DWORD count = std::min<DWORD>(available, DWORD(sizeof(block)));
+        const DWORD count = available < DWORD(sizeof(block)) ? available : DWORD(sizeof(block));
         if (!ReadFile(input_, block, count, &received, nullptr) || !received) return;
         buffer_.append(block, int(received));
         if (buffer_.size() > 8192) { buffer_.clear(); return; }
@@ -119,6 +181,7 @@ private:
         }
     }
     veyra::ui::QmlPlayerBridge& player_;
+    QQuickWindow* window_ = nullptr;
     HANDLE input_ = nullptr;
     HANDLE output_ = nullptr;
     bool enabled_ = false;
