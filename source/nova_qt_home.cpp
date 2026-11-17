@@ -833,7 +833,10 @@ void NovaQtHome::pollRemote(){
             case SDLK_F6:openSection(2);break;
             case SDLK_F7:openSection(1);break;
             case SDLK_SPACE:player_.togglePause();break;
-            case SDLK_F10:nextMonitor(window_,player_.videoWindow());break;
+            case SDLK_F10:
+                if(player_.playing())player_.cycleMonitor();
+                else nextMonitor(window_,player_.videoWindow());
+                break;
             case SDLK_F11:
                 if(player_.playing())player_.toggleFullscreen();
                 else if(window_)window_->setVisibility(window_->visibility()==QWindow::FullScreen?
