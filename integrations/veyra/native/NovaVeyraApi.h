@@ -4,6 +4,7 @@
 // No C++ objects, Qt objects, STL strings or runtime-owned memory cross the ABI.
 #pragma once
 #include <stdint.h>
+#include <stddef.h> // wchar_t is not predefined in C
 
 #define NOVA_VEYRA_NATIVE_ABI 1u
 #define NOVA_VEYRA_FEATURE_NR 0x01u
