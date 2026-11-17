@@ -21,6 +21,9 @@ struct RemotePlaybackSnapshot {
     bool active=false;
     uint32_t generation=0;
     std::string title;
+    std::string engine="mpv";
+    std::array<int,5> veyraSettings{{0,0,0,0,2}};
+    std::vector<int> veyraMultipliers;
     std::vector<RemotePlaybackChoice> audio,subtitles,sources;
 };
 struct RemoteInfo {

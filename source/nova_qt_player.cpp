@@ -33,6 +33,7 @@
 
 NovaQtPlayer::NovaQtPlayer(QObject* parent):QObject(parent){}
 NovaQtPlayer::~NovaQtPlayer(){
+    veyraWatchdog_.stop();
     if(veyraProcess_)veyraProcess_->disconnect(this);
     if(veyraProcess_ && veyraProcess_->state()!=QProcess::NotRunning){
         veyraProcess_->terminate();
@@ -66,6 +67,36 @@ void NovaQtPlayer::sendVeyraControl(const QJsonObject& command){
     veyraProcess_->write(QJsonDocument(msg).toJson(QJsonDocument::Compact)+"\n");
 }
 
+void NovaQtPlayer::scheduleVeyraFallback(){
+    if(veyraFallbackPending_ || veyraStopRequested_ || !veyraFallback_)return;
+    veyraFallbackPending_=true;
+    const auto attempt=veyraAttemptId_;
+    QTimer::singleShot(0,this,[this,attempt]{
+        if(attempt!=veyraAttemptId_ || veyraStopRequested_)return;
+        auto fallback=veyraFallback_;
+        if(fallback)fallback();
+    });
+}
+
+bool NovaQtPlayer::setVeyraSetting(const QString& key,int value){
+    if(!veyraActive() || veyraStopRequested_)return false;
+    if(key==QStringLiteral("veyra_multiplier")){
+        bool allowed=false;
+        for(const auto& entry:veyraState_.value("fgMultiplierChoices").toList())
+            if(entry.toMap().value("id").toInt()==value)allowed=true;
+        if(!allowed)return false;
+        sendVeyraControl({{"cmd","fg_multiplier"},{"value",value}});
+    }else{
+        const QString feature=key.mid(6);
+        if(!key.startsWith("veyra_") || (feature!="fg" && feature!="sr" && feature!="nr" && feature!="hdr") ||
+           (value!=0 && value!=1))return false;
+        sendVeyraControl({{"cmd","gpu_feature"},{"name",feature},{"enabled",value!=0}});
+    }
+    notice_=QStringLiteral("Ajuste enviado a Veyra; esperando su estado.");
+    emit changed();
+    return true;
+}
+
 void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool live,double resumeSeconds){
     if(playing_.load()||!result.ok||!xs::valid_source(result.source))return;
     // Only patched Veyra receives the media source, via a private pipe.
@@ -95,8 +126,13 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                 veyraProcess_=std::make_unique<QProcess>();
                 const auto attempt=++veyraAttemptId_;
                 veyraOutput_.clear();
-                veyraSource_=source;
+                veyraSource_=local?QFileInfo(source).absoluteFilePath():source;
                 veyraBridgeReady_=false;
+                veyraState_.clear();
+                veyraStarted_=false;
+                veyraFallbackPending_=false;
+                veyraClock_.start();
+                veyraLastStatus_=0;
                 veyraLastPosition_=-1.0;
                 veyraResumeSeconds_=live?0.0:resumeSeconds;
                 veyraStopRequested_=false;
@@ -104,18 +140,46 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                 veyraProcess_->setProgram(executable);
                 veyraProcess_->setArguments({}); // source sent only after IPC handshake
                 veyraProcess_->setWorkingDirectory(QFileInfo(executable).absolutePath());
-                veyraProcess_->setProcessChannelMode(QProcess::ForwardedErrorChannel);
+                // Veyra owns a separate Qt/MSVC runtime. Do not inherit Nova plugin paths.
+                veyraProcess_->setStandardErrorFile(QProcess::nullDevice());
                 QProcessEnvironment env=QProcessEnvironment::systemEnvironment();
+                for(const auto* name:{"QT_PLUGIN_PATH","QT_QPA_PLATFORM_PLUGIN_PATH","QML2_IMPORT_PATH","QML_IMPORT_PATH"})env.remove(QString::fromLatin1(name));
                 env.insert(QStringLiteral("NOVA_VEYRA_STDIO"),QStringLiteral("1"));
                 veyraProcess_->setProcessEnvironment(env);
+                veyraFallback_=[this,result,title,live,resumeSeconds,attempt]{
+                    if(attempt!=veyraAttemptId_ || veyraStopRequested_)return;
+                    const double resume=live?0.0:(veyraLastPosition_>=0?veyraLastPosition_:resumeSeconds);
+                    veyraWatchdog_.stop();
+                    if(veyraProcess_){
+                        veyraProcess_->disconnect(this);
+                        veyraProcess_->kill();
+                        veyraProcess_->waitForFinished(1000);
+                        veyraProcess_.reset();
+                    }
+                    ++veyraAttemptId_; // invalidate callbacks from the old session
+                    veyraBridgeReady_=false;
+                    veyraState_.clear();
+                    veyraSource_.clear();
+                    veyraOutput_.clear();
+                    xs::RemoteServer::shared().end_playback();
+                    playing_.store(false);
+                    skipVeyraOnce_=true;
+                    play(result,title,live,resume);
+                    notice_=QStringLiteral("Veyra no pudo continuar; video recuperado con MPV.");
+                    emit changed();
+                };
                 QObject::connect(veyraProcess_.get(), &QProcess::readyReadStandardOutput,
                     this, [this] {
                     if(!veyraProcess_)return;
                     veyraOutput_.append(veyraProcess_->readAllStandardOutput());
-                    if(veyraOutput_.size()>16384){veyraOutput_.clear();return;}
+
                     for(;;){
                         const auto newline=veyraOutput_.indexOf('\n');
-                        if(newline<0)break;
+                        if(newline<0){
+                            if(veyraOutput_.size()>65536)scheduleVeyraFallback();
+                            break;
+                        }
+                        if(newline>65536){scheduleVeyraFallback();return;}
                         const QByteArray line=veyraOutput_.left(newline);
                         veyraOutput_.remove(0,newline+1);
                         const QJsonDocument doc=QJsonDocument::fromJson(line);
@@ -123,15 +187,25 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                         const QJsonObject msg=doc.object();
                         if(msg.value(QStringLiteral("protocol")).toInt()!=1)continue;
                         const QString type=msg.value(QStringLiteral("type")).toString();
-                        if(type==QStringLiteral("nova-ready")){
+                        if(type==QStringLiteral("nova-ready") && !veyraBridgeReady_){
                             veyraBridgeReady_=true;
                             notice_=QStringLiteral("Veyra conectado: controles activos");
-                            sendVeyraControl({{"cmd","open_source"},{"source",veyraSource_}});
+                            sendVeyraControl({{"cmd","open_source"},{"source",veyraSource_},{"live",veyraLive_}});
                             veyraSource_.clear();
                             if(veyraResumeSeconds_>0)
                                 sendVeyraControl({{"cmd","resume"},{"seconds",veyraResumeSeconds_}});
                             emit changed();
+                        }else if(type==QStringLiteral("nova-error")){
+                            scheduleVeyraFallback();
                         }else if(type==QStringLiteral("nova-status") && veyraBridgeReady_){
+                            veyraLastStatus_=veyraClock_.elapsed();
+                            if(msg.value("failed").toBool()){scheduleVeyraFallback();return;}
+                            veyraStarted_|=msg.value("running").toBool();
+                            veyraState_=msg.toVariantMap();
+                            diagnostics_=QStringLiteral("Veyra · %1 · origen %2 FPS · salida %3 FPS")
+                                .arg(msg.value("fgBackend").toString())
+                                .arg(msg.value("sourceFps").toDouble(),0,'f',1)
+                                .arg(msg.value("submitFpsKnown").toBool()?QString::number(msg.value("submitFps").toDouble(),'f',1):QStringLiteral("sin medir"));
                             const double pos=msg.value(QStringLiteral("position")).toDouble(-1);
                             if(!veyraLive_ && msg.value(QStringLiteral("hasSource")).toBool() &&
                                std::isfinite(pos) && pos>3.0)
@@ -139,6 +213,15 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                             const QJsonArray audio=msg.value(QStringLiteral("audioTracks")).toArray();
                             xs::RemotePlaybackSnapshot state;
                             state.title=title_.toStdString();
+                            state.engine="veyra";
+                            state.veyraSettings={{msg.value("fgEnabled").toBool()?1:0,
+                                msg.value("srEnabled").toBool()?1:0,msg.value("nrEnabled").toBool()?1:0,
+                                msg.value("hdrEnabled").toBool()?1:0,msg.value("fgMultiplier").toInt(2)}};
+                            for(const auto& choice:msg.value("fgMultiplierChoices").toArray()){
+                                bool ok=false;
+                                const int n=choice.toObject().value("id").toString().toInt(&ok);
+                                if(ok && n>=2 && n<=64)state.veyraMultipliers.push_back(n);
+                            }
                             const int selected=msg.value(QStringLiteral("selectedAudioTrack")).toInt(-1);
                             for(const QJsonValue& value:audio){
                                 const QJsonObject track=value.toObject();
@@ -168,15 +251,22 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                                 state.subtitles.push_back(std::move(choice));
                             }
                             xs::RemoteServer::shared().publish_playback_options(std::move(state));
+                            emit changed();
                         }
                     }
                 });
                 QObject::connect(veyraProcess_.get(), &QProcess::finished, this,
-                    [this,result,title,live,resumeSeconds,attempt](int, QProcess::ExitStatus){
+                    [this,attempt](int exitCode, QProcess::ExitStatus exitStatus){
                         if(attempt!=veyraAttemptId_)return;
                         const bool handshake=veyraBridgeReady_;
                         const bool intentional=veyraStopRequested_;
                         const double position=veyraLive_?-1.0:veyraLastPosition_;
+                        if(!intentional && (!handshake || exitCode!=0 || exitStatus==QProcess::CrashExit)){
+                            scheduleVeyraFallback();
+                            return;
+                        }
+                        veyraWatchdog_.stop();
+                        veyraState_.clear();
                         // End old session BEFORE notifying home; the callback may
                         // immediately activate the next episode/channel.
                         xs::RemoteServer::shared().end_playback();
@@ -185,19 +275,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                         veyraSource_.clear();
                         notice_=QStringLiteral("Veyra terminó la reproducción");
                         emit changed();
-                        if(!handshake && !intentional){
-                            // Failed before the 10s handshake timeout: use MPV,
-                            // never relaunch an unresponsive Veyra in a loop.
-                            QTimer::singleShot(0,this,[this,result,title,live,resumeSeconds,attempt]{
-                                if(attempt!=veyraAttemptId_)return;
-                                if(veyraProcess_ && veyraProcess_->state()==QProcess::NotRunning)
-                                    veyraProcess_.reset();
-                                skipVeyraOnce_=true;
-                                play(result,title,live,resumeSeconds);
-                            });
-                        }else{
-                            emit finishedPlayback(position,false);
-                        }
+                        emit finishedPlayback(position,false);
                     });
                 veyraProcess_->start();
                 if(veyraProcess_->waitForStarted(3000)){
@@ -206,32 +284,23 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                     notice_=QStringLiteral("Reproduciendo en Veyra (esperando conexión de controles)");
                     playing_.store(true);
                     emit changed();
-                    QTimer::singleShot(10000,this,[this,result,title,live,resumeSeconds,attempt]{
-                        if(attempt!=veyraAttemptId_)return;
-                        // Old/unpatched Veyra cannot accept the source by pipe.
-                        // Kill ONLY the child we spawned; then transparently retry
-                        // with Nova's original MPV backend.
-                        if(!veyraProcess_ || veyraProcess_->state()!=QProcess::Running ||
-                           veyraBridgeReady_)return;
-                        veyraProcess_->disconnect(this);
-                        veyraProcess_->kill();
-                        veyraProcess_->waitForFinished(1000);
-                        veyraProcess_.reset();
-                        veyraSource_.clear();
-                        veyraOutput_.clear();
-                        xs::RemoteServer::shared().end_playback();
-                        playing_.store(false);
-                        notice_=QStringLiteral("Veyra no respondió; regresando a MPV");
-                        emit changed();
-                        skipVeyraOnce_=true;
-                        play(result,title,live,resumeSeconds);
+                    veyraWatchdog_.disconnect(this);
+                    connect(&veyraWatchdog_,&QTimer::timeout,this,[this,attempt]{
+                        if(attempt!=veyraAttemptId_ || veyraStopRequested_)return;
+                        const auto elapsed=veyraClock_.elapsed();
+                        if((!veyraBridgeReady_ && elapsed>10000) ||
+                           (veyraBridgeReady_ && elapsed-veyraLastStatus_>10000) ||
+                           (!veyraStarted_ && elapsed>30000))scheduleVeyraFallback();
                     });
+                    veyraWatchdog_.start(1000);
                     return;
                 }
                 veyraProcess_.reset(); // Failed to launch: mpv still works.
             }
         }
     }
+    veyraState_.clear();
+    diagnostics_.clear();
     if(thread_.joinable())thread_.join();
     stop_.store(false);
     if(!videoWindow_){
@@ -267,7 +336,13 @@ void NovaQtPlayer::command(const char* name,const char* argument){
 void NovaQtPlayer::stop(){
     if(veyraProcess_ && veyraProcess_->state()!=QProcess::NotRunning){
         veyraStopRequested_=true;
-        veyraProcess_->terminate();
+        veyraWatchdog_.stop();
+        sendVeyraControl({{"cmd","quit"}});
+        const auto attempt=veyraAttemptId_;
+        QTimer::singleShot(1500,this,[this,attempt]{
+            if(attempt==veyraAttemptId_ && veyraStopRequested_ && veyraProcess_ &&
+               veyraProcess_->state()!=QProcess::NotRunning)veyraProcess_->kill();
+        });
         return;
     }
     stop_.store(true);
@@ -433,6 +508,14 @@ bool NovaQtPlayer::requestMotion(int value){
 }
 
 void NovaQtPlayer::applySetting(int id,int value){
+    if(id>=0 && static_cast<size_t>(id)<xs::kRemoteSettings.size()){
+        const auto key=QString::fromLatin1(xs::kRemoteSettings[id].key);
+        if(key.startsWith("veyra_")){setVeyraSetting(key,value);return;}
+    }
+    if(veyraActive() && id==xs::remote_setting_index("mute")){
+        setVolume(value?0:xs::RemoteServer::shared().setting_value(xs::remote_setting_index("volume")));
+        return;
+    }
     if(id==xs::remote_setting_index("video_preset")){
         requestQuality(value);
         return;

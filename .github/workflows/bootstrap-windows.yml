@@ -125,6 +125,9 @@ jobs:
           cmake -S . -B build/windows -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build/windows --parallel 2
           ctest --test-dir build/windows --output-on-failure
+      - name: Exercise Nova-Veyra pipes with deterministic engine fixture
+        shell: msys2 {0}
+        run: python tests/test_veyra_stdio.py build/windows/nova_veyra_bridge_fixture.exe
       - name: Validate FFmpeg CAS/Lanczos filter graph
         shell: msys2 {0}
         run: |
@@ -360,6 +363,15 @@ jobs:
           if (Test-Path 'README_NOVA_QT.md') { Copy-Item README_NOVA_QT.md dist/Xuper-TV-Desktop/README_NOVA_QT.md }
           if (Test-Path 'README_NOVA_QUALITY.md') { Copy-Item README_NOVA_QUALITY.md dist/Xuper-TV-Desktop/README_NOVA_QUALITY.md }
           Write-Host "Bundled service template verified. No APK import required."
+      - name: Bundle Veyra pilot launcher and integration sources
+        if: github.ref_name == 'feature/nova-veyra-engine'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/Xuper-TV-Desktop/veyra-integration | Out-Null
+          Copy-Item tools/Run-NovaVeyraSmoke.ps1 dist/Xuper-TV-Desktop/
+          Copy-Item tools/Apply-VeyraNovaBridge.py dist/Xuper-TV-Desktop/veyra-integration/
+          Copy-Item docs/NOVA_VEYRA_PILOT.md dist/Xuper-TV-Desktop/
+          Copy-Item integrations/veyra/NovaStdioBridge.hpp dist/Xuper-TV-Desktop/veyra-integration/
       - name: Prepare two independent portable Windows preview packages
         shell: msys2 {0}
         run: |
@@ -557,6 +569,6 @@ jobs:
         if: github.ref_name != 'main' && github.ref_name != 'windows-desktop-preview' && github.ref_name != 'feature/nova-ui-from-scratch' && github.head_ref != 'feature/nova-ui-from-scratch' && github.head_ref != 'feature/nova-quality-presets-seamless-restart'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.ref_name == 'feature/nova-ui-from-scratch' && 'XuperTV-Nova-Windows' || 'XuperTV-Live-TV-Recovery-Windows' }}
+          name: ${{ github.ref_name == 'feature/nova-veyra-engine' && 'Nova-Veyra-Windows-Pilot' || 'XuperTV-Live-TV-Recovery-Windows' }}
           path: dist/Xuper-TV-Desktop/
           if-no-files-found: error

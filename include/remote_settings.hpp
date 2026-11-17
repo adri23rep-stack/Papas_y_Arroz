@@ -15,7 +15,7 @@ struct RemoteSettingDef {
 };
 // Only explicitly supported options can be changed over the LAN.
 // Signed integer values are validated, not used as filesystem paths or mpv property names.
-inline constexpr std::array<RemoteSettingDef,11> kRemoteSettings{{
+inline constexpr std::array<RemoteSettingDef,16> kRemoteSettings{{
     {"volume","Sonido","Volumen",0,100,1,100},
     {"brightness","Imagen","Brillo",0,100,1,50},
     {"speed","Reproduccion","Velocidad",50,200,25,100},
@@ -26,7 +26,12 @@ inline constexpr std::array<RemoteSettingDef,11> kRemoteSettings{{
     {"sub_delay","Subtitulos","Sincronia subtitulos (ms)",-5000,5000,250,0},
     {"sub_scale","Subtitulos","Tamano subtitulos (%)",50,300,10,100},
     {"video_preset","Imagen","Calidad de video",0,4,1,1},
-    {"motion_mode","Imagen","Movimiento / FPS",0,2,1,0}
+    {"motion_mode","Imagen","Movimiento / FPS",0,2,1,0},
+    {"veyra_fg","Veyra","Generacion de cuadros",0,1,1,0},
+    {"veyra_sr","Veyra","Superresolucion",0,1,1,0},
+    {"veyra_nr","Veyra","Mejora NR",0,1,1,0},
+    {"veyra_hdr","Veyra","HDR",0,1,1,0},
+    {"veyra_multiplier","Veyra","Multiplicador FPS",2,64,1,2}
 }};
 inline int remote_setting_index(const std::string& key){
     for(size_t i=0;i<kRemoteSettings.size();++i)if(key==kRemoteSettings[i].key)
@@ -60,7 +65,7 @@ public:
         std::string key;int value=0;
         while(file>>key>>value){
             const int id=remote_setting_index(key);
-            if(valid_remote_setting(id,value))values_[id]=value;
+            if(key.rfind("veyra_",0)!=0 && valid_remote_setting(id,value))values_[id]=value;
         }
     }
 private:
@@ -68,7 +73,7 @@ private:
         std::ofstream file("remote_playback_settings.txt",std::ios::trunc);
         if(!file)return;
         for(size_t i=0;i<values_.size();++i)
-            file<<kRemoteSettings[i].key<<" "<<values_[i]<<"\n";
+            if(std::string(kRemoteSettings[i].key).rfind("veyra_",0)!=0)file<<kRemoteSettings[i].key<<" "<<values_[i]<<"\n";
     }
     mutable std::mutex mutex_;
     std::array<int,kRemoteSettings.size()> values_{};

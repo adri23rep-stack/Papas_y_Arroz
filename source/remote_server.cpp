@@ -345,14 +345,28 @@ void RemoteServer::handle(uintptr_t id){
     if(!authorized(request,secret_)){reply(client,401,{{"error","Pairing required"}});return;}
     if(settings_get){
         Json data=Json::array();
+        const auto playback=playback_options();
+        const bool veyra=playback.active && playback.engine=="veyra";
         for(size_t i=0;i<kRemoteSettings.size();++i){
             const auto& def=kRemoteSettings[i];
-            data.push_back({{"key",def.key},{"label",def.label},
-                {"category",def.category},{"min",def.low},{"max",def.high},
-                {"step",def.step},{"value",settings_.get(static_cast<int>(i))}});
+            const std::string key=def.key;
+            const bool veyraSetting=key.rfind("veyra_",0)==0;
+            if(veyraSetting && !veyra)continue;
+            if(veyra && (key=="video_preset" || key=="motion_mode" || key=="aspect" ||
+                         key=="audio_delay" || key=="sub_delay" || key=="sub_scale"))continue;
+            const int value=veyraSetting?playback.veyraSettings[i-remote_setting_index("veyra_fg")]:settings_.get(static_cast<int>(i));
+            Json row={{"key",def.key},{"label",def.label},{"category",def.category},
+                {"min",def.low},{"max",def.high},{"step",def.step},{"value",value}};
+            if(key=="veyra_multiplier"){
+                if(playback.veyraMultipliers.empty())continue;
+                row["min"]=*std::min_element(playback.veyraMultipliers.begin(),playback.veyraMultipliers.end());
+                row["max"]=*std::max_element(playback.veyraMultipliers.begin(),playback.veyraMultipliers.end());
+                row["choices"]=playback.veyraMultipliers;
+            }
+            data.push_back(std::move(row));
         }
         reply(client,200,{{"settings",std::move(data)},
-            {"notice","Algunos ajustes se aplican al siguiente video."}});return;
+            {"notice",veyra?"Veyra confirma el estado en la siguiente consulta. Los FPS son medidos, no garantizados.":"Algunos ajustes se aplican al siguiente video."}});return;
     }
     if(settings_set){
         const auto key=payload.find("key"),value=payload.find("value");
@@ -366,18 +380,27 @@ void RemoteServer::handle(uintptr_t id){
            !valid_remote_setting(id,static_cast<int>(number))){
             reply(client,400,{{"error","Este ajuste no admite ese valor."}});return;
         }
+        const auto playback=playback_options();
+        const bool veyraSetting=key->get<std::string>().rfind("veyra_",0)==0;
+        if(veyraSetting && (!playback.active || playback.engine!="veyra")){
+            reply(client,409,{{"error","Abre un video con Veyra para cambiar este ajuste."}});return;
+        }
+        if(id==remote_setting_index("veyra_multiplier") &&
+           std::find(playback.veyraMultipliers.begin(),playback.veyraMultipliers.end(),int(number))==playback.veyraMultipliers.end()){
+            reply(client,400,{{"error","Veyra no ofrece ese multiplicador con el motor actual."}});return;
+        }
         SDL_Event ev{};ev.type=SDL_USEREVENT;ev.user.code=REMOTE_SETTING;
         ev.user.data1=reinterpret_cast<void*>(static_cast<intptr_t>(id));
         ev.user.data2=reinterpret_cast<void*>(static_cast<intptr_t>(number));
         if(SDL_PushEvent(&ev)<0){
             reply(client,400,{{"error","El reproductor no acepta este ajuste."}});return;
         }
-        settings_.put(id,static_cast<int>(number));
+        if(!veyraSetting)settings_.put(id,static_cast<int>(number));
         if(id==remote_setting_index("volume"))volume_=static_cast<int>(number);
         if(id==remote_setting_index("brightness"))brightness_=static_cast<int>(number);
         active_at_=SDL_GetTicks();
         reply(client,200,{{"ok",true},{"key",key->get<std::string>()},
-            {"value",number},{"applies","Ahora o al abrir el siguiente video"}});return;
+            {"value",number},{"applies",veyraSetting?"Solicitado a Veyra; consulta el estado confirmado.":"Ahora o al abrir el siguiente video"}});return;
     }
     if(playback_get){
         const auto state=playback_options();

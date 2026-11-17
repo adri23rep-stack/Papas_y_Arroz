@@ -4,6 +4,10 @@
 #include <QWindow>
 #include <QProcess>
 #include <QByteArray>
+#include <QVariantMap>
+#include <QElapsedTimer>
+#include <QTimer>
+#include <functional>
 class QJsonObject;
 #include <QMutex>
 #include <QString>
@@ -26,6 +30,9 @@ public:
     QString title() const {return title_;}
     QString notice() const {return notice_;}
     QString diagnostics() const {return diagnostics_;}
+    bool veyraActive() const {return veyraBridgeReady_ && !veyraState_.isEmpty();}
+    QVariantMap veyraState() const {return veyraState_;}
+    bool setVeyraSetting(const QString& key,int value);
     void play(const xs::SourceResult& result,const QString& title,bool live,double resumeSeconds=0);
     Q_INVOKABLE void stop();
     Q_INVOKABLE void togglePause();
@@ -50,6 +57,14 @@ private:
     std::unique_ptr<QProcess> veyraProcess_;
     QByteArray veyraOutput_;
     QString veyraSource_;
+    QVariantMap veyraState_;
+    QTimer veyraWatchdog_;
+    QElapsedTimer veyraClock_;
+    qint64 veyraLastStatus_=0;
+    bool veyraStarted_=false;
+    bool veyraFallbackPending_=false;
+    std::function<void()> veyraFallback_;
+    void scheduleVeyraFallback();
     bool skipVeyraOnce_=false;
     bool veyraStopRequested_=false;
     std::uint64_t veyraAttemptId_=0;

@@ -322,4 +322,12 @@ if(WIN32)
     ${MBEDCRYPTO_LIBRARY}
     ws2_32 bcrypt crypt32 shell32 ole32 user32
   )
+  if(BUILD_TESTING)
+    add_executable(nova_veyra_bridge_fixture tests/veyra_fixture/main.cpp)
+    target_include_directories(nova_veyra_bridge_fixture PRIVATE
+      tests/veyra_fixture/include integrations/veyra)
+    target_compile_definitions(nova_veyra_bridge_fixture PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(nova_veyra_bridge_fixture PRIVATE Qt6::Quick)
+  endif()
+
 endif()

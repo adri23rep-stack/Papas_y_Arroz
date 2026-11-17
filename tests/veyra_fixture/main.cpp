@@ -1,0 +1,12 @@
+#include "NovaStdioBridge.hpp"
+int main(int argc,char** argv){
+    QGuiApplication app(argc,argv);
+    veyra::ui::QmlPlayerBridge player;
+    NovaStdioBridge bridge(player,nullptr,&app);
+    if(qEnvironmentVariable("NOVA_VEYRA_FIXTURE_MODE")=="failure")
+        QTimer::singleShot(2000,&app,[&]{player.failure=true;});
+    if(qEnvironmentVariable("NOVA_VEYRA_FIXTURE_MODE")=="crash")
+        QTimer::singleShot(2000,&app,[&]{app.exit(7);});
+    QTimer::singleShot(30000,&app,[&]{app.exit(9);});
+    return app.exec();
+}

@@ -37,7 +37,7 @@ public:
         inputTimer_.start(60);
         connect(&statusTimer_, &QTimer::timeout, this, [this] { status(); });
         statusTimer_.start(500);
-        write({{"type", "nova-ready"}, {"protocol", 1}});
+        write({{"type", "nova-ready"}, {"protocol", 1}, {"gpuControls", true}});
     }
 
 private:
@@ -53,8 +53,8 @@ private:
         }
     }
     void status() {
-        if (pendingResume_ > 0.0 && player_.running() && player_.duration() > 0.0) {
-            player_.seekTo(pendingResume_);
+        if (!live_ && pendingResume_ > 0.0 && player_.running() && player_.duration() > 0.0) {
+            player_.seekTo(std::min(pendingResume_, std::max(0.0, player_.duration()-1.0)));
             pendingResume_ = -1.0;
         }
         const double position = player_.position();
@@ -74,7 +74,9 @@ private:
             {"selectedSubtitle", player_.subtitlePrimary()},
             {"fgEnabled", player_.fgEnabled()},
             {"fgMultiplier", player_.fgMultiplier()},
-            {"fgMaxMultiplier", player_.fgMaxMultiplier()},
+            { "fgMaxMultiplier", player_.fgMaxMultiplier()},
+            {"fgMultiplierChoices", QJsonArray::fromVariantList(player_.fgMultiplierChoices())},
+            {"fgBackend", player_.fgBackendName()},
             {"srEnabled", player_.srEnabled()},
             {"nrEnabled", player_.nrEnabled()},
             {"hdrEnabled", player_.videoHdr()},
@@ -88,25 +90,38 @@ private:
         const QString cmd = object.value("cmd").toString();
         if (cmd == QLatin1String("open_source")) {
             const QString source = object.value("source").toString();
-            if (source.isEmpty() || source.size() > 8192) return;
+            pendingResume_ = -1.0;
+            live_ = object.value("live").toBool();
+            if (source.isEmpty() || source.size() > 8192) {
+                write({{"type", "nova-error"}, {"protocol", 1}, {"code", "invalid_source"}});
+                return;
+            }
+            bool accepted = false;
             const QUrl url(source, QUrl::StrictMode);
             if (url.isValid() && (url.scheme() == QLatin1String("http")
                                    || url.scheme() == QLatin1String("https"))) {
                 if (url.host().isEmpty() || !url.userInfo().isEmpty() || url.hasFragment()) return;
-                player_.openNetworkAddress(source);
+                accepted = player_.openNetworkAddress(source);
             } else if (QFileInfo(source).isFile()) {
                 player_.openPath(source);
+                accepted = true;
             }
+            if (!accepted) write({{"type", "nova-error"}, {"protocol", 1}, {"code", "open_rejected"}});
+        } else if (cmd == QLatin1String("quit")) {
+            pendingResume_ = -1.0;
+            player_.stopPlayback();
+            QCoreApplication::quit();
         } else if (cmd == QLatin1String("pause")) {
             player_.togglePlayPause();
         } else if (cmd == QLatin1String("stop")) {
+            pendingResume_ = -1.0;
             player_.stopPlayback();
         } else if (cmd == QLatin1String("seek_by")) {
             const double seconds = object.value("seconds").toDouble();
-            if (std::isfinite(seconds) && std::abs(seconds) <= 600.0) player_.seekBy(seconds);
+            if (!live_ && std::isfinite(seconds) && std::abs(seconds) <= 600.0) player_.seekBy(seconds);
         } else if (cmd == QLatin1String("resume")) {
             const double seconds = object.value("seconds").toDouble();
-            if (std::isfinite(seconds) && seconds > 0.0 && seconds < 86400.0)
+            if (!live_ && std::isfinite(seconds) && seconds > 0.0 && seconds < 86400.0)
                 pendingResume_ = seconds;
         } else if (cmd == QLatin1String("volume")) {
             const double volume = object.value("value").toDouble(-1.0);
@@ -168,21 +183,36 @@ private:
                 player_.setVideoHdr(enabled.toBool());
         } else if (cmd == QLatin1String("fg_multiplier")) {
             const int n = object.value("value").toInt(-1);
-            if (n >= 1 && n <= player_.fgMaxMultiplier()) player_.setFgMultiplier(n);
+            for (const auto& choice : player_.fgMultiplierChoices()) {
+                if (choice.toMap().value("id").toInt() == n) {
+                    player_.setFgMultiplier(n);
+                    break;
+                }
+            }
         }
     }
     void pollInput() {
         DWORD available = 0;
-        if (!PeekNamedPipe(input_, nullptr, 0, nullptr, &available, nullptr) || !available) return;
+        if (!PeekNamedPipe(input_, nullptr, 0, nullptr, &available, nullptr)) {
+            // Nova disappeared: never leave an orphan player producing audio.
+            player_.stopPlayback();
+            QCoreApplication::quit();
+            return;
+        }
+        if (!available) return;
         char block[4096];
         DWORD received = 0;
         const DWORD count = available < DWORD(sizeof(block)) ? available : DWORD(sizeof(block));
         if (!ReadFile(input_, block, count, &received, nullptr) || !received) return;
         buffer_.append(block, int(received));
-        if (buffer_.size() > 8192) { buffer_.clear(); return; }
+
         for (;;) {
             const qsizetype newline = buffer_.indexOf('\n');
-            if (newline < 0) break;
+            if (newline < 0) {
+                if (buffer_.size() > 65536) { player_.stopPlayback(); QCoreApplication::quit(); }
+                break;
+            }
+            if (newline > 65536) { player_.stopPlayback(); QCoreApplication::quit(); return; }
             const QByteArray line = buffer_.left(newline);
             buffer_.remove(0, newline + 1);
             QJsonParseError error{};
@@ -196,6 +226,7 @@ private:
     HANDLE input_ = nullptr;
     HANDLE output_ = nullptr;
     bool enabled_ = false;
+    bool live_ = false;
     double pendingResume_ = -1.0;
     QByteArray buffer_;
     QTimer inputTimer_;

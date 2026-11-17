@@ -48,6 +48,8 @@ class NovaQtHome : public QObject {
     Q_PROPERTY(QString playbackDiagnostics READ playbackDiagnostics NOTIFY changed)
     Q_PROPERTY(int videoPreset READ videoPreset NOTIFY changed)
     Q_PROPERTY(QString videoPresetLabel READ videoPresetLabel NOTIFY changed)
+    Q_PROPERTY(bool veyraActive READ veyraActive NOTIFY changed)
+    Q_PROPERTY(QVariantMap veyraState READ veyraState NOTIFY changed)
     Q_PROPERTY(int motionMode READ motionMode NOTIFY changed)
     Q_PROPERTY(QString motionLabel READ motionLabel NOTIFY changed)
     Q_PROPERTY(bool gpuRifeReady READ gpuRifeReady NOTIFY changed)
@@ -85,6 +87,9 @@ public:
     QString playbackDiagnostics() const{return player_.diagnostics();}
     int videoPreset() const;
     QString videoPresetLabel() const;
+    bool veyraActive() const {return player_.veyraActive();}
+    QVariantMap veyraState() const {return player_.veyraState();}
+    Q_INVOKABLE void setVeyraSetting(const QString& key,int value){player_.setVeyraSetting(key,value);}
     int motionMode() const;
     QString motionLabel() const;
     bool gpuRifeReady() const{return NovaQtPlayer::gpuRifeReady();}

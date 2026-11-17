@@ -178,6 +178,9 @@ Item {
                     onClicked: overlay.qualityVisible = false
                 }
             }
+            Item {
+                anchors.fill: parent
+                visible: !novaHome.veyraActive
             Repeater {
                 model: ["Compatible (CPU)", "Equilibrado", "Nitidez alta (Lanczos)",
                         "Detalle extra (CAS)", "GPU FSRCNNX"]
@@ -284,6 +287,82 @@ Item {
                 text: novaHome.playing ? novaHome.playbackDiagnostics :
                     "Al cambiar de modo, Nova reinicia solo MPV y recupera la posición. " +
                     "En TV en vivo se reconecta al canal."
+            }
+            }
+            Column {
+                x: 24; y: 70
+                width: parent.width - 48
+                spacing: 12
+                visible: novaHome.veyraActive
+                Text {
+                    width: parent.width
+                    text: "Veyra · " + (novaHome.veyraState.fgBackend || "motor conectado")
+                    color: "#C4B4F8"; font.pixelSize: 18
+                }
+                Repeater {
+                    model: [
+                        {key:"veyra_fg", field:"fgEnabled", label:"Generación de cuadros"},
+                        {key:"veyra_sr", field:"srEnabled", label:"Superresolución"},
+                        {key:"veyra_nr", field:"nrEnabled", label:"Mejora NR"},
+                        {key:"veyra_hdr", field:"hdrEnabled", label:"HDR"}
+                    ]
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: qualityPanel.width - 48; height: 44; radius: 10
+                        property bool selected: !!novaHome.veyraState[modelData.field]
+                        color: selected ? "#463366" : "#24222D"
+                        border.color: selected ? "#A78BFA" : "#403A4D"
+                        Accessible.role: Accessible.CheckBox
+                        Accessible.name: modelData.label
+                        Accessible.checked: selected
+                        Accessible.onPressAction: novaHome.setVeyraSetting(modelData.key, selected ? 0 : 1)
+                        Text {
+                            x: 14; anchors.verticalCenter: parent.verticalCenter
+                            text: modelData.label + (parent.selected ? " · Activado" : " · Desactivado")
+                            color: "white"; font.pixelSize: 15
+                        }
+                        MouseArea {
+                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            onClicked: novaHome.setVeyraSetting(parent.modelData.key, parent.selected ? 0 : 1)
+                        }
+                    }
+                }
+                Text { text: "Multiplicador de cuadros"; color: "white"; font.pixelSize: 15 }
+                Flow {
+                    width: parent.width; spacing: 8
+                    Repeater {
+                        model: novaHome.veyraState.fgMultiplierChoices || []
+                        delegate: Rectangle {
+                            required property var modelData
+                            width: 57; height: 37; radius: 8
+                            color: Number(modelData.id) === novaHome.veyraState.fgMultiplier ? "#463366" : "#24222D"
+                            border.color: "#A78BFA"
+                            Accessible.role: Accessible.RadioButton
+                            Accessible.name: modelData.label
+                            Accessible.onPressAction: novaHome.setVeyraSetting("veyra_multiplier", Number(modelData.id))
+                            Text { anchors.centerIn: parent; text: modelData.label; color: "white" }
+                            MouseArea {
+                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                onClicked: novaHome.setVeyraSetting("veyra_multiplier", Number(parent.modelData.id))
+                            }
+                        }
+                    }
+                }
+                Text {
+                    width: parent.width; wrapMode: Text.WordWrap
+                    text: novaHome.playbackDiagnostics
+                    color: "#C4B4F8"; font.pixelSize: 14
+                }
+                Text {
+                    width: parent.width; wrapMode: Text.WordWrap
+                    text: novaHome.playbackNotice
+                    color: "#E9BC89"; font.pixelSize: 13
+                }
+                Text {
+                    width: parent.width; wrapMode: Text.WordWrap
+                    text: "El estado lo confirma Veyra. Activar una mejora no garantiza más FPS; depende del video y la GPU."
+                    color: "#B9B4C5"; font.pixelSize: 12
+                }
             }
         }
     }
