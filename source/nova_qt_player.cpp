@@ -128,6 +128,9 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
     // It is opt-in until an NVIDIA/MSVC GPU build is validated on the RTX 3060.
     // Never allow a network URL with arbitrary auth headers into this test.
     const QString nativeDll=qEnvironmentVariable("NOVA_VEYRA_NATIVE_DLL");
+    const bool nativeStrict=!nativeDll.isEmpty() &&
+        qEnvironmentVariableIntValue("NOVA_VEYRA_NATIVE_STRICT")==1;
+    QString nativeLoadFailure;
     if(!skipVeyraOnce_ && !nativeDll.isEmpty() &&
        QFileInfo(nativeDll).isAbsolute() && QFileInfo(nativeDll).isFile() &&
        !live && result.headers.empty() && result.subtitles.empty()){
@@ -186,6 +189,12 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                             snap.transport==NOVA_VEYRA_FAILED||
                             (!nativeVeyraStarted_ && veyraClock_.elapsed()>25000);
                         if(broken){
+                            const bool strict=qEnvironmentVariableIntValue("NOVA_VEYRA_NATIVE_STRICT")==1;
+                            const QString reason=!readable
+                                ?QStringLiteral("No responde la API de estado de Veyra.")
+                                :snap.failed||snap.transport==NOVA_VEYRA_FAILED
+                                    ?QStringLiteral("El motor Veyra informó un fallo GPU/decodificación.")
+                                    :QStringLiteral("Veyra no mostró fotogramas en 25 segundos.");
                             nativeVeyraPoll_.stop();
                             nativeVeyra_.reset();
                             veyraState_.clear();
@@ -193,6 +202,12 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                             playing_.store(false);
                             xs::RemoteServer::shared().end_playback();
                             if(videoWindow_)videoWindow_->hide();
+                            if(strict){
+                                notice_=reason;
+                                diagnostics_=QStringLiteral("Fallo real Veyra D3D12; MPV desactivado durante esta prueba.");
+                                emit changed();
+                                return;
+                            }
                             skipVeyraOnce_=true; // the failed native path is never retried
                             play(result,title,live,resumeSeconds);
                             notice_=QStringLiteral("Veyra nativo falló; recuperado con MPV.");
@@ -274,8 +289,22 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                 }
                 videoWindow_->hide();
                 candidate->close();
+                nativeLoadFailure=QStringLiteral("Veyra no aceptó abrir el video en la ventana D3D12 de Nova.");
+            }else{
+                nativeLoadFailure=candidate->lastError();
             }
         }
+    }
+    if(nativeStrict){
+        if(nativeLoadFailure.isEmpty()){
+            nativeLoadFailure=QStringLiteral("La DLL nativa no existe, o este video requiere cabeceras/DRM/red en vivo no admitidas.");
+        }
+        title_=title;
+        playing_.store(false);
+        notice_=nativeLoadFailure;
+        diagnostics_=QStringLiteral("Veyra nativo no inició. MPV desactivado solo para la prueba estricta.");
+        emit changed();
+        return;
     }
     // Legacy experimental IPC remains opt-in, but isn't the integration plan.
     // Only patched Veyra receives the media source, via a private pipe.
