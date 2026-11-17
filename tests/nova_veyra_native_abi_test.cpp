@@ -33,6 +33,7 @@ int main(){
     assert(snapshot.size==104);
     assert((settings.features & NOVA_VEYRA_FEATURE_FG)!=0);
     assert((settings.features & NOVA_VEYRA_FEATURE_NR)==0);
+    assert((NOVA_VEYRA_FEATURE_NR|NOVA_VEYRA_FEATURE_SR|NOVA_VEYRA_FEATURE_FG|NOVA_VEYRA_FEATURE_HDR)==15);
     assert(settings.size==24);
     return 0;
 }
