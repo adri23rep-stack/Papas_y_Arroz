@@ -419,6 +419,7 @@ jobs:
           Copy-Item integrations/veyra/qml/NovaBridgeConfig.js dist/Xuper-TV-Desktop/integrations/veyra/qml/
           Copy-Item docs/NOVA_VEYRA_PILOT.md dist/Xuper-TV-Desktop/
           Copy-Item docs/NOVA_VEYRA_FULL_BUILD.md dist/Xuper-TV-Desktop/
+          Copy-Item docs/NOVA_VEYRA_QML_PILOT.md dist/Xuper-TV-Desktop/
           Copy-Item docs/NOVA_VEYRA_HANDOFF_ASTRA.md dist/Xuper-TV-Desktop/
           Copy-Item integrations/veyra/NovaStdioBridge.hpp dist/Xuper-TV-Desktop/integrations/veyra/
       - name: Prepare two independent portable Windows preview packages
