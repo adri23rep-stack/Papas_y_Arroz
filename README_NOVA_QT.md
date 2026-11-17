@@ -154,3 +154,26 @@ Un rechazo `portal200001` en este perfil **no** prueba que el problema
 sea el hardware: tambien pueden influir version, autorizacion, requisitos del
 proveedor y la secuencia completa de registro. Evita reenviar identificadores
 y no uses ni imites la rotacion de sesiones de prueba.
+
+## Televisión pública española (IPTV-org)
+
+Nova Qt incluye ahora, por defecto, la lista pública actualizable:
+
+```text
+https://iptv-org.github.io/iptv/languages/spa.m3u
+```
+
+La descarga se realiza al iniciar o pulsar «Reintentar» y se guarda una copia
+en `iptv_es_cache.m3u`. Si falla la descarga, se usa la última copia válida.
+La lista **no requiere** `service.json`, un emulador o una sesión en el portal
+de XuperTV. Cuando el portal devuelve `portal200001`, se conservan los canales
+públicos como catálogo principal de **TV en vivo**, con sus nombres y logos
+si la lista los proporciona. **Ver todo** enseña todos los canales; el inicio
+muestra hasta 80 para mantener la interfaz ligera. **Buscar** funciona
+localmente por nombre cuando no hay sesión del portal.
+
+MPV abre cada fuente M3U/HLS directamente como canal en vivo. Es posible
+que algunos canales estén caídos, bloqueados por región o requieran permisos;
+IPTV-org no garantiza la disponibilidad de cada transmisión. No se copian ni
+renuevan los enlaces temporales de Focuz. No se alteran el control del iPhone,
+los perfiles de calidad, RIFE ni la configuración original del proveedor.
