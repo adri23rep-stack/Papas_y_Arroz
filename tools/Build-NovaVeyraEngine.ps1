@@ -72,7 +72,7 @@ RequireExe 'python.exe'
 if ($failed.Count -gt 0) {
   Write-Host ''
   Write-Warning ('Cannot build Veyra GPU yet (' + $failed.Count + ' missing dependencies):')
-  foreach ($item in $failed) { Write-Host " - $item" }
+  foreach ($item in $failed) { Write-Output " - $item" }
   if ($CheckOnly) { return }
   throw 'Veyra build blocked. Supply official dependencies; no source was changed.'
 }
