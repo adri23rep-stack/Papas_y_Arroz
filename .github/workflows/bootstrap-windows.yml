@@ -99,6 +99,8 @@ jobs:
         run: |
           python -m py_compile tools/nova_veyra_qml_proxy.py
           python -m unittest discover -s tests -p test_veyra_qml_proxy.py -v
+          python -m py_compile tools/nova_veyra_win32_proxy.py
+          python -m unittest discover -s tests -p test_veyra_win32_proxy.py -v
       - name: Validate Veyra GPU build helper (syntax and missing-SDK preflight)
         shell: pwsh
         run: |
@@ -119,6 +121,10 @@ jobs:
           [System.Management.Automation.Language.Parser]::ParseFile(
             "tools/Stage-NovaVeyraQml.ps1", [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count) { throw "Veyra QML-only stager has syntax errors: $errors" }
+          $tokens = $null; $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "tools/Stage-NovaVeyraWin32.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count) { throw "Stock Win32 Veyra pilot stager has syntax errors: $errors" }
           # Regression: the published Veyra 2.1.9 EXE is Win32, not QML.
           # Never build or stage a fake Qt bridge from the stock package.
           $stock = Join-Path $env:RUNNER_TEMP 'nova-veyra-stock-win32-fixture'
@@ -426,6 +432,8 @@ jobs:
           Copy-Item tools/Fetch-NovaVeyraPublicSDKs.ps1 dist/Xuper-TV-Desktop/tools/
           Copy-Item tools/Stage-NovaVeyraLocal.ps1 dist/Xuper-TV-Desktop/tools/
           Copy-Item tools/Stage-NovaVeyraQml.ps1 dist/Xuper-TV-Desktop/tools/
+          Copy-Item tools/Stage-NovaVeyraWin32.ps1 dist/Xuper-TV-Desktop/tools/
+          Copy-Item tools/nova_veyra_win32_proxy.py dist/Xuper-TV-Desktop/tools/
           Copy-Item tools/nova_veyra_qml_proxy.py dist/Xuper-TV-Desktop/tools/
           New-Item -ItemType Directory -Force dist/Xuper-TV-Desktop/integrations/veyra/qml | Out-Null
           Copy-Item integrations/veyra/qml/NovaControl.qml dist/Xuper-TV-Desktop/integrations/veyra/qml/
