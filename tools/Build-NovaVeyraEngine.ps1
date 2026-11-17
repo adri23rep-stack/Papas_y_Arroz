@@ -50,11 +50,20 @@ function RequireExe([string]$name) {
 RequireFile $source 'CMakeLists.txt' 'Veyra source tree'
 RequireFile $source 'apps\veyra-qml\main.cpp' 'Veyra Qt main'
 RequireFile $source 'src\ui\bridge\Playback.cpp' 'Veyra playback source'
+RequireFile $source 'include\veyra\ui\QmlPlayerBridge.h' 'Veyra Qt bridge header'
 RequireFile $qt 'lib\cmake\Qt6\Qt6Config.cmake' 'Qt MSVC libraries'
-RequireFile $qt 'bin\windeployqt6.exe' 'Qt deployer'
+# Qt MSVC installations may ship either tool name. CMake checks the rest.
+if (-not ((Test-Path -LiteralPath (Join-Path $qt 'bin\windeployqt.exe') -PathType Leaf) -or
+          (Test-Path -LiteralPath (Join-Path $qt 'bin\windeployqt6.exe') -PathType Leaf))) {
+  $failed.Add("Qt deployer not found (windeployqt.exe or windeployqt6.exe) in $qt\bin")
+} else { Write-Host 'OK: Qt deployer' }
 RequireFile $ff 'include\libavformat\avformat.h' 'FFmpeg demux'
 RequireFile $ff 'include\libavcodec\avcodec.h' 'FFmpeg decode'
-RequireFile $ff 'share\ffmpeg\FFMPEGConfig.cmake' 'FFmpeg CMake package'
+# Veyra invokes find_package(FFMPEG) using modules from a vcpkg prefix.
+# There is no universally named FFmpegConfig.cmake in every valid prefix.
+# Confirm import libraries; let CMake validate the package module.
+RequireFile $ff 'lib\avformat.lib' 'FFmpeg avformat import library'
+RequireFile $ff 'lib\avcodec.lib' 'FFmpeg avcodec import library'
 RequireFile $ngx 'include\nvsdk_ngx.h' 'NVIDIA DLSS SDK header'
 RequireFile $ngx 'lib\Windows_x86_64\x64\nvsdk_ngx_s.lib' 'NVIDIA DLSS SDK static library'
 RequireFile $of 'NvOFInterface\nvOpticalFlowCommon.h' 'NVIDIA Optical Flow header'
