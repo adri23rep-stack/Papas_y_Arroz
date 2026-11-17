@@ -149,7 +149,21 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                                 choice.selected=index==selected;
                                 state.audio.push_back(std::move(choice));
                             }
-                            state.subtitles.push_back({-1,"subtitle","Control desde Veyra",true});
+                            const int selectedSub=msg.value(QStringLiteral("selectedSubtitle")).toInt(-1);
+                            state.subtitles.push_back({-1,"subtitle","Desactivados",selectedSub<0});
+                            const QJsonArray subtitles=msg.value(QStringLiteral("subtitleTracks")).toArray();
+                            for(const QJsonValue& value:subtitles){
+                                const QJsonObject track=value.toObject();
+                                const int index=track.value(QStringLiteral("index")).toInt(-1);
+                                if(index<0 || !track.value(QStringLiteral("usable")).toBool())continue;
+                                xs::RemotePlaybackChoice choice;
+                                choice.kind="subtitle";
+                                choice.id=index;
+                                choice.label=track.value(QStringLiteral("label")).toString().toStdString();
+                                if(choice.label.empty())choice.label="Subtítulo "+std::to_string(index);
+                                choice.selected=index==selectedSub;
+                                state.subtitles.push_back(std::move(choice));
+                            }
                             xs::RemoteServer::shared().publish_playback_options(std::move(state));
                         }
                     }
@@ -270,6 +284,10 @@ void NovaQtPlayer::setSpeed(int percent){
     mpv_set_property_async(handle_,0,"speed",MPV_FORMAT_DOUBLE,&speed);
 }
 void NovaQtPlayer::toggleFullscreen(){
+    if(veyraProcess_ && veyraProcess_->state()==QProcess::Running){
+        sendVeyraControl({{"cmd","fullscreen"}});
+        return;
+    }
     if(!videoWindow_ || !videoWindow_->isVisible())return;
     if(videoWindow_->visibility()==QWindow::FullScreen){
         if(restoreMaximized_)videoWindow_->showMaximized();
@@ -278,6 +296,11 @@ void NovaQtPlayer::toggleFullscreen(){
         restoreMaximized_=videoWindow_->visibility()==QWindow::Maximized;
         videoWindow_->showFullScreen();
     }
+}
+
+void NovaQtPlayer::cycleMonitor(){
+    if(veyraProcess_ && veyraProcess_->state()==QProcess::Running)
+        sendVeyraControl({{"cmd","next_monitor"}});
 }
 
 bool NovaQtPlayer::eventFilter(QObject* object,QEvent* event){
@@ -307,8 +330,12 @@ bool NovaQtPlayer::eventFilter(QObject* object,QEvent* event){
 void NovaQtPlayer::selectTrack(int kind,int id,uint32_t generation){
     if(veyraProcess_ && veyraProcess_->state()==QProcess::Running){
         const auto snapshot=xs::RemoteServer::shared().playback_options();
-        if(snapshot.active && snapshot.generation==generation && kind==1 && id>=0)
-            sendVeyraControl({{"cmd","audio_track"},{"index",id}});
+        if(snapshot.active && snapshot.generation==generation){
+            if(kind==1 && id>=0)
+                sendVeyraControl({{"cmd","audio_track"},{"index",id}});
+            else if(kind==2 && id>=-1)
+                sendVeyraControl({{"cmd","subtitle_track"},{"index",id}});
+        }
         return;
     }
     QMutexLocker lock(&mutex_);
