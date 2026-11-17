@@ -34,6 +34,9 @@ int main() {
     ok &= check(std::string(tv.device)=="franklin", "Android TV device");
     ok &= check(std::string(tv.http_package_version)=="Android 11", "Android TV request header");
     ok &= check(std::string(xs::service_device_profile(false).model)=="Nintendo Switch", "tv mode does not replace default");
+    ok &= check(xs::service_device_state_filename(false)=="device_state.json", "production state unchanged");
+    ok &= check(xs::service_device_state_filename(true)=="device_state.android-test.json", "phone test state isolated");
+    ok &= check(xs::service_device_state_filename(false,true)=="device_state.android-tv-test.json", "tv state isolated");
     ok &= check(xs::local_test_android_id("0123456789abcdef0123456789abcdef")=="0123456789abcdef", "local ID stable");
     ok &= check(xs::local_test_android_id("invalid-serial").empty(), "reject invalid ID");
     ok &= check(xs::local_test_android_id("short").empty(), "reject short ID");
