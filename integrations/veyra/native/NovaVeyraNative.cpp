@@ -89,6 +89,11 @@ void NOVA_VEYRA_CALL nova_veyra_volume(void* ptr,float volume){
     if(ptr&&std::isfinite(volume))
         try{static_cast<Session*>(ptr)->engine.setVolume(std::clamp(volume,0.0f,1.0f),false);}catch(...){}
 }
+int NOVA_VEYRA_CALL nova_veyra_rate(void* ptr,double rate){
+    if(!ptr||!std::isfinite(rate)||rate<0.5||rate>2.0)return 0;
+    try {return static_cast<Session*>(ptr)->engine.setPlaybackRate(rate)?1:0;}
+    catch(...) {return 0;}
+}
 int NOVA_VEYRA_CALL nova_veyra_settings(void* ptr,const NovaVeyraSettings* settings){
     if(!ptr||!checked(settings))return 0;
     try {
