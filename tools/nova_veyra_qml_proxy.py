@@ -39,11 +39,11 @@ def output(message: dict) -> None:
 
 def input_worker() -> None:
     try:
-        for line in sys.stdin:
-            if len(line) > MAX_COMMAND:
+        for raw in sys.stdin.buffer:
+            if len(raw) > MAX_COMMAND:
                 continue
             try:
-                command = json.loads(line)
+                command = json.loads(raw.decode("utf-8", errors="strict"))
             except ValueError:
                 continue
             if not isinstance(command, dict) or command.get("protocol") != 1:
