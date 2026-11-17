@@ -15,6 +15,7 @@ param(
   [Parameter(Mandatory=$true)][string]$FfmpegRoot,
   [Parameter(Mandatory=$true)][string]$DlssSdkRoot,
   [Parameter(Mandatory=$true)][string]$OpticalFlowSdkRoot,
+  [Parameter(Mandatory=$true)][string]$NvencHeadersRoot,
   [string]$BuildDirectory = '',
   [switch]$CheckOnly,
   [switch]$ConfigureOnly,
@@ -27,6 +28,7 @@ $source=[IO.Path]::GetFullPath($VeyraSource)
 $ffmpeg=[IO.Path]::GetFullPath($FfmpegRoot)
 $dlss=[IO.Path]::GetFullPath($DlssSdkRoot)
 $nvof=[IO.Path]::GetFullPath($OpticalFlowSdkRoot)
+$nvenc=[IO.Path]::GetFullPath($NvencHeadersRoot)
 $build=if($BuildDirectory){[IO.Path]::GetFullPath($BuildDirectory)}else{Join-Path $source 'out\nova-native-gpu'}
 $missing=New-Object 'System.Collections.Generic.List[string]'
 $req=@(
@@ -44,7 +46,8 @@ $req=@(
   (Join-Path $dlss 'include\nvsdk_ngx.h'),
   (Join-Path $dlss 'lib\Windows_x86_64\x64\nvsdk_ngx_s.lib'),
   (Join-Path $nvof 'NvOFInterface\nvOpticalFlowCommon.h'),
-  (Join-Path $nvof 'Common\NvOFBase\NvOFBase.h')
+  (Join-Path $nvof 'Common\NvOFBase\NvOFBase.h'),
+  (Join-Path $nvenc 'include\ffnvcodec\nvEncodeAPI.h')
 )
 if(-not $DisableDeinterlace){
   $req+=Join-Path $ffmpeg 'include\libavfilter\avfilter.h'
@@ -77,6 +80,7 @@ $cmakeArgs=@(
   ("-DVEYRA_FFMPEG_ROOT="+$ffmpeg),
   ("-DVEYRA_DLSS_SDK_ROOT="+$dlss),
   ("-DVEYRA_NVOF_SDK_ROOT="+$nvof),
+  ("-DVEYRA_NVENC_HEADERS_ROOT="+$nvenc),
   '-DVEYRA_ENABLE_DLSS_SR=ON',
   '-DVEYRA_ENABLE_DLSS_FG=ON',
   '-DVEYRA_ENABLE_EXPERIMENTAL_DLSSNR=ON',
