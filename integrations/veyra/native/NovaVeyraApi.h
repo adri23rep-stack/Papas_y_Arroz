@@ -87,6 +87,7 @@ NOVA_VEYRA_EXPORT void NOVA_VEYRA_CALL nova_veyra_stop(void* engine);
 NOVA_VEYRA_EXPORT void NOVA_VEYRA_CALL nova_veyra_pause(void* engine, uint32_t paused);
 NOVA_VEYRA_EXPORT void NOVA_VEYRA_CALL nova_veyra_seek(void* engine, double seconds);
 NOVA_VEYRA_EXPORT void NOVA_VEYRA_CALL nova_veyra_volume(void* engine, float volume);
+NOVA_VEYRA_EXPORT int NOVA_VEYRA_CALL nova_veyra_rate(void* engine, double rate);
 NOVA_VEYRA_EXPORT int NOVA_VEYRA_CALL nova_veyra_settings(
     void* engine, const NovaVeyraSettings* settings);
 NOVA_VEYRA_EXPORT int NOVA_VEYRA_CALL nova_veyra_snapshot(
