@@ -33,6 +33,7 @@
 
 NovaQtPlayer::NovaQtPlayer(QObject* parent):QObject(parent){}
 NovaQtPlayer::~NovaQtPlayer(){
+    if(veyraProcess_)veyraProcess_->disconnect(this);
     if(veyraProcess_ && veyraProcess_->state()!=QProcess::NotRunning){
         veyraProcess_->terminate();
         if(!veyraProcess_->waitForFinished(1500)){
@@ -92,6 +93,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                 veyraProcess_.reset();
             if(!veyraProcess_){
                 veyraProcess_=std::make_unique<QProcess>();
+                const auto attempt=++veyraAttemptId_;
                 veyraOutput_.clear();
                 veyraSource_=source;
                 veyraBridgeReady_=false;
@@ -170,7 +172,8 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                     }
                 });
                 QObject::connect(veyraProcess_.get(), &QProcess::finished, this,
-                    [this,result,title,live,resumeSeconds](int, QProcess::ExitStatus){
+                    [this,result,title,live,resumeSeconds,attempt](int, QProcess::ExitStatus){
+                        if(attempt!=veyraAttemptId_)return;
                         const bool handshake=veyraBridgeReady_;
                         const bool intentional=veyraStopRequested_;
                         const double position=veyraLive_?-1.0:veyraLastPosition_;
@@ -185,7 +188,8 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                         if(!handshake && !intentional){
                             // Failed before the 10s handshake timeout: use MPV,
                             // never relaunch an unresponsive Veyra in a loop.
-                            QTimer::singleShot(0,this,[this,result,title,live,resumeSeconds]{
+                            QTimer::singleShot(0,this,[this,result,title,live,resumeSeconds,attempt]{
+                                if(attempt!=veyraAttemptId_)return;
                                 if(veyraProcess_ && veyraProcess_->state()==QProcess::NotRunning)
                                     veyraProcess_.reset();
                                 skipVeyraOnce_=true;
@@ -202,7 +206,8 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                     notice_=QStringLiteral("Reproduciendo en Veyra (esperando conexión de controles)");
                     playing_.store(true);
                     emit changed();
-                    QTimer::singleShot(10000,this,[this,result,title,live,resumeSeconds]{
+                    QTimer::singleShot(10000,this,[this,result,title,live,resumeSeconds,attempt]{
+                        if(attempt!=veyraAttemptId_)return;
                         // Old/unpatched Veyra cannot accept the source by pipe.
                         // Kill ONLY the child we spawned; then transparently retry
                         // with Nova's original MPV backend.
