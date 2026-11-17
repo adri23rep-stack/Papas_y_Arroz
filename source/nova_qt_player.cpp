@@ -105,6 +105,8 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
     skipVeyraOnce_=false;
     if(!skipVeyra && qEnvironmentVariableIntValue("NOVA_VEYRA_PILOT")==1){
         const QString executable=qEnvironmentVariable("NOVA_VEYRA_EXE");
+        const QString proxyScript=qEnvironmentVariable("NOVA_VEYRA_PROXY_SCRIPT");
+        const bool proxyScriptValid=proxyScript.isEmpty()||QFileInfo(proxyScript).isFile();
         const QString source=QString::fromStdString(result.source);
         const QUrl url(source);
         const bool network=url.isValid() &&
@@ -118,6 +120,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
         // the mpv backend. URLs are NEVER passed on Veyra's process command line.
         // Parameterised URLs need explicit opt-in (Veyra may log them itself).
         if(!executable.isEmpty() && QFileInfo(executable).isFile() &&
+           proxyScriptValid &&
            result.headers.empty() && result.subtitles.empty() &&
            (local || allowedNetwork)){
             if(veyraProcess_ && veyraProcess_->state()==QProcess::NotRunning)
@@ -139,7 +142,12 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                 veyraStopRequested_=false;
                 veyraLive_=live;
                 veyraProcess_->setProgram(executable);
-                veyraProcess_->setArguments({}); // source sent only after IPC handshake
+                // In QML-only pilot mode the executable is python.exe and the
+                // only arguments are -u and the LOCAL proxy script path.
+                // Media URLs are still sent through Nova's protected stdin.
+                if(!proxyScript.isEmpty())
+                    veyraProcess_->setArguments({QStringLiteral("-u"),proxyScript});
+                else veyraProcess_->setArguments({});
                 veyraProcess_->setWorkingDirectory(QFileInfo(executable).absolutePath());
                 // Veyra owns a separate Qt/MSVC runtime. Do not inherit Nova plugin paths.
                 veyraProcess_->setStandardErrorFile(QProcess::nullDevice());
