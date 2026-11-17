@@ -132,6 +132,8 @@ int NOVA_VEYRA_CALL nova_veyra_snapshot(void* ptr,NovaVeyraSnapshot* out){
         out->session_id=s.sessionId;
         out->applied_sr_quality=s.applied.videoSrQuality;
         out->desired_sr_quality=s.desired.videoSrQuality;
+        out->applied_fg_multiplier=s.applied.multiplier;
+        out->desired_fg_multiplier=s.desired.multiplier;
         return 1;
     } catch (...) {return 0;}
 }
