@@ -300,7 +300,9 @@ jobs:
           cp packaging/runtime/switch/xuperswitch/service.template.json dist/Xuper-TV-Desktop/service.template.json
           cp catalog.m3u dist/Xuper-TV-Desktop/
           cp shaders/FSRCNNX_x2_8-0-4-1.glsl dist/Xuper-TV-Desktop/shaders/
-          cp LICENSE LICENSE.nlohmann-json COPYRIGHT.mpv DEPENDENCIAS.md dist/Xuper-TV-Desktop/
+          # GPLv3 governs this combined experimental build. Preserve the
+          # original Jona Ruacho MIT attribution next to the GPL text.
+          cp LICENSE LICENSE.MIT-UPSTREAM LICENSE.nlohmann-json COPYRIGHT.mpv DEPENDENCIAS.md dist/Xuper-TV-Desktop/
           cp -r licenses/. dist/Xuper-TV-Desktop/licenses/
           test -s /ucrt64/share/licenses/qrencode/COPYING
           cp /ucrt64/share/licenses/qrencode/COPYING dist/Xuper-TV-Desktop/licenses/libqrencode-LGPL.txt
