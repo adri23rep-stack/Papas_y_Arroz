@@ -79,3 +79,26 @@ modificado listo para usar. No anunciarlos como integración GPU final.
 - Guía de compilación real del motor: `docs/NOVA_VEYRA_FULL_BUILD.md`.
 - Releer Actions actual para confirmar empaquetado final antes de anunciar un ZIP.
 - Aún falta el binario Veyra completo parcheado y pruebas RTX 3060; no hacer merge.
+
+## Continuación después de la prueba de Nova Windows (noviembre 17)
+
+**Bloqueo central confirmado:** Veyra completo con GPU NO puede salir del ZIP
+de código solamente; faltan dependencias de compilación, no solo de ejecución.
+Por eso el piloto Windows todavía usa MPV mientras el puente Veyra no está
+compilado y habilitado. No anunciar que el EXE portable incluye Veyra.
+
+NUEVO: `tools/Build-NovaVeyraEngine.ps1` comprueba las rutas y el toolchain,
+parchea una COPIA del código y construye solamente `veyra_qml_ui` cuando
+están presentes Qt MSVC, FFmpeg x64-windows, DLSS 310.7.0, Optical Flow SDK
+5.0.7 y headers NVENC 13.0.19.0. El modo `-CheckOnly` no toca archivos.
+NUEVO: `tools/Fetch-NovaVeyraPublicSDKs.ps1` permite clonar con versión
+fija desde NVIDIA/DLSS (v310.7.0) y FFmpeg/nv-codec-headers (n13.0.19.0);
+la descarga y aceptación del Optical Flow SDK sigue siendo independiente.
+CI Windows valida la sintaxis de ambos scripts y el rechazo de SDKs faltantes.
+Ver `docs/NOVA_VEYRA_FULL_BUILD.md` para rutas, comando y límites.
+
+Al reanudar: primero buscar en la máquina Windows real los SDKs, el prefijo
+FFmpeg y Qt MSVC; después ejecutar -CheckOnly. No perder tiempo reintentando
+compilar un Veyra reducido sin esas dependencias. Si no están disponibles,
+la siguiente petición útil al usuario es la ruta/copia autorizada de esas
+dependencias, NO el APK ni las credenciales del catálogo.
