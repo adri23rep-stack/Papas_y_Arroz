@@ -11,6 +11,8 @@
 #include <QString>
 #include <cstdint>
 #include <utility>
+#include <vector>
+#include <algorithm>
 
 class NovaVeyraNativeLoader {
 public:
@@ -34,8 +36,11 @@ public:
         rate_=reinterpret_cast<decltype(&nova_veyra_rate)>(lib_.resolve("nova_veyra_rate"));
         settings_=reinterpret_cast<decltype(&nova_veyra_settings)>(lib_.resolve("nova_veyra_settings"));
         snapshot_=reinterpret_cast<decltype(&nova_veyra_snapshot)>(lib_.resolve("nova_veyra_snapshot"));
+        audioCount_=reinterpret_cast<decltype(&nova_veyra_audio_count)>(lib_.resolve("nova_veyra_audio_count"));
+        audioAt_=reinterpret_cast<decltype(&nova_veyra_audio_at)>(lib_.resolve("nova_veyra_audio_at"));
+        selectAudio_=reinterpret_cast<decltype(&nova_veyra_select_audio)>(lib_.resolve("nova_veyra_select_audio"));
         if(!abi_||!create_||!destroy_||!open_||!stop_||!pause_||!seek_||
-           !volume_||!rate_||!settings_||!snapshot_||abi_()!=NOVA_VEYRA_NATIVE_ABI){
+           !volume_||!rate_||!settings_||!snapshot_||!audioCount_||!audioAt_||!selectAudio_||abi_()!=NOVA_VEYRA_NATIVE_ABI){
             close();return false;
         }
         engine_=create_();
@@ -75,6 +80,18 @@ public:
         state={};state.size=sizeof(state);
         return snapshot_(engine_,&state)!=0;
     }
+    std::vector<NovaVeyraAudioTrack> audioTracks()const {
+        std::vector<NovaVeyraAudioTrack> tracks;
+        if(!ready())return tracks;
+        const auto count=std::min<uint32_t>(audioCount_(engine_),64u);
+        for(uint32_t i=0;i<count;++i){
+            NovaVeyraAudioTrack track{};
+            track.size=sizeof(track);
+            if(audioAt_(engine_,i,&track))tracks.push_back(track);
+        }
+        return tracks;
+    }
+    bool selectAudio(int index){return ready()&&index>=0&&selectAudio_(engine_,index)!=0;}
     void close() {
         if(engine_ && destroy_)destroy_(engine_);
         engine_=nullptr;
@@ -82,6 +99,7 @@ public:
         abi_=nullptr;create_=nullptr;destroy_=nullptr;open_=nullptr;
         stop_=nullptr;pause_=nullptr;seek_=nullptr;volume_=nullptr;
         settings_=nullptr;snapshot_=nullptr;rate_=nullptr;
+        audioCount_=nullptr;audioAt_=nullptr;selectAudio_=nullptr;
     }
 private:
     QLibrary lib_;
@@ -98,4 +116,7 @@ private:
     decltype(&nova_veyra_rate) rate_=nullptr;
     decltype(&nova_veyra_settings) settings_=nullptr;
     decltype(&nova_veyra_snapshot) snapshot_=nullptr;
+    decltype(&nova_veyra_audio_count) audioCount_=nullptr;
+    decltype(&nova_veyra_audio_at) audioAt_=nullptr;
+    decltype(&nova_veyra_select_audio) selectAudio_=nullptr;
 };
