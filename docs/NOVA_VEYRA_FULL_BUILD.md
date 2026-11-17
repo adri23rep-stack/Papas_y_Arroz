@@ -127,3 +127,39 @@ términos; no se automatiza esa aceptación.
 Esto reduce dependencias manuales pero **NO habilita una compilación GPU**
 hasta contar también con Qt MSVC, FFmpeg x64-windows compatible y los SDK
 restantes. Los ZIPs actuales de Nova no contienen esas dependencias.
+
+## Preparar paquete local una vez que el Veyra modificado compile
+
+Se añadió tools/Stage-NovaVeyraLocal.ps1. Solo sirve **después** de tener
+veyra_qml_ui.exe compilado con el puente. Para evitar 700 MB en GitHub y no
+alterar el Veyra instalado, prepara una carpeta NUEVA en tu propia PC, tomando
+las DLL/QML y recursos de un **portable NVIDIA oficial 2.1.9** extraído y
+los shaders de la compilación modificada. Comprueba la firma de contenido por
+SHA-256 del EXE oficial 2.1.9 publicado en su fuente correspondiente; se
+rechazan paquetes de otro origen o versión.
+
+```powershell
+.\tools\Stage-NovaVeyraLocal.ps1 -NovaExe 'C:\Nova\XuperTVNovaQt.exe' -VeyraBuild 'C:\VeyraSource\out\nova-veyra-bridge' -OfficialVeyraPortable 'C:\Veyra219-NVIDIA' -Output 'C:\NovaVeyraPrueba' -CheckOnly
+# Solo cuando el chequeo confirme todos los archivos:
+.\tools\Stage-NovaVeyraLocal.ps1 -NovaExe 'C:\Nova\XuperTVNovaQt.exe' -VeyraBuild 'C:\VeyraSource\out\nova-veyra-bridge' -OfficialVeyraPortable 'C:\Veyra219-NVIDIA' -Output 'C:\NovaVeyraPrueba'
+# Ejecutar únicamente la copia recién preparada:
+& 'C:\NovaVeyraPrueba\Start-NovaVeyra.ps1'
+```
+
+El asistente se niega a reemplazar carpetas existentes o a preparar un build
+sin los indicadores de GPU activos. Conserva Nova y Veyra oficiales intactos.
+**Esto no prueba compatibilidad ni garantiza que las DLL/QML y todos los
+recursos del build nuevo coincidan**: probar carga, video, audio, VFG,
+subtítulos, FPS/HDR, cierre y dos monitores en la RTX 3060. No publicar
+ni redistribuir esa carpeta: puede contener runtimes sujetos a licencias.
+La copia local usa solo categorías de recursos permitidas y no reproduce
+configuraciones ni registros de usuario desde la instalación original.
+
+## Revisiones exactas de SDK públicos verificadas
+
+Las etiquetas v310.7.0 (NVIDIA/DLSS) y n13.0.19.0 (FFmpeg/nv-codec-headers)
+se comprobaron en los Git refs oficiales y el instalador compara el commit
+real con a291cc7d2cc642a51566f3dfd5376f635cd1b284 y
+e844e5b26f46bb77479f063029595293aa8f812d, respectivamente.
+El preparador también acepta windeployqt.exe o windeployqt6.exe y verifica
+bibliotecas de FFmpeg en vez de exigir un nombre de módulo CMake universal.
