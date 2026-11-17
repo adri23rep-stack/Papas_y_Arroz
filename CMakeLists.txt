@@ -132,6 +132,12 @@ if(BUILD_TESTING)
   add_executable(playback_state_test tests/playback_state_test.cpp)
   target_include_directories(playback_state_test PRIVATE include include/vendor)
   add_test(NAME playback_state_test COMMAND playback_state_test)
+  # Native Veyra ABI must remain compatible across Nova's MinGW Qt build
+  # and the original engine's MSVC 2022 (no C++ class or STL boundary).
+  # These are structural checks only; they never claim GPU playback worked.
+  add_executable(nova_veyra_native_abi_test tests/nova_veyra_native_abi_test.cpp)
+  target_include_directories(nova_veyra_native_abi_test PRIVATE integrations/veyra/native)
+  add_test(NAME nova_veyra_native_abi_test COMMAND nova_veyra_native_abi_test)
   add_executable(nova_auto_next_test tests/nova_auto_next_test.cpp)
   target_include_directories(nova_auto_next_test PRIVATE include)
   add_test(NAME nova_auto_next_test COMMAND nova_auto_next_test)
