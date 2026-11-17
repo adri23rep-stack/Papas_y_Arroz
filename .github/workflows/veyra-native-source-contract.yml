@@ -43,6 +43,10 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          & cl.exe /nologo /std:c++20 /Zs /EHsc /utf-8 /W3 /DNOMINMAX /DWIN32_LEAN_AND_MEAN /DUNICODE /D_UNICODE "/I$env:VEYRA_SOURCE_ROOT\include" integrations\veyra\native\NovaVeyraNative.cpp
-          if ($LASTEXITCODE -ne 0) { throw 'C++ native adapter does not match actual Veyra 2.1.9 API' }
-          Write-Host 'Original EngineController source ABI/type check passed. Real GPU engine still requires SDK build and RTX hardware testing.'
+          $obj = Join-Path $env:RUNNER_TEMP 'NovaVeyraNative.obj'
+          & cl.exe /nologo /std:c++20 /c /Fo"$obj" /EHsc /utf-8 /W3 /DNOMINMAX /DWIN32_LEAN_AND_MEAN /DUNICODE /D_UNICODE "/I$env:VEYRA_SOURCE_ROOT\include" integrations\veyra\native\NovaVeyraNative.cpp
+          if ($LASTEXITCODE -ne 0) { throw 'MSVC could not compile Nova GPU adapter against real EngineController' }
+          if (-not (Test-Path -LiteralPath $obj -PathType Leaf) -or (Get-Item -LiteralPath $obj).Length -lt 4096) {
+            throw 'Native adapter object file not generated'
+          }
+          Write-Host 'MSVC compiled real NovaVeyraNative.obj from original Veyra headers. Real engine linking requires SDKs; no GPU playback claim.'
