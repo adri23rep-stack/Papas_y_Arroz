@@ -152,3 +152,36 @@ La primera prueba debe ser un archivo local o HLS público sin credenciales
 en Windows/RTX 3060. Si falla el handshake, Nova debe recuperar MPV.
 No afirmar que los filtros FG/SR/HDR quedaron habilitados por defecto en
 una configuración nueva. No fusionar con main antes de prueba real.
+
+## Hallazgo definitivo y ruta de prueba del Veyra.exe ORIGINAL
+
+Investigación directa del ZIP del usuario, Veyra 2.1.9:
+- El portable oficial empaqueta `Veyra.exe` desde `apps/veyra/main.cpp`
+  usando una interfaz Win32 AppShell, NO el objetivo QML.
+- El atajo que pretendía inyectar `NovaControl.qml` en el producto oficial
+  NO FUNCIONA: la distribución no incluye `qml/Veyra/Main.qml` ni
+  `veyra_qml_ui.exe`. Las herramientas QML rechazan el paquete oficial
+  sin alterarlo; CI comprueba este rechazo.
+- Nuevo camino limitado y VERIFICABLE por lectura de código:
+  `apps/veyra/ui/AppShell.cpp` acepta comandos `WM_COMMAND`:
+  `Play=102`, `Stop=103`, `Recent=113`, `Fullscreen=120`.
+  `Recent` lee `Player/最近打开` de
+  `src/base/RuntimePaths.cpp` -> `runtime_local/veyra.ini` junto al EXE.
+- `tools/nova_veyra_win32_proxy.py` + `tools/Stage-NovaVeyraWin32.ps1`
+  preparan una COPIA portátil oficial con SHA256 verificado y escriben el
+  archivo local únicamente en el INI DE ESA COPIA. No modifican el EXE,
+  configuración del Veyra original ni datos del usuario.
+- Nueva guía: `docs/NOVA_VEYRA_WIN32_PILOT.md`.
+- `source/nova_qt_player.cpp` permite el experimento Win32 SOLO en archivos
+  locales, sin historial de seek, canales, enlaces firmados o cabeceras.
+  Oculta indicadores GPU/idiomas falsos al recibir `experimentalWin32`.
+  En fallo/timeout regresa a MPV.
+- Pruebas offline `tests/test_veyra_win32_proxy.py` y sintaxis PowerShell
+  corren en Windows CI. Esto NO sustituye prueba con Veyra oficial y RTX 3060.
+
+**Siguiente objetivo real:** probar en Windows con una copia del portable
+Veyra 2.1.9 NVIDIA y un video local, observar si se abre la ventana,
+carga imagen/audio y responde a pausa/F11; NO anunciar interpolación
+controlada por iPhone. Los ajustes GPU siguen siendo los del Veyra Win32
+y no hay telemetría remota verdadera. Si la prueba Win32 falla, conservar
+puente C++ y compilar `veyra_qml_ui` con dependencias. NO tocar main.
