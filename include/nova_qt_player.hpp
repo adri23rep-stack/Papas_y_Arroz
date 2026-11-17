@@ -52,6 +52,7 @@ private:
     QString veyraSource_;
     bool skipVeyraOnce_=false;
     bool veyraStopRequested_=false;
+    std::uint64_t veyraAttemptId_=0;
     bool veyraBridgeReady_=false;
     bool veyraLive_=false;
     double veyraLastPosition_=-1.0;
