@@ -64,9 +64,10 @@ QML escondido ni otra aplicación Veyra.exe.**
    la distribución de desarrollo FFmpeg compatible y MSVC 2022.
 3. Falta desplegar DLL y shaders correctos, ejecutar D3D12 real en RTX 3060
    y confirmar imagen/audio, ausencia de fugas y FPS generados medidos.
-4. Los comandos nativos iniciales están implementados, pero audio-pistas
-   avanzadas/subtítulos embebidos, soporte de headers/signed CDN y ajuste
-   avanzado de modelos NR todavía no están expuestos plenamente por el ABI.
+4. La enumeración y selección básica de idiomas de audio ya va por
+   `EngineController::audioTracks` / `selectAudioTrack`. Falta subtítulos
+   embebidos, soporte de headers/signed CDN y ajuste avanzado de modelos
+   NR; todavía no están expuestos plenamente por el ABI.
    Para esos casos, Nova conserva MPV.
 5. El plugin corre dentro del proceso de Nova. Un fallo grave del controlador
    podría afectar a Nova; no se habilitará de forma predeterminada hasta
