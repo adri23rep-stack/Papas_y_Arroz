@@ -102,3 +102,28 @@ fuera del árbol de compilación: **no llamarlo portable sin esas pruebas**.
 
 GitHub Actions prueba la sintaxis del script y su respuesta ante SDK ausentes,
 pero **no prueba una compilación GPU completa**.
+
+## Fuentes oficiales públicas que ahora se pueden preparar sin adivinar versiones
+
+El nuevo `tools/Fetch-NovaVeyraPublicSDKs.ps1` revisa o clona, solo cuando
+lo ejecutas, dos proyectos oficiales fijados exactamente a las versiones
+que espera este Veyra:
+
+- <https://github.com/NVIDIA/DLSS> en `v310.7.0`.
+- <https://github.com/FFmpeg/nv-codec-headers> en `n13.0.19.0`.
+
+```powershell
+.\tools\Fetch-NovaVeyraPublicSDKs.ps1 -Destination 'C:\NovaBuildDeps' -CheckOnly
+# Descarga explícita y opcional de esas dos fuentes públicas:
+.\tools\Fetch-NovaVeyraPublicSDKs.ps1 -Destination 'C:\NovaBuildDeps'
+```
+
+No sobrescribe carpetas de SDK preexistentes. No descarga parches externos,
+drivers, DLL de juegos ni paquetes de terceros de fuentes no oficiales.
+**Optical Flow SDK 5.0.7** se obtiene por separado en
+<https://developer.nvidia.com/opticalflow/download> después de aceptar sus
+términos; no se automatiza esa aceptación.
+
+Esto reduce dependencias manuales pero **NO habilita una compilación GPU**
+hasta contar también con Qt MSVC, FFmpeg x64-windows compatible y los SDK
+restantes. Los ZIPs actuales de Nova no contienen esas dependencias.
