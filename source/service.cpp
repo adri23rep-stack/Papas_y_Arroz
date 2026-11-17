@@ -68,7 +68,7 @@ static bool request(const std::string& url,const std::string* post,const Json& c
     if(post) {
         headers=curl_slist_append(headers,"Content-Type: application/json;charset=utf-8");
         for(const auto& pair:{std::pair<const char*,std::string>{"apk",text(config,"app_id")},
-                             {"apkVer",text(config,"apk_version")},{"spkgVer",service_device_profile(text(config,"_nova_device_profile")=="android-test").http_package_version}}) {
+                             {"apkVer",text(config,"apk_version")},{"spkgVer",service_device_profile(text(config,"_nova_device_profile")=="android-test",text(config,"_nova_device_profile")=="android-tv-test").http_package_version}}) {
             if(pair.second.find_first_of("\r\n")==std::string::npos)
                 headers=curl_slist_append(headers,(std::string(pair.first)+": "+pair.second).c_str());
         }
@@ -192,7 +192,8 @@ static const char* service_stage(const char* route) {
 static bool api_post(const Json& config,const Json& common,const char* route,Json payload,Json& data,std::string& status) {
         const auto fail=[&](const std::string& reason){
             status=std::string(service_stage(route))+
-                (text(config,"_nova_device_profile")=="android-test"?" [Android de prueba]":"")+": "+reason;
+                (text(config,"_nova_device_profile")=="android-test"?" [Android de prueba]":
+                 text(config,"_nova_device_profile")=="android-tv-test"?" [Android TV de prueba]":"")+": "+reason;
             return false;
         };
         for(auto it=common.begin();it!=common.end();++it)payload[it.key()]=it.value();
@@ -395,10 +396,12 @@ LoginAttempt service_bootstrap(const std::string& path) {
     // Diagnostic-only Windows profile. The choice is process-local and is
     // never saved to service.json/device_state.json, nor used by Switch builds.
     const bool android_test=nova_android_test_profile_enabled();
-    const auto device_profile=service_device_profile(android_test);
-    if(android_test){
-        config["_nova_device_profile"]="android-test";
-        trace("service:android_test_profile_enabled");
+    const bool android_tv_test=nova_android_tv_test_profile_enabled();
+    const auto device_profile=service_device_profile(android_test,android_tv_test);
+    if(android_test || android_tv_test){
+        config["_nova_device_profile"]=android_tv_test?"android-tv-test":"android-test";
+        trace(android_tv_test?"service:android_tv_test_profile_enabled":
+              "service:android_test_profile_enabled");
     }
     const auto hosts=config.find("portal_hosts");const std::string key=text(config,"key_base64");
     if(hosts==config.end()||!hosts->is_array()||hosts->empty()||key.empty()){
@@ -421,7 +424,7 @@ LoginAttempt service_bootstrap(const std::string& path) {
     auto post=[&](const char* route,Json payload,Json& data){
         return api_post(config,common,route,std::move(payload),data,out.status);
     };
-    Json device={{"androidId",android_test?local_test_android_id(text(config,"installation_serial")):std::string{}},
+    Json device={{"androidId",(android_test||android_tv_test)?local_test_android_id(text(config,"installation_serial")):std::string{}},
         {"wifiMac",text(config,"device_id")},{"etheMac",""},
         {"serialNumber",text(config,"installation_serial")},{"diskInfo",""},{"ramSize",""},
         {"romSize",""},{"gatewayMac",""},{"cpuId",""},{"display",device_profile.display},
