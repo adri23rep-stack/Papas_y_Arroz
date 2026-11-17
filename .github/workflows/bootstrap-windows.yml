@@ -2,7 +2,7 @@ name: Xuper TV Desktop | Windows preview
 
 on:
   push:
-    branches: [windows-desktop-preview, feature/ui-cinematic-tv, feature/apple-controller-server, feature/cinematic-ui-v2, feature/search-remote-catalog, feature/youtube-browser-remote, fix/youtube-hidpi-video, feature/classic-remote-command-support, feature/video-enhanced-stage1, feature/video-enhanced-contrast-stage2, feature/video-enhanced-gpu-stage3, feature/xuper-native-engine-v1, feature/xuper-native-player-v2, feature/iphone-catalog-settings, feature/qr-pairing-remembered, feature/provider-catalog-tiles, fix/live-tv-recovery, feature/private-iphone-player, feature/nova-ui-from-scratch]
+    branches: [main, windows-desktop-preview, feature/ui-cinematic-tv, feature/apple-controller-server, feature/cinematic-ui-v2, feature/search-remote-catalog, feature/youtube-browser-remote, fix/youtube-hidpi-video, feature/classic-remote-command-support, feature/video-enhanced-stage1, feature/video-enhanced-contrast-stage2, feature/video-enhanced-gpu-stage3, feature/xuper-native-engine-v1, feature/xuper-native-player-v2, feature/iphone-catalog-settings, feature/qr-pairing-remembered, feature/provider-catalog-tiles, fix/live-tv-recovery, feature/private-iphone-player, feature/nova-ui-from-scratch]
     paths:
       - '.github/workflows/bootstrap-windows.yml'
       - 'patches/**'
@@ -472,7 +472,7 @@ jobs:
           bash tools/test-nova-rife-ucrt64.sh
           test -s dist/Xuper-TV-NovaQt-GPU-RIFE-Addon/Xuper-TV-NovaQt-Preview/nova-gpu/librife_windows_x86-64.dll
       - name: Publish temporary ZIP to isolated build-delivery branch
-        if: github.ref_name == 'windows-desktop-preview' || github.ref_name == 'feature/nova-ui-from-scratch' || (github.event_name == 'pull_request' && (github.head_ref == 'feature/nova-ui-from-scratch' || github.head_ref == 'feature/nova-quality-presets-seamless-restart') && github.event.pull_request.head.repo.full_name == github.repository)
+        if: github.ref_name == 'main' || github.ref_name == 'windows-desktop-preview' || github.ref_name == 'feature/nova-ui-from-scratch' || (github.event_name == 'pull_request' && (github.head_ref == 'feature/nova-ui-from-scratch' || github.head_ref == 'feature/nova-quality-presets-seamless-restart') && github.event.pull_request.head.repo.full_name == github.repository)
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -481,7 +481,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           # Keep the experimental NOVA download separate from the existing
           # integrated Windows build. Never rewrite main or an unrelated branch.
-          $isNova = $env:NOVA_SOURCE_BRANCH -in @('feature/nova-ui-from-scratch', 'feature/nova-quality-presets-seamless-restart')
+          $isNova = $env:NOVA_SOURCE_BRANCH -in @('main', 'feature/nova-ui-from-scratch', 'feature/nova-quality-presets-seamless-restart')
           $deliveryBranch = if ($env:NOVA_SOURCE_BRANCH -eq 'feature/nova-quality-presets-seamless-restart') { 'build/nova-quality-preview' } elseif ($isNova) { 'build/nova-ui-preview' } else { 'build/live-tv-recovery' }
           $title = if ($isNova) { 'XuperTV Desktop - NOVA experimental Qt preview' } else { 'XuperTV Desktop - integrated Windows preview' }
           $packages = if ($isNova) {
@@ -549,7 +549,7 @@ jobs:
             Pop-Location
           }
       - name: Upload test build (not a release)
-        if: github.ref_name != 'windows-desktop-preview' && github.ref_name != 'feature/nova-ui-from-scratch' && github.head_ref != 'feature/nova-ui-from-scratch' && github.head_ref != 'feature/nova-quality-presets-seamless-restart'
+        if: github.ref_name != 'main' && github.ref_name != 'windows-desktop-preview' && github.ref_name != 'feature/nova-ui-from-scratch' && github.head_ref != 'feature/nova-ui-from-scratch' && github.head_ref != 'feature/nova-quality-presets-seamless-restart'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.ref_name == 'feature/nova-ui-from-scratch' && 'XuperTV-Nova-Windows' || 'XuperTV-Live-TV-Recovery-Windows' }}
