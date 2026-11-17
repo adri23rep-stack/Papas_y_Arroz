@@ -149,7 +149,7 @@ Remove-Item Env:\NOVA_DEVICE_PROFILE -ErrorAction SilentlyContinue
 .\XuperTVNovaQt.exe
 ```
 
-No se editan `service.json`, `device_state.json` ni datos del reproductor.
+No se editan `service.json` ni `device_state.json` del modo normal. Si el servidor acepta la prueba, Nova guarda el estado experimental por separado en `device_state.android-tv-test.json` (o `device_state.android-test.json` para el modo anterior); no copia credenciales ni modifica los datos del reproductor.
 Un rechazo `portal200001` en este perfil **no** prueba que el problema
 sea el hardware: tambien pueden influir version, autorizacion, requisitos del
 proveedor y la secuencia completa de registro. Evita reenviar identificadores
