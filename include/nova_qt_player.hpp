@@ -51,6 +51,7 @@ private:
     QByteArray veyraOutput_;
     QString veyraSource_;
     bool skipVeyraOnce_=false;
+    bool veyraStopRequested_=false;
     bool veyraBridgeReady_=false;
     bool veyraLive_=false;
     double veyraLastPosition_=-1.0;
