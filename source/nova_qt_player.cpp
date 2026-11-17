@@ -12,6 +12,7 @@
 #include <QFileInfo>
 #include <QTemporaryDir>
 #include <QByteArray>
+#include <QTimer>
 #include <QProcessEnvironment>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -162,6 +163,13 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                     notice_=QStringLiteral("Reproduciendo en Veyra (esperando conexión de controles)");
                     playing_.store(true);
                     emit changed();
+                    QTimer::singleShot(10000,this,[this]{
+                        if(veyraProcess_ && veyraProcess_->state()==QProcess::Running &&
+                           !veyraBridgeReady_){
+                            notice_=QStringLiteral("Veyra abierto sin puente Nova: controles solo en Veyra");
+                            emit changed();
+                        }
+                    });
                     return;
                 }
                 veyraProcess_.reset(); // Failed to launch: mpv still works.
