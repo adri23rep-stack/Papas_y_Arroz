@@ -12,6 +12,8 @@
 #include <QFileInfo>
 #include <QTemporaryDir>
 #include <QByteArray>
+#include <QProcess>
+#include <QUrl>
 #include <mpv/client.h>
 #include <QMetaObject>
 #include <QMutexLocker>
@@ -45,6 +47,50 @@ void NovaQtPlayer::finish(const QString& message){
 
 void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool live,double resumeSeconds){
     if(playing_.load()||!result.ok||!xs::valid_source(result.source))return;
+    // The Veyra experiment is opt-in. Keep the proven libmpv path untouched.
+    // Veyra 2.1.9 opens a positional local path or a network URL at startup.
+    if(qEnvironmentVariableIntValue("NOVA_VEYRA_PILOT")==1){
+        const QString executable=qEnvironmentVariable("NOVA_VEYRA_EXE");
+        const QString source=QString::fromStdString(result.source);
+        const QUrl url(source);
+        const bool network=url.isValid() &&
+            (url.scheme()==QStringLiteral("http")||url.scheme()==QStringLiteral("https"));
+        const bool allowedNetwork=network &&
+            qEnvironmentVariableIntValue("NOVA_VEYRA_ALLOW_NETWORK")==1 &&
+            url.userInfo().isEmpty() && !url.hasQuery() && !url.hasFragment();
+        const bool local=QFileInfo(source).isFile();
+        // Sources with authorization headers or subtitles are not portable via
+        // Veyra's positional CLI. Fall back to mpv without leaking credentials.
+        if(!executable.isEmpty() && QFileInfo(executable).isFile() &&
+           result.headers.empty() && result.subtitles.empty() &&
+           (local || allowedNetwork)){
+            if(veyraProcess_ && veyraProcess_->state()==QProcess::NotRunning)
+                veyraProcess_.reset();
+            if(!veyraProcess_){
+                veyraProcess_=std::make_unique<QProcess>();
+                veyraProcess_->setProgram(executable);
+                veyraProcess_->setArguments({source});
+                veyraProcess_->setWorkingDirectory(QFileInfo(executable).absolutePath());
+                veyraProcess_->setProcessChannelMode(QProcess::ForwardedErrorChannel);
+                QObject::connect(veyraProcess_.get(), &QProcess::finished, this,
+                    [this](int, QProcess::ExitStatus){
+                        playing_.store(false);
+                        notice_=QStringLiteral("Veyra terminó la reproducción");
+                        emit changed();
+                        emit finishedPlayback(0.0,false);
+                    });
+                veyraProcess_->start();
+                if(veyraProcess_->waitForStarted(3000)){
+                    title_=title;
+                    notice_=QStringLiteral("Reproduciendo en Veyra (control remoto experimental)");
+                    playing_.store(true);
+                    emit changed();
+                    return;
+                }
+                veyraProcess_.reset(); // Failed to launch: mpv still works.
+            }
+        }
+    }
     if(thread_.joinable())thread_.join();
     stop_.store(false);
     if(!videoWindow_){
@@ -78,6 +124,10 @@ void NovaQtPlayer::command(const char* name,const char* argument){
 }
 
 void NovaQtPlayer::stop(){
+    if(veyraProcess_ && veyraProcess_->state()!=QProcess::NotRunning){
+        veyraProcess_->terminate();
+        return;
+    }
     stop_.store(true);
     command("stop",nullptr);
 }
