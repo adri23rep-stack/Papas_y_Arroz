@@ -119,6 +119,19 @@ jobs:
           [System.Management.Automation.Language.Parser]::ParseFile(
             "tools/Stage-NovaVeyraQml.ps1", [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count) { throw "Veyra QML-only stager has syntax errors: $errors" }
+          # Regression: the published Veyra 2.1.9 EXE is Win32, not QML.
+          # Never build or stage a fake Qt bridge from the stock package.
+          $stock = Join-Path $env:RUNNER_TEMP 'nova-veyra-stock-win32-fixture'
+          New-Item -ItemType Directory -Force -Path $stock | Out-Null
+          'fixture' | Set-Content -LiteralPath (Join-Path $stock 'Veyra.exe')
+          $qmlResult = & ./tools/Stage-NovaVeyraQml.ps1 -OfficialPortable $stock -NovaExe 'C:\not-installed\NovaQt.exe' -Output (Join-Path $env:RUNNER_TEMP 'should-not-stage-qml') -CheckOnly | Out-String
+          if ($qmlResult -notmatch 'Win32' -or $qmlResult -notmatch 'unsupported') {
+            throw 'Stock Veyra must be rejected by QML-only staging'
+          }
+          $runtimeResult = & ./tools/Stage-NovaVeyraLocal.ps1 -OfficialVeyraPortable $stock -NovaExe 'C:\not-installed\NovaQt.exe' -VeyraBuild 'C:\not-installed\VeyraBuild' -Output (Join-Path $env:RUNNER_TEMP 'should-not-stage-runtime') -CheckOnly | Out-String
+          if ($runtimeResult -notmatch 'Win32' -or $runtimeResult -notmatch 'No files changed') {
+            throw 'Win32 Veyra runtime cannot be mistaken for Qt QML distribution'
+          }
           $sdkPreview = & ./tools/Fetch-NovaVeyraPublicSDKs.ps1 -Destination (Join-Path $env:RUNNER_TEMP 'missing-nova-sdk') -CheckOnly | Out-String
           if ($sdkPreview -notmatch 'v310.7.0' -or $sdkPreview -notmatch 'n13.0.19.0') {
             throw "Public SDK dry-run did not preserve required pinned versions"
