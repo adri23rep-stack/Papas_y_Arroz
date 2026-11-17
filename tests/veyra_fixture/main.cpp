@@ -2,6 +2,7 @@
 int main(int argc,char** argv){
     QGuiApplication app(argc,argv);
     veyra::ui::QmlPlayerBridge player;
+    if(qEnvironmentVariable("NOVA_VEYRA_FIXTURE_MODE")=="unpatched")qunsetenv("NOVA_VEYRA_STDIO");
     NovaStdioBridge bridge(player,nullptr,&app);
     if(qEnvironmentVariable("NOVA_VEYRA_FIXTURE_MODE")=="failure")
         QTimer::singleShot(2000,&app,[&]{player.failure=true;});

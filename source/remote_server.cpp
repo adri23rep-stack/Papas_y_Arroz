@@ -352,7 +352,7 @@ void RemoteServer::handle(uintptr_t id){
             const std::string key=def.key;
             const bool veyraSetting=key.rfind("veyra_",0)==0;
             if(veyraSetting && !veyra)continue;
-            if(veyra && (key=="video_preset" || key=="motion_mode" || key=="aspect" ||
+            if(veyra && (key=="video_preset" || key=="motion_mode" || key=="aspect" || key=="brightness" ||
                          key=="audio_delay" || key=="sub_delay" || key=="sub_scale"))continue;
             const int value=veyraSetting?playback.veyraSettings[i-remote_setting_index("veyra_fg")]:settings_.get(static_cast<int>(i));
             Json row={{"key",def.key},{"label",def.label},{"category",def.category},

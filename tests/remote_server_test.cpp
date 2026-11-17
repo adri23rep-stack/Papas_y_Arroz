@@ -121,7 +121,7 @@ int main(){
     const auto settings=post("/settings/get",R"({})",token);
     REQUIRE(okay(settings));
     const auto settings_json=nlohmann::json::parse(payload(settings),nullptr,false);
-    REQUIRE(settings_json.contains("settings")&&settings_json["settings"].size()==xs::kRemoteSettings.size());
+    REQUIRE(settings_json.contains("settings")&&settings_json["settings"].size()==11);
     // Check the new frame interpolation setting is exposed and validated.
     REQUIRE(okay(post("/settings/set",R"({"key":"motion_mode","value":2})",token)));
     REQUIRE(!okay(post("/settings/set",R"({"key":"motion_mode","value":3})",token)));
@@ -174,6 +174,34 @@ int main(){
     server.end_playback();
     REQUIRE(!okay(choose("audio",2,track_generation)));
     REQUIRE(nlohmann::json::parse(payload(post("/player/options",R"({})",token)))["active"]==false);
+
+    // Veyra controls are conditional, report engine-confirmed state, and reject
+    // multiplier gaps even if the numeric value lies inside the slider range.
+    REQUIRE(!okay(post("/settings/set",R"({"key":"veyra_fg","value":1})",token)));
+    server.begin_playback("Veyra fixture");
+    xs::RemotePlaybackSnapshot veyra;
+    veyra.engine="veyra";
+    veyra.veyraSettings={{0,1,0,0,4}};
+    veyra.veyraMultipliers={2,4};
+    server.publish_playback_options(veyra);
+    const auto veyra_json=nlohmann::json::parse(payload(post("/settings/get",R"({})",token)));
+    bool foundFg=false,foundMultiplier=false;
+    for(const auto& setting:veyra_json["settings"]){
+        REQUIRE(setting["key"]!="video_preset" && setting["key"]!="motion_mode");
+        if(setting["key"]=="veyra_fg"){foundFg=true;REQUIRE(setting["value"]==0);}
+        if(setting["key"]=="veyra_multiplier"){
+            foundMultiplier=true;
+            REQUIRE(setting["min"]==2 && setting["max"]==4 && setting["value"]==4);
+            REQUIRE(setting["choices"]==nlohmann::json::array({2,4}));
+        }
+    }
+    REQUIRE(foundFg && foundMultiplier);
+    REQUIRE(!okay(post("/settings/set",R"({"key":"veyra_multiplier","value":3})",token)));
+    REQUIRE(okay(post("/settings/set",R"({"key":"veyra_multiplier","value":4})",token)));
+    REQUIRE(okay(post("/settings/set",R"({"key":"veyra_fg","value":1})",token)));
+    REQUIRE(server.playback_options().veyraSettings[0]==0); // a request isn't an acknowledgement
+    server.end_playback();
+    REQUIRE(!okay(post("/settings/set",R"({"key":"veyra_fg","value":1})",token)));
 
     xs::Catalog mock_root;
     xs::Entry live;live.kind=xs::EntryKind::Category;

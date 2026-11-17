@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install, check or remove Nova's optional bridge in a COPY of Veyra's sources.
+r"""Install, check or remove Nova's optional bridge in a COPY of Veyra's sources.
 
 Usage:
   python tools/Apply-VeyraNovaBridge.py --check "C:\Veyra-NRVideo-main"
@@ -52,10 +52,15 @@ def patch(target: Path, *, check_only: bool = False, restore: bool = False) -> s
             raise ValueError("No Nova bridge backup exists. Nothing restored.")
         if not patched:
             raise ValueError("The Veyra entrypoint has changed. Refusing to overwrite it.")
+        original = backup.read_text(encoding="utf-8")
+        expected = original.replace(ANCHOR_INCLUDE, ANCHOR_INCLUDE + "\n" + NEW_INCLUDE, 1)
+        expected = expected.replace(ANCHOR_INIT, ANCHOR_INIT + "\n" + NEW_INIT, 1)
+        expected = expected.replace(AUTO_RESUME, GUARDED_RESUME, 1)
+        if data != expected:
+            raise ValueError("The Veyra entrypoint has changed since installation. Nothing restored.")
         if check_only:
             return "Bridge can be restored."
         # Preserve another person's changes in NovaStdioBridge.hpp if it diverged.
-        original = backup.read_text(encoding="utf-8")
         atomic_text_write(main_cpp, original)
         backup.unlink()
         if header.is_file() and header.read_bytes() == source_header.read_bytes():
@@ -79,14 +84,23 @@ def patch(target: Path, *, check_only: bool = False, restore: bool = False) -> s
 
     if check_only:
         return "Bridge already installed." if patched else "Injection anchors valid; ready to install."
+    adapter = source_header.read_text(encoding="utf-8")
+    old_header = header.read_text(encoding="utf-8") if header.exists() else None
     if not patched:
         shutil.copy2(main_cpp, backup)
         try:
+            # Install the dependency first; main.cpp must never reference a missing header.
+            atomic_text_write(header, adapter)
             atomic_text_write(main_cpp, patched_source)
         except Exception:
+            if old_header is not None:
+                atomic_text_write(header, old_header)
+            else:
+                header.unlink(missing_ok=True)
             backup.unlink(missing_ok=True)
             raise
-    shutil.copy2(source_header, header)
+    else:
+        atomic_text_write(header, adapter)
     return "Nova bridge installed. Compile Veyra's veyra_qml_ui.exe from this separate source copy."
 
 

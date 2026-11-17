@@ -50,6 +50,8 @@ private:
             enabled_ = false;
             inputTimer_.stop();
             statusTimer_.stop();
+            player_.stopPlayback();
+            QCoreApplication::quit();
         }
     }
     void status() {

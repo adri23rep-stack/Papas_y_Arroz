@@ -128,6 +128,11 @@ jobs:
       - name: Exercise Nova-Veyra pipes with deterministic engine fixture
         shell: msys2 {0}
         run: python tests/test_veyra_stdio.py build/windows/nova_veyra_bridge_fixture.exe
+      - name: Verify Nova controls, graceful stop and MPV recovery
+        shell: msys2 {0}
+        run: |
+          cp packaging/runtime/switch/xuperswitch/test.mp4 build/windows/test.mp4
+          python tests/test_veyra_player.py build/windows/XuperTVNovaQt.exe build/windows/nova_veyra_bridge_fixture.exe
       - name: Validate FFmpeg CAS/Lanczos filter graph
         shell: msys2 {0}
         run: |
@@ -367,11 +372,11 @@ jobs:
         if: github.ref_name == 'feature/nova-veyra-engine'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force dist/Xuper-TV-Desktop/veyra-integration | Out-Null
+          New-Item -ItemType Directory -Force dist/Xuper-TV-Desktop/tools, dist/Xuper-TV-Desktop/integrations/veyra | Out-Null
           Copy-Item tools/Run-NovaVeyraSmoke.ps1 dist/Xuper-TV-Desktop/
-          Copy-Item tools/Apply-VeyraNovaBridge.py dist/Xuper-TV-Desktop/veyra-integration/
+          Copy-Item tools/Apply-VeyraNovaBridge.py dist/Xuper-TV-Desktop/tools/
           Copy-Item docs/NOVA_VEYRA_PILOT.md dist/Xuper-TV-Desktop/
-          Copy-Item integrations/veyra/NovaStdioBridge.hpp dist/Xuper-TV-Desktop/veyra-integration/
+          Copy-Item integrations/veyra/NovaStdioBridge.hpp dist/Xuper-TV-Desktop/integrations/veyra/
       - name: Prepare two independent portable Windows preview packages
         shell: msys2 {0}
         run: |

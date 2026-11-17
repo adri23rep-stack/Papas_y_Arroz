@@ -42,6 +42,56 @@ int main(int argc,char** argv){
     QDir::setCurrent(QCoreApplication::applicationDirPath());
 
     checkpoint("application_ready");
+    // Deterministic IPC integration test. Uses a fake child engine, never a GPU claim.
+    if(argc>1 && std::strcmp(argv[1],"--smoke-veyra")==0){
+        app.setQuitOnLastWindowClosed(false);
+        NovaQtPlayer player;
+        const QString mode=qEnvironmentVariable("NOVA_VEYRA_FIXTURE_MODE");
+        const bool fallback=mode=="failure" || mode=="crash" || mode=="unpatched";
+        xs::SourceResult source;
+        source.ok=true; source.source="test.mp4";
+        int stage=0;
+        QObject::connect(&player,&NovaQtPlayer::finishedPlayback,&app,[&](double position,bool){
+            if(!fallback){
+                app.exit(stage==2 && position>=41 ? 0 : 11);
+            }
+        });
+        QTimer poll;
+        QObject::connect(&poll,&QTimer::timeout,&app,[&]{
+            if(fallback){
+                if(player.videoWindow() && !player.veyraActive()){
+                    player.stop();
+                    app.quit();
+                }
+                return;
+            }
+            if(!player.veyraActive())return;
+            if(stage==0){
+                if(player.videoWindow() || player.setVeyraSetting("veyra_multiplier",3)){
+                    app.exit(12); return;
+                }
+                if(!player.setVeyraSetting("veyra_fg",1) ||
+                   !player.setVeyraSetting("veyra_sr",1) ||
+                   !player.setVeyraSetting("veyra_multiplier",4)){
+                    app.exit(13); return;
+                }
+                player.togglePause();
+                stage=1;
+            }else if(stage==1){
+                const auto state=player.veyraState();
+                if(state.value("paused").toBool() && state.value("fgEnabled").toBool() &&
+                   state.value("srEnabled").toBool() && state.value("fgMultiplier").toInt()==4 &&
+                   state.value("position").toDouble()>=41){
+                    stage=2;
+                    player.stop();
+                }
+            }
+        });
+        player.play(source,QStringLiteral("Veyra IPC fixture"),false,42.0);
+        poll.start(100);
+        QTimer::singleShot(18000,&app,[&]{app.exit(14);});
+        return app.exec();
+    }
     const bool testRife=argc>1 && std::strcmp(argv[1],"--smoke-rife-fullscreen")==0;
     if(testRife || (argc>1 && std::strcmp(argv[1],"--smoke-video-fullscreen")==0)){
         NovaQtPlayer player;

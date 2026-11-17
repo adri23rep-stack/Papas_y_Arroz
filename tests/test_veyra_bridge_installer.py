@@ -3,6 +3,7 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 PATCHER = ROOT / "tools" / "Apply-VeyraNovaBridge.py"
@@ -62,6 +63,31 @@ class InstallerTests(unittest.TestCase):
     def test_reject_restore_without_original_backup(self):
         with self.assertRaisesRegex(ValueError, "No Nova bridge backup"):
             patcher.patch(self.root, restore=True)
+
+    def test_restore_preserves_edits_after_install(self):
+        patcher.patch(self.root)
+        edited=self.entrypoint.read_text(encoding="utf-8") + "// unrelated user change\n"
+        self.entrypoint.write_text(edited,encoding="utf-8")
+        with self.assertRaisesRegex(ValueError,"changed since installation"):
+            patcher.patch(self.root,restore=True)
+        self.assertEqual(self.entrypoint.read_text(encoding="utf-8"),edited)
+
+    def test_failed_adapter_write_leaves_original_entrypoint(self):
+        with mock.patch.object(patcher,"atomic_text_write",side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):patcher.patch(self.root)
+        self.assertEqual(self.entrypoint.read_text(encoding="utf-8"),self.original)
+        self.assertFalse(self.entrypoint.with_suffix(".cpp.nova-pre-bridge.bak").exists())
+        self.assertFalse((self.qml/"NovaStdioBridge.hpp").exists())
+
+    def test_failed_entrypoint_write_rolls_back_adapter(self):
+        real_write=patcher.atomic_text_write
+        def fail_main(path,data):
+            if path==self.entrypoint:raise OSError("disk full")
+            real_write(path,data)
+        with mock.patch.object(patcher,"atomic_text_write",side_effect=fail_main):
+            with self.assertRaises(OSError):patcher.patch(self.root)
+        self.assertEqual(self.entrypoint.read_text(encoding="utf-8"),self.original)
+        self.assertFalse((self.qml/"NovaStdioBridge.hpp").exists())
 
 
 if __name__ == "__main__":

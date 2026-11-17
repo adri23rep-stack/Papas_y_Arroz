@@ -265,17 +265,20 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                             scheduleVeyraFallback();
                             return;
                         }
-                        veyraWatchdog_.stop();
-                        veyraState_.clear();
-                        // End old session BEFORE notifying home; the callback may
-                        // immediately activate the next episode/channel.
-                        xs::RemoteServer::shared().end_playback();
-                        playing_.store(false);
-                        veyraBridgeReady_=false;
-                        veyraSource_.clear();
-                        notice_=QStringLiteral("Veyra terminó la reproducción");
-                        emit changed();
-                        emit finishedPlayback(position,false);
+                        QTimer::singleShot(0,this,[this,attempt,position]{
+                            if(attempt!=veyraAttemptId_)return;
+                            veyraWatchdog_.stop();
+                            veyraState_.clear();
+                            // End old session BEFORE notifying home; the callback may
+                            // immediately activate the next episode/channel.
+                            xs::RemoteServer::shared().end_playback();
+                            playing_.store(false);
+                            veyraBridgeReady_=false;
+                            veyraSource_.clear();
+                            notice_=QStringLiteral("Veyra terminó la reproducción");
+                            emit changed();
+                            emit finishedPlayback(position,false);
+                        });
                     });
                 veyraProcess_->start();
                 if(veyraProcess_->waitForStarted(3000)){
