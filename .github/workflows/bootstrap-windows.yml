@@ -114,7 +114,7 @@ jobs:
             "tools/Build-NovaVeyraNative.ps1", [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count) { throw "Native Veyra build script has syntax errors: $errors" }
           $none = Join-Path $env:RUNNER_TEMP 'nova-native-missing-deps'
-          $nativeCheck = & ./tools/Build-NovaVeyraNative.ps1 -VeyraSource $none -FfmpegRoot $none -DlssSdkRoot $none -OpticalFlowSdkRoot $none -CheckOnly 3>&1 | Out-String
+          $nativeCheck = & ./tools/Build-NovaVeyraNative.ps1 -VeyraSource $none -FfmpegRoot $none -DlssSdkRoot $none -OpticalFlowSdkRoot $none -NvencHeadersRoot $none -CheckOnly 3>&1 | Out-String
           if ($nativeCheck -notmatch 'Veyra native GPU cannot compile' -or
               $nativeCheck -notmatch 'nvsdk_ngx.h') {
             throw "Native GPU build preflight must reject missing SDKs: $nativeCheck"
