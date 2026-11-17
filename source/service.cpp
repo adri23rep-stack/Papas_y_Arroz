@@ -409,7 +409,8 @@ LoginAttempt service_bootstrap(const std::string& path) {
     }
     if(curl_global_init(CURL_GLOBAL_DEFAULT)!=CURLE_OK){out.status="No se pudo iniciar cURL.";return out;}
     struct CurlExit {~CurlExit(){curl_global_cleanup();}} cleanup;
-    const std::string state_path=path.substr(0,path.find_last_of("/\\")+1)+"device_state.json";
+    const std::string state_path=path.substr(0,path.find_last_of("/\\")+1)+
+        service_device_state_filename(android_test,android_tv_test);
     Json state=Json::object();
     {std::ifstream previous(state_path);if(previous){std::string saved((std::istreambuf_iterator<char>(previous)),{});
         Json parsed=Json::parse(saved,nullptr,false);if(parsed.is_object())state=std::move(parsed);}}
