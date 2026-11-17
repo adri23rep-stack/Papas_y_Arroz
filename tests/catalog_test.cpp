@@ -12,7 +12,7 @@ int main() {
     for(const char* s:{"https://", "http:///x", "https://user:pass@example.org/x", "file:///etc/passwd", "https://example.org/a\nb", "https://example.org/\"x", "https://example.org/a b", "sdmc:/a/../b"}) assert(!xs::valid_source(s));
     std::istringstream opts("#EXTINF:-1,Header\nhttps://example.org/a|User-Agent=test\n#EXTINF:-1,OK\nhttps://example.org/b\n");
     auto c2=xs::read_m3u(opts);assert(c2.entries.size()==1);assert(c2.warnings.size()==1);
-    std::istringstream logos("#EXTM3U\\n#EXTINF:-1 tvg-logo=\\\"https://logos.example.org/one.png\\\" group-title=\\\"Noticias\\\",Canal con logo\\nhttps://stream.example.org/live.m3u8\\n#EXTINF:-1 tvg-logo=\\\"file:///private.png\\\",Canal sin logo\\nhttps://stream.example.org/other.m3u8\\n");
+    std::istringstream logos("#EXTM3U\n#EXTINF:-1 tvg-logo=\"https://logos.example.org/one.png\" group-title=\"Noticias\",Canal con logo\nhttps://stream.example.org/live.m3u8\n#EXTINF:-1 tvg-logo=\"file:///private.png\",Canal sin logo\nhttps://stream.example.org/other.m3u8\n");
     auto with_logos=xs::read_m3u(logos);
     assert(with_logos.entries.size()==2);
     assert(with_logos.entries[0].artwork=="https://logos.example.org/one.png");
