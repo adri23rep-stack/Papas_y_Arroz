@@ -145,6 +145,29 @@ foreach($ng in $ngxs){
 Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination (Join-Path $out 'LICENSE') -Force
 Copy-Item -LiteralPath (Join-Path $repo 'LICENSE.MIT-UPSTREAM') -Destination $out -Force
 Copy-Item -LiteralPath (Join-Path $source 'THIRD_PARTY_NOTICES.md') -Destination (Join-Path $out 'THIRD_PARTY_NOTICES.VEYRA.md')
+# Veyra's NGX/FG/NR code resolves its provider models relative to the HOST
+# EXE, NOT the MSVC DLL. Preserve only runtime BINARY assets and relative paths
+# from the user's own licensed portable, never personal ini/json/cache data.
+$extensions=@('.dll','.bin','.dat','.model','.onnx','.pak','.weights')
+$runtimeCount=0
+foreach($relative in @('runtime\experimental','runtime_local\nvidia')){
+ $runtimeFolder=Join-Path $veyra $relative
+ if(-not(Test-Path -LiteralPath $runtimeFolder -PathType Container)){continue}
+ foreach($item in (Get-ChildItem -LiteralPath $runtimeFolder -File -Recurse)){
+  if($item.Extension.ToLowerInvariant() -notin $extensions){continue}
+  $tail=$item.FullName.Substring($veyra.Length).TrimStart('\')
+  $dest=Join-Path $out $tail
+  $parent=Split-Path -Parent $dest
+  New-Item -ItemType Directory -Path $parent -Force | Out-Null
+  Copy-Item -LiteralPath $item.FullName -Destination $dest
+  ++$runtimeCount
+ }
+}
+if($runtimeCount -eq 0){
+ Write-Warning 'No user-provided NVIDIA runtime models staged; decoding may work but DLSS/NR/FG providers will be unavailable.'
+}else{
+ Write-Output "Original NVIDIA runtime binaries staged locally: $runtimeCount"
+}
 $launcher=@'
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
