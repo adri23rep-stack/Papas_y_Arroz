@@ -236,7 +236,12 @@ def main() -> int:
         env["QML_DISABLE_DISK_CACHE"] = "1"  # per-session JS settings must reload
         for key in ("NOVA_VEYRA_QML_ORIGINAL_EXE", "NOVA_VEYRA_QML_ROOT"):
             env.pop(key, None)
-        child = subprocess.Popen([str(exe)], cwd=str(exe.parent), env=env,
+        # Separate Nova pilot settings from the user's installed Veyra,
+        # and prevent the stock app from auto-resuming an unrelated last video.
+        data_dir = exe.parent / "NovaPilotData"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        child = subprocess.Popen([str(exe), "--data-dir", str(data_dir)],
+                                 cwd=str(exe.parent), env=env,
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         job = job_for_child(child)
         threading.Thread(target=input_worker, daemon=True).start()
