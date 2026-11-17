@@ -119,3 +119,36 @@ dependencias, NO el APK ni las credenciales del catálogo.
   pendiente la compilación REAL y GPU en Windows. No etiquetar el ZIP de
   Nova existente como si incluyera el motor Veyra GPU.
   Consultar docs/NOVA_VEYRA_FULL_BUILD.md para comandos y dependencias.
+
+## Nuevo camino experimental sin recompilar el motor NVIDIA
+
+**Hallazgo revisado contra el Veyra 2.1.9 original:**
+`apps/veyra-qml/main.cpp` agrega la carpeta `qml/` al import path;
+`engine.loadFromModule("Veyra","Main")` lee `qml/Veyra/Main.qml`, y
+su objeto QmlPlayerBridge se expone como `veyra` a QML.
+
+Sin tocar Veyra.exe ni los SDK, se añadió una segunda ruta opcional:
+
+- `integrations/veyra/qml/NovaControl.qml` y NovaBridgeConfig.js.
+- `tools/nova_veyra_qml_proxy.py` (Python 3.10+, localhost con token,
+  JSON stdin/stdout compatible con el puente Nova existente).
+- `tools/Stage-NovaVeyraQml.ps1`: crea una COPIA de los recursos
+  oficiales de Veyra 2.1.9 y modifica solamente el QML de esa copia;
+  añade el tipo a qmldir; verifica SHA256 del EXE original.
+- `source/nova_qt_player.cpp` admite script proxy solo si
+  NOVA_VEYRA_PROXY_SCRIPT apunta a archivo real; las URL de video
+  no viajan en argumentos de proceso.
+- `tests/test_veyra_qml_proxy.py`: pruebas de protocolo, autenticación
+  de token, estados y campos privados, sin usar el motor real.
+- Guía de ejecución: `docs/NOVA_VEYRA_QML_PILOT.md`.
+
+Por seguridad, la copia de Veyra usa `NovaPilotData` separado. No
+importa configuraciones ni historial del usuario desde la instalación
+original. Esta variante QML aún NO implementa el control de monitor ni
+informa EOF exacto. Se conserva el método anterior de compilación C++.
+
+**No se ha hecho prueba real de carga del QML en el ejecutable oficial**.
+La primera prueba debe ser un archivo local o HLS público sin credenciales
+en Windows/RTX 3060. Si falla el handshake, Nova debe recuperar MPV.
+No afirmar que los filtros FG/SR/HDR quedaron habilitados por defecto en
+una configuración nueva. No fusionar con main antes de prueba real.
