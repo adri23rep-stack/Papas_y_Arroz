@@ -9,6 +9,8 @@
 #include <cwchar>
 #include <qrencode.h>
 #include <QBuffer>
+#include <QDir>
+#include <QFileInfo>
 #include <curl/curl.h>
 #include <cstdio>
 #include <sstream>
@@ -507,6 +509,24 @@ void NovaQtHome::playFeatured(){
     watcher->setFuture(QtConcurrent::run([session,chosen](){
         return xs::service_browse_remote(session,chosen);
     }));
+}
+bool NovaQtHome::playLocalPilotSample(){
+    if(!win32PilotEnabled() || player_.playing() || loading_)return false;
+    // Existing catalog safety deliberately allows only the fixed test.mp4
+    // sample, never arbitrary local paths from a remote playlist.
+    const QString local=QDir::current().absoluteFilePath("test.mp4");
+    if(!QFileInfo(local).isFile()){
+        status_=QStringLiteral("Coloca un video llamado test.mp4 junto al EXE de Nova.");
+        emit changed();
+        return false;
+    }
+    xs::SourceResult source;
+    source.ok=true;
+    source.source="test.mp4";
+    active_entry_=xs::Entry{};
+    next_episode_.reset();
+    player_.play(source,QStringLiteral("Prueba local Veyra"),false,0.0);
+    return player_.playing();
 }
 void NovaQtHome::openDemo(int index){
     if(index<0||static_cast<size_t>(index)>=demo_entries_.size())return;
