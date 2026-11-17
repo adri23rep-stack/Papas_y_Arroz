@@ -221,7 +221,7 @@ HomeSnapshot loadHome(){
         if(!out.channels.isEmpty()){
             out.status=QStringLiteral("TV pública en español: %1 canales de IPTV-org%2. "
                 "El servicio anterior sigue desconectado; algunos enlaces pueden no funcionar.")
-                .arg(out.tv_entries.size())
+                .arg(static_cast<qulonglong>(out.tv_entries.size()))
                 .arg(public_tv.from_cache?QStringLiteral(" (caché)"):QString());
         }else{
             out.status=QString::fromStdString(login.status);
