@@ -22,9 +22,17 @@ public:
     ~NovaVeyraNativeLoader(){close();}
 
     bool load(const QString& path) {
-        if(engine_ || !QFileInfo(path).isAbsolute() || !QFileInfo(path).isFile())return false;
+        error_.clear();
+        if(engine_){error_=QStringLiteral("Ya hay una sesión nativa en ejecución.");return false;}
+        if(!QFileInfo(path).isAbsolute() || !QFileInfo(path).isFile()){
+            error_=QStringLiteral("La DLL GPU indicada no existe o no usa ruta absoluta.");
+            return false;
+        }
         lib_.setFileName(path);
-        if(!lib_.load())return false;
+        if(!lib_.load()){
+            error_=QStringLiteral("Windows no pudo cargar la DLL o alguna dependencia: ")+lib_.errorString();
+            return false;
+        }
         abi_=reinterpret_cast<decltype(&nova_veyra_abi)>(lib_.resolve("nova_veyra_abi"));
         create_=reinterpret_cast<decltype(&nova_veyra_create)>(lib_.resolve("nova_veyra_create"));
         destroy_=reinterpret_cast<decltype(&nova_veyra_destroy)>(lib_.resolve("nova_veyra_destroy"));
@@ -41,14 +49,19 @@ public:
         selectAudio_=reinterpret_cast<decltype(&nova_veyra_select_audio)>(lib_.resolve("nova_veyra_select_audio"));
         if(!abi_||!create_||!destroy_||!open_||!stop_||!pause_||!seek_||
            !volume_||!rate_||!settings_||!snapshot_||!audioCount_||!audioAt_||!selectAudio_||abi_()!=NOVA_VEYRA_NATIVE_ABI){
+            error_=QStringLiteral("La DLL Veyra tiene símbolos faltantes o una versión de ABI incompatible.");
             close();return false;
         }
         engine_=create_();
-        if(!engine_){close();return false;}
+        if(!engine_){
+            error_=QStringLiteral("EngineController no pudo inicializarse.");
+            close();return false;
+        }
         return true;
     }
 
     bool ready()const{return engine_!=nullptr;}
+    QString lastError()const{return error_;}
     bool open(void* hwnd,const QString& source,const NovaVeyraSettings& options){
         if(!ready())return false;
         requested_=options;
@@ -117,6 +130,7 @@ public:
     }
 private:
     QLibrary lib_;
+    QString error_;
     void* engine_=nullptr;
     NovaVeyraSettings requested_{};
     decltype(&nova_veyra_abi) abi_=nullptr;
