@@ -34,6 +34,10 @@
 NovaQtPlayer::NovaQtPlayer(QObject* parent):QObject(parent){}
 NovaQtPlayer::~NovaQtPlayer(){
     veyraWatchdog_.stop();
+    nativeVeyraPoll_.stop();
+    // Ensure the original GPU engine releases its D3D12 swap chain before
+    // Qt destroys the HWND used by its VideoPresenter.
+    nativeVeyra_.reset();
     if(veyraProcess_)veyraProcess_->disconnect(this);
     if(veyraProcess_ && veyraProcess_->state()!=QProcess::NotRunning){
         veyraProcess_->terminate();
@@ -79,6 +83,23 @@ void NovaQtPlayer::scheduleVeyraFallback(){
 }
 
 bool NovaQtPlayer::setVeyraSetting(const QString& key,int value){
+    if(nativeVeyra_ && nativeVeyra_->ready() && veyraActive()){
+        bool accepted=false;
+        if(key=="veyra_multiplier" && value>=2 && value<=6)
+            accepted=nativeVeyra_->multiplier(unsigned(value));
+        else if((value==0||value==1) && key=="veyra_fg")
+            accepted=nativeVeyra_->change(NOVA_VEYRA_FEATURE_FG,value!=0);
+        else if((value==0||value==1) && key=="veyra_sr")
+            accepted=nativeVeyra_->change(NOVA_VEYRA_FEATURE_SR,value!=0);
+        else if((value==0||value==1) && key=="veyra_nr")
+            accepted=nativeVeyra_->change(NOVA_VEYRA_FEATURE_NR,value!=0);
+        // HDR is intentionally not exposed until its original Veyra output
+        // and monitor-capability settings are mapped without pretending success.
+        notice_=accepted?QStringLiteral("Veyra nativo: esperando confirmar el efecto en GPU."):
+            QStringLiteral("Este efecto no está disponible en la sesión Veyra.");
+        emit changed();
+        return accepted;
+    }
     if(!veyraActive() || veyraStopRequested_)return false;
     if(key==QStringLiteral("veyra_multiplier")){
         bool allowed=false;
@@ -511,6 +532,24 @@ void NovaQtPlayer::command(const char* name,const char* argument){
 }
 
 void NovaQtPlayer::stop(){
+    if(nativeVeyra_){
+        NovaVeyraSnapshot state{};
+        const bool valid=nativeVeyra_->snapshot(state);
+        const double position=valid && state.position_seconds>=0?
+            state.position_seconds:nativeVeyraLastPosition_;
+        nativeVeyraPoll_.stop();
+        nativeVeyra_->stop();
+        nativeVeyra_.reset();
+        playing_.store(false);
+        veyraBridgeReady_=false;
+        veyraState_.clear();
+        xs::RemoteServer::shared().end_playback();
+        if(videoWindow_)videoWindow_->hide();
+        notice_=QStringLiteral("Veyra nativo detenido");
+        emit changed();
+        emit finishedPlayback(position,false);
+        return;
+    }
     if(veyraProcess_ && veyraProcess_->state()!=QProcess::NotRunning){
         veyraStopRequested_=true;
         veyraWatchdog_.stop();
@@ -526,6 +565,11 @@ void NovaQtPlayer::stop(){
     command("stop",nullptr);
 }
 void NovaQtPlayer::togglePause(){
+    if(nativeVeyra_){
+        nativeVeyraPaused_=!nativeVeyraPaused_;
+        nativeVeyra_->pause(nativeVeyraPaused_);
+        return;
+    }
     if(veyraProcess_ && veyraProcess_->state()==QProcess::Running){
         sendVeyraControl({{"cmd","pause"}});
         return;
@@ -539,6 +583,10 @@ void NovaQtPlayer::togglePause(){
     }
 }
 void NovaQtPlayer::setVolume(int value){
+    if(nativeVeyra_){
+        nativeVeyra_->volume(std::clamp(value,0,100)/100.0);
+        return;
+    }
     if(veyraProcess_ && veyraProcess_->state()==QProcess::Running){
         sendVeyraControl({{"cmd","volume"},{"value",std::clamp(value,0,100)/100.0}});
         return;
@@ -574,8 +622,25 @@ void NovaQtPlayer::toggleFullscreen(){
 }
 
 void NovaQtPlayer::cycleMonitor(){
-    if(veyraProcess_ && veyraProcess_->state()==QProcess::Running)
+    if(veyraProcess_ && veyraProcess_->state()==QProcess::Running){
         sendVeyraControl({{"cmd","next_monitor"}});
+        return;
+    }
+    if(nativeVeyra_ && videoWindow_){
+        const auto screens=QGuiApplication::screens();
+        if(screens.size()<2)return;
+        auto* current=videoWindow_->screen();
+        const int index=screens.indexOf(current);
+        auto* next=screens[(index+1)%screens.size()];
+        const QRect area=next->availableGeometry();
+        const bool full=videoWindow_->visibility()==QWindow::FullScreen;
+        if(full)videoWindow_->showNormal();
+        videoWindow_->setScreen(next);
+        QRect bounds(QPoint(),QSize(960,540).boundedTo(area.size()));
+        bounds.moveCenter(area.center());
+        videoWindow_->setGeometry(bounds);
+        if(full)videoWindow_->showFullScreen();
+    }
 }
 
 bool NovaQtPlayer::eventFilter(QObject* object,QEvent* event){
@@ -731,6 +796,14 @@ void NovaQtPlayer::applySetting(int id,int value){
     }
 }
 void NovaQtPlayer::seek(double seconds){
+    if(nativeVeyra_){
+        if(std::isfinite(seconds)){
+            NovaVeyraSnapshot state{};
+            if(nativeVeyra_->snapshot(state))
+                nativeVeyra_->seek(std::max(0.0,state.position_seconds+seconds));
+        }
+        return;
+    }
     if(veyraProcess_ && veyraProcess_->state()==QProcess::Running){
         if(std::isfinite(seconds))
             sendVeyraControl({{"cmd","seek_by"},{"seconds",seconds}});
