@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-  Make an isolated QML-only Nova control pilot from stock Veyra 2.1.9.
+  RESEARCH ONLY. Official Veyra 2.1.9 is Win32, not the QML executable.
 .DESCRIPTION
-  Requires the OFFICIAL, extracted Veyra 2.1.9 NVIDIA portable, an already
-  compiled Nova pilot and Python 3.10+. NO NVIDIA SDK or Veyra recompilation.
+  Important: the official Veyra 2.1.9 NVIDIA portable ships Veyra.exe,
+  NOT veyra_qml_ui.exe. That retail binary cannot load QML controls.
   Copies whitelisted runtime folders to a NEW local directory and injects a
   zero-pixel NovaControl QML file into the copy of Main.qml. Nothing in the
   original official Veyra installation is modified.
@@ -23,6 +23,16 @@ $repo=(Resolve-Path (Join-Path $PSScriptRoot '..')).ProviderPath
 $donor=[IO.Path]::GetFullPath($OfficialPortable)
 $nova=[IO.Path]::GetFullPath($NovaExe)
 $out=[IO.Path]::GetFullPath($Output)
+# Source verification (Veyra 2.1.9 scripts/package-portable.ps1):
+# The official NVIDIA/AMD ZIPs ship Veyra.exe (Win32 AppShell), NOT
+# veyra_qml_ui.exe or the qml/Veyra/Main.qml module. No QML injection can
+# control that official EXE, even though the source tree includes QML code.
+$stockExe=Join-Path $donor 'Veyra.exe'
+if(Test-Path -LiteralPath $stockExe -PathType Leaf) {
+  $explanation='Veyra 2.1.9 official portable uses Veyra.exe (Win32), not QML. The no-recompile QML shortcut is unsupported for this release. Use the C++ source bridge only after building veyra_qml_ui.exe with its SDKs. Nothing was changed.'
+  if($CheckOnly) { Write-Output $explanation; return }
+  throw $explanation
+}
 $officialExe=Join-Path $donor 'veyra_qml_ui.exe'
 $main=Join-Path $donor 'qml\Veyra\Main.qml'
 $bridge=Join-Path $repo 'integrations\veyra\qml\NovaControl.qml'
