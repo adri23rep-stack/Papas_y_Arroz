@@ -38,7 +38,11 @@ Item {
             else if (cmd === "speed") veyra.setPlaybackRate(Number(message.value))
             else if (cmd === "audio_track") veyra.setSelectedAudioTrack(Number(message.index))
             else if (cmd === "subtitle_track") veyra.setSubtitlePrimary(Number(message.index))
-            else if (cmd === "fullscreen") root.toggleFullscreen()
+            else if (cmd === "fullscreen") {
+                var hostWindow = control.Window.window
+                if (hostWindow && hostWindow.toggleFullscreen)
+                    hostWindow.toggleFullscreen()
+            }
             else if (cmd === "gpu_feature") {
                 if (message.name === "fg") veyra.setFgEnabled(Boolean(message.enabled))
                 else if (message.name === "sr") veyra.setSrEnabled(Boolean(message.enabled))
