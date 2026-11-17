@@ -15,6 +15,8 @@ static_assert(offsetof(NovaVeyraSettings,size)==0);
 static_assert(offsetof(NovaVeyraSnapshot,size)==0);
 static_assert(sizeof(NovaVeyraSettings)==24);
 static_assert(sizeof(NovaVeyraSnapshot)==104);
+static_assert(sizeof(NovaVeyraAudioTrack)==144);
+static_assert(offsetof(NovaVeyraAudioTrack,label_utf8)==16);
 static_assert(NOVA_VEYRA_FG_DLSS==0 && NOVA_VEYRA_FG_VFG==4);
 static_assert(NOVA_VEYRA_EMPTY==0 && NOVA_VEYRA_ENDED==4 && NOVA_VEYRA_FAILED==6);
 using OpenFn=int (NOVA_VEYRA_CALL*)(void*,void*,const wchar_t*,const NovaVeyraSettings*);
