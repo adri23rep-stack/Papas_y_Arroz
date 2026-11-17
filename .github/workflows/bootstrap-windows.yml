@@ -94,6 +94,11 @@ jobs:
       - name: Verify Nova-Veyra source patch and rollback (offline)
         shell: pwsh
         run: python -m unittest discover -s tests -p test_veyra_bridge_installer.py -v
+      - name: Verify stock Veyra QML bridge protocol, token isolation and safe status
+        shell: pwsh
+        run: |
+          python -m py_compile tools/nova_veyra_qml_proxy.py
+          python -m unittest discover -s tests -p test_veyra_qml_proxy.py -v
       - name: Validate Veyra GPU build helper (syntax and missing-SDK preflight)
         shell: pwsh
         run: |
@@ -110,6 +115,10 @@ jobs:
           [System.Management.Automation.Language.Parser]::ParseFile(
             "tools/Stage-NovaVeyraLocal.ps1", [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count) { throw "Veyra local stager has syntax errors: $errors" }
+          $tokens = $null; $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "tools/Stage-NovaVeyraQml.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count) { throw "Veyra QML-only stager has syntax errors: $errors" }
           $sdkPreview = & ./tools/Fetch-NovaVeyraPublicSDKs.ps1 -Destination (Join-Path $env:RUNNER_TEMP 'missing-nova-sdk') -CheckOnly | Out-String
           if ($sdkPreview -notmatch 'v310.7.0' -or $sdkPreview -notmatch 'n13.0.19.0') {
             throw "Public SDK dry-run did not preserve required pinned versions"
@@ -403,6 +412,11 @@ jobs:
           Copy-Item tools/Build-NovaVeyraEngine.ps1 dist/Xuper-TV-Desktop/tools/
           Copy-Item tools/Fetch-NovaVeyraPublicSDKs.ps1 dist/Xuper-TV-Desktop/tools/
           Copy-Item tools/Stage-NovaVeyraLocal.ps1 dist/Xuper-TV-Desktop/tools/
+          Copy-Item tools/Stage-NovaVeyraQml.ps1 dist/Xuper-TV-Desktop/tools/
+          Copy-Item tools/nova_veyra_qml_proxy.py dist/Xuper-TV-Desktop/tools/
+          New-Item -ItemType Directory -Force dist/Xuper-TV-Desktop/integrations/veyra/qml | Out-Null
+          Copy-Item integrations/veyra/qml/NovaControl.qml dist/Xuper-TV-Desktop/integrations/veyra/qml/
+          Copy-Item integrations/veyra/qml/NovaBridgeConfig.js dist/Xuper-TV-Desktop/integrations/veyra/qml/
           Copy-Item docs/NOVA_VEYRA_PILOT.md dist/Xuper-TV-Desktop/
           Copy-Item docs/NOVA_VEYRA_FULL_BUILD.md dist/Xuper-TV-Desktop/
           Copy-Item docs/NOVA_VEYRA_HANDOFF_ASTRA.md dist/Xuper-TV-Desktop/
