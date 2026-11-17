@@ -172,9 +172,29 @@ struct CurlScope {
     bool ready=curl_global_init(CURL_GLOBAL_DEFAULT)==CURLE_OK;
     ~CurlScope(){if(ready)curl_global_cleanup();}
 };
+// Explicit stage names make provider errors actionable without logging tokens,
+// device identifiers, URLs or the encrypted request body.
+static const char* service_stage(const char* route) {
+    const std::string path=route?route:"";
+    if(path=="/api/portalCore/v3/snToken")return "Registro del dispositivo";
+    if(path=="/api/portalCore/v8/active")return "Activacion de sesion";
+    if(path=="/api/portalCore/v3/getColumnContents")return "Carga de categorias";
+    if(path=="/api/portalCore/v6/getLiveData")return "Carga de canales";
+    if(path=="/api/portalCore/v3/getShelveData")return "Carga de peliculas y series";
+    if(path=="/api/portalCore/v3/searchByName")return "Busqueda de catalogo";
+    if(path=="/api/portalCore/v4/getItemData")return "Detalle del titulo";
+    if(path=="/api/portalCore/v4/startPlayLive")return "Inicio de TV en vivo";
+    if(path=="/api/portalCore/v10/startPlayVOD")return "Inicio de pelicula o episodio";
+    if(path=="/api/portalCore/v15/getSlbInfo")return "Configuracion de video";
+    return "Consulta al servicio";
+}
 static bool api_post(const Json& config,const Json& common,const char* route,Json payload,Json& data,std::string& status) {
+        const auto fail=[&](const std::string& reason){
+            status=std::string(service_stage(route))+": "+reason;
+            return false;
+        };
         for(auto it=common.begin();it!=common.end();++it)payload[it.key()]=it.value();
-        std::string encoded;if(!encode_request(payload.dump(),text(config,"key_base64"),encoded)){status="No se pudo preparar la solicitud.";return false;}
+        std::string encoded;if(!encode_request(payload.dump(),text(config,"key_base64"),encoded))return fail("No se pudo preparar la solicitud.");
         std::string body,error;bool connected=false;size_t attempts=0;
         for(const auto& h:config["portal_hosts"]){
             if(!h.is_string()||attempts++>=2)break;
@@ -182,25 +202,30 @@ static bool api_post(const Json& config,const Json& common,const char* route,Jso
             while(!base.empty()&&base.back()=='/')base.pop_back();
             if(request(base+route,&encoded,config,body,error)){connected=true;break;}
         }
-        if(!connected){status=error.empty()?"Sin servidor configurado.":error;return false;}
+        if(!connected)return fail(error.empty()?"Sin servidor configurado.":error);
         Json response=Json::parse(body,nullptr,false);
-        if(!response.is_object()){status="Respuesta del servicio no reconocida.";return false;}
+        if(!response.is_object())return fail("Respuesta del servicio no reconocida.");
         const std::string code=text(response,"returnCode","desconocido");
         if(code!="0"){
-            if(code=="portal100024")status="Restriccion regional del servicio (portal100024).";
-            else if(code=="portal200001")status="El servicio indica version fuera de servicio (portal200001).";
-            else {std::string safe=code.substr(0,80);for(char& c:safe)if(static_cast<unsigned char>(c)<32)c=' ';
-                status=std::string("Servicio")+": rechazo "+safe;}
-            return false;
+            if(code=="portal100024")return fail("Restriccion regional del servicio (portal100024).");
+            if(code=="portal200001"){
+                std::string version=text(config,"apk_version");
+                if(version.empty()||version.size()>16||version.find_first_not_of("0123456789.")!=std::string::npos)
+                    version="desconocida";
+                return fail("El servicio indica version fuera de servicio (portal200001). Version enviada: "+version+".");
+            }
+            std::string safe=code.substr(0,80);
+            for(char& c:safe)if(static_cast<unsigned char>(c)<32)c=' ';
+            return fail(std::string("Servicio")+": rechazo "+safe);
         }
         auto d=response.find("data");
-        if(d==response.end()){status="Respuesta sin data.";return false;}
+        if(d==response.end())return fail("Respuesta sin data.");
         if(d->is_string()){
             std::string plain;if(!decode_response_data(d->get<std::string>(),text(config,"key_base64"),plain)){
-                status="No se pudo decodificar data.";return false;}
+                return fail("No se pudo decodificar data.");}
             data=Json::parse(plain,nullptr,false);
         }else data=*d;
-        if(!data.is_object()){status="Datos de respuesta no reconocidos.";return false;}
+        if(!data.is_object())return fail("Datos de respuesta no reconocidos.");
         return true;
     }
 static Json identity(const ServiceSession& s) {
