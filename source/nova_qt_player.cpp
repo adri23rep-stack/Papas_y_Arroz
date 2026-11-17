@@ -107,6 +107,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
         const QString executable=qEnvironmentVariable("NOVA_VEYRA_EXE");
         const QString proxyScript=qEnvironmentVariable("NOVA_VEYRA_PROXY_SCRIPT");
         const bool proxyScriptValid=proxyScript.isEmpty()||QFileInfo(proxyScript).isFile();
+        const bool stockWin32=!qEnvironmentVariable("NOVA_VEYRA_WIN32_EXE").isEmpty();
         const QString source=QString::fromStdString(result.source);
         const QUrl url(source);
         const bool network=url.isValid() &&
@@ -121,6 +122,9 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
         // Parameterised URLs need explicit opt-in (Veyra may log them itself).
         if(!executable.isEmpty() && QFileInfo(executable).isFile() &&
            proxyScriptValid &&
+           // Stock Veyra.exe supports ONLY local files here. No remote auth,
+           // live streams, seeking to prior history, or extra media headers.
+           (!stockWin32 || (!live && local && resumeSeconds<=0.0 && !proxyScript.isEmpty())) &&
            result.headers.empty() && result.subtitles.empty() &&
            (local || allowedNetwork)){
             if(veyraProcess_ && veyraProcess_->state()==QProcess::NotRunning)
@@ -198,7 +202,9 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                         const QString type=msg.value(QStringLiteral("type")).toString();
                         if(type==QStringLiteral("nova-ready") && !veyraBridgeReady_){
                             veyraBridgeReady_=true;
-                            notice_=QStringLiteral("Veyra conectado: controles activos");
+                            notice_=stockWin32
+                                ?QStringLiteral("Veyra Win32: prueba de video local y controles básicos")
+                                :QStringLiteral("Veyra conectado: controles activos");
                             sendVeyraControl({{"cmd","open_source"},{"source",veyraSource_},{"live",veyraLive_}});
                             veyraSource_.clear();
                             if(veyraResumeSeconds_>0)
@@ -217,6 +223,16 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                                 return;
                             }
                             veyraStarted_|=msg.value("running").toBool();
+                            if(msg.value("experimentalWin32").toBool()){
+                                // Stock Win32 does not expose decoder state,
+                                // stream duration, FG/SR/NR or remote track APIs.
+                                // Do NOT advertise synthetic enhancement switches.
+                                veyraState_.clear();
+                                diagnostics_=QStringLiteral(
+                                    "Veyra Win32 experimental · GPU/FPS sin medición");
+                                emit changed();
+                                continue;
+                            }
                             veyraState_=msg.toVariantMap();
                             diagnostics_=QStringLiteral("Veyra · %1 · origen %2 FPS · salida %3 FPS")
                                 .arg(msg.value("fgBackend").toString())
