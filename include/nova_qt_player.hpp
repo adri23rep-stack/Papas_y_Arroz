@@ -48,6 +48,9 @@ private:
     std::unique_ptr<QWindow> videoWindow_;
     std::unique_ptr<QProcess> veyraProcess_;
     QByteArray veyraOutput_;
+    QString veyraSource_;
+    bool skipVeyraOnce_=false;
+    void cycleVeyraMonitor();
     bool veyraBridgeReady_=false;
     bool veyraLive_=false;
     double veyraLastPosition_=-1.0;
