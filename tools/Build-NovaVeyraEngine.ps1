@@ -90,7 +90,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Veyra source patch check failed; no build star
 & python.exe $patcher $source
 if ($LASTEXITCODE -ne 0) { throw 'Could not install Nova bridge into the source copy.' }
 
-$args = @(
+$cmakeOptions = @(
   '-S', $source, '-B', $build, '-G', 'Ninja',
   '-DCMAKE_BUILD_TYPE=Release',
   '-DVEYRA_BUILD_QML_UI=ON',
@@ -107,7 +107,7 @@ $args = @(
   "-DVEYRA_NVENC_HEADERS_ROOT=$nvenc"
 )
 Write-Host 'Configuring the Veyra Qt player with the Nova bridge in a separate build tree...'
-& cmake.exe @args
+& cmake.exe @cmakeOptions
 if ($LASTEXITCODE -ne 0) { throw 'Veyra CMake configuration failed; inspect the errors above.' }
 if ($ConfigureOnly) {
   Write-Host 'Configuration succeeded. Build not started (ConfigureOnly).'
