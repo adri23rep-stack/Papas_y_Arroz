@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <stddef.h> // wchar_t is not predefined in C
 
-#define NOVA_VEYRA_NATIVE_ABI 2u
+#define NOVA_VEYRA_NATIVE_ABI 3u
 #define NOVA_VEYRA_FEATURE_NR 0x01u
 #define NOVA_VEYRA_FEATURE_SR 0x02u
 #define NOVA_VEYRA_FEATURE_FG 0x04u
@@ -70,6 +70,8 @@ typedef struct NovaVeyraSnapshot {
     uint64_t session_id;
     uint32_t applied_sr_quality; // real Veyra applied model, not UI request
     uint32_t desired_sr_quality;
+    uint32_t applied_fg_multiplier;
+    uint32_t desired_fg_multiplier;
 } NovaVeyraSnapshot;
 
 #if defined(_WIN32)
