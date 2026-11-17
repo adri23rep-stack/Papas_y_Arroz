@@ -86,7 +86,18 @@ private:
     void execute(const QJsonObject& object) {
         if (object.value("protocol").toInt(-1) != 1) return;
         const QString cmd = object.value("cmd").toString();
-        if (cmd == QLatin1String("pause")) {
+        if (cmd == QLatin1String("open_source")) {
+            const QString source = object.value("source").toString();
+            if (source.isEmpty() || source.size() > 8192) return;
+            const QUrl url(source, QUrl::StrictMode);
+            if (url.isValid() && (url.scheme() == QLatin1String("http")
+                                   || url.scheme() == QLatin1String("https"))) {
+                if (url.host().isEmpty() || !url.userInfo().isEmpty() || url.hasFragment()) return;
+                player_.openNetworkAddress(source);
+            } else if (QFileInfo(source).isFile()) {
+                player_.openPath(source);
+            }
+        } else if (cmd == QLatin1String("pause")) {
             player_.togglePlayPause();
         } else if (cmd == QLatin1String("stop")) {
             player_.stopPlayback();
@@ -124,7 +135,7 @@ private:
         } else if (cmd == QLatin1String("fullscreen")) {
             if (!window_) return;
             const bool enabled = object.contains("enabled") ?
-                object.value("enabled").toBool() : !window_->isFullScreen();
+                object.value("enabled").toBool() : !(window_->visibility() == QWindow::FullScreen);
             if (enabled) window_->showFullScreen();
             else window_->showNormal();
         } else if (cmd == QLatin1String("next_monitor")) {
@@ -133,7 +144,7 @@ private:
             if (screens.size() < 2) return;
             const int current = screens.indexOf(window_->screen());
             const int next = (current + 1) % screens.size();
-            const bool fullscreen = window_->isFullScreen();
+            const bool fullscreen = (window_->visibility() == QWindow::FullScreen);
             if (fullscreen) window_->showNormal();
             window_->setScreen(screens.at(next));
             if (fullscreen) window_->showFullScreen();
