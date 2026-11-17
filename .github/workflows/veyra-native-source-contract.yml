@@ -1,0 +1,48 @@
+name: Nova Veyra native - exact supplied source API check
+
+on:
+  push:
+    branches: [feature/nova-veyra-engine]
+    paths:
+      - 'integrations/veyra/native/**'
+      - 'include/nova_veyra_native_loader.hpp'
+      - '.github/workflows/veyra-native-source-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nova-veyra-source-api-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-real-veyra-cpp-api:
+    runs-on: windows-latest
+    name: Compile adapter against exact Veyra source supplied by user
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+      - name: Fetch exactly the Veyra source revision from user's ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'source-veyra-bf596e'
+          git clone --no-checkout --filter=blob:none https://github.com/Likely7/Veyra-NRVideo.git $root
+          if ($LASTEXITCODE -ne 0) { throw 'Could not fetch official Veyra source' }
+          git -C $root checkout --detach bf596e11112ab350e66d91dfb9c7ea742c254fb4
+          if ($LASTEXITCODE -ne 0) { throw 'Could not check out exact uploaded ZIP commit' }
+          $actual = (& git -C $root rev-parse HEAD).Trim()
+          if ($actual -ne 'bf596e11112ab350e66d91dfb9c7ea742c254fb4') { throw "Unreviewed Veyra revision: $actual" }
+          $cmake = Get-Content -LiteralPath (Join-Path $root 'CMakeLists.txt') -TotalCount 6
+          if (($cmake -join ' ') -notmatch 'project\(veyra VERSION 2\.1\.9 LANGUAGES C CXX RC\)') { throw 'Wrong Veyra project version' }
+          "VEYRA_SOURCE_ROOT=$root" >> $env:GITHUB_ENV
+      - name: Compile Nova GPU adapter against actual Veyra EngineController header
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & cl.exe /nologo /std:c++20 /Zs /EHsc /utf-8 /W3 /DNOMINMAX /DWIN32_LEAN_AND_MEAN /DUNICODE /D_UNICODE "/I$env:VEYRA_SOURCE_ROOT\include" integrations\veyra\native\NovaVeyraNative.cpp
+          if ($LASTEXITCODE -ne 0) { throw 'C++ native adapter does not match actual Veyra 2.1.9 API' }
+          Write-Host 'Original EngineController source ABI/type check passed. Real GPU engine still requires SDK build and RTX hardware testing.'
