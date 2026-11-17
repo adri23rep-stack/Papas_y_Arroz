@@ -102,3 +102,20 @@ FFmpeg y Qt MSVC; después ejecutar -CheckOnly. No perder tiempo reintentando
 compilar un Veyra reducido sin esas dependencias. Si no están disponibles,
 la siguiente petición útil al usuario es la ruta/copia autorizada de esas
 dependencias, NO el APK ni las credenciales del catálogo.
+
+## Siguiente avance (continuación posterior)
+
+- Corregidas comprobaciones de Qt y FFmpeg en tools/Build-NovaVeyraEngine.ps1,
+  para no rechazar instalaciones válidas por nombre del desplegador Qt o
+  del archivo CMake de FFmpeg.
+- El clon público de NVIDIA/DLSS 310.7.0 y FFmpeg/nv-codec-headers 13.0.19.0
+  ahora compara la SHA exacta del commit firmado por la etiqueta oficial y
+  rechaza archivos .lib que parecen punteros Git LFS incompletos.
+- Nuevo tools/Stage-NovaVeyraLocal.ps1: prepara paquete SOLO LOCAL desde
+  una copia oficial Veyra 2.1.9 y el ejecutable compilado con el puente;
+  verifica SHA del EXE donor, flags GPU, reemplazo de shaders del build.
+  No recopila configs de Nova ni sustituye el Veyra original.
+- GitHub Actions valida sintaxis de estos scripts. Aunque pasen, sigue
+  pendiente la compilación REAL y GPU en Windows. No etiquetar el ZIP de
+  Nova existente como si incluyera el motor Veyra GPU.
+  Consultar docs/NOVA_VEYRA_FULL_BUILD.md para comandos y dependencias.
