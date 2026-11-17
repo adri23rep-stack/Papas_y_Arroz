@@ -82,7 +82,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                 veyraProcess_->start();
                 if(veyraProcess_->waitForStarted(3000)){
                     title_=title;
-                    notice_=QStringLiteral("Reproduciendo en Veyra (control remoto experimental)");
+                    notice_=QStringLiteral("Reproduciendo en Veyra (controles externos pendientes)");
                     playing_.store(true);
                     emit changed();
                     return;
