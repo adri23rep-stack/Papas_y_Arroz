@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Stage patched Veyra with runtime files from an official 2.1.9 portable.
+  RESEARCH ONLY: Win32 Veyra 2.1.9 cannot supply the Qt QML runtime.
 .DESCRIPTION
   Creates a NEW local folder, preserving original Veyra and Nova installs.
   Does not publish anything. Built shaders replace vendor shader files.
@@ -24,6 +24,14 @@ $donor = [IO.Path]::GetFullPath($OfficialVeyraPortable)
 $out = [IO.Path]::GetFullPath($Output)
 $patched = Join-Path $build 'veyra_qml_ui.exe'
 $cache = Join-Path $build 'CMakeCache.txt'
+# Official portable ships only Veyra.exe, and does not contain Qt QML files.
+# Cannot safely use it as a complete runtime donor for a separately-built QML UI.
+$stockExe = Join-Path $donor 'Veyra.exe'
+if (Test-Path -LiteralPath $stockExe -PathType Leaf) {
+  $reason = 'The official Veyra 2.1.9 portable is Win32 (Veyra.exe) with no QML runtime. This staging recipe cannot produce a working Qt Veyra build from it. Build/deploy the Qt UI and runtime separately. No files changed.'
+  if ($CheckOnly) { Write-Output $reason; return }
+  throw $reason
+}
 $original = Join-Path $donor 'veyra_qml_ui.exe'
 $shaderDir = Join-Path $build 'shaders'
 # Published in Veyra's corresponding source, docs/BUILD_2.1.9.md.
