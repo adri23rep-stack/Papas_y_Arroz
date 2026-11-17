@@ -182,7 +182,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                     emit changed();
                 };
                 QObject::connect(veyraProcess_.get(), &QProcess::readyReadStandardOutput,
-                    this, [this] {
+                    this, [this,stockWin32] {
                     if(!veyraProcess_)return;
                     veyraOutput_.append(veyraProcess_->readAllStandardOutput());
 
