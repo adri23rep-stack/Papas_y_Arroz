@@ -57,8 +57,13 @@ condicionales. La comprobación MSVC necesitó `/Zc:__cplusplus` para Qt.
    La comprobación de cabeceras y el motor simulado NO sustituyen esa build.
 2. Verificar reproducción y mejoras en Windows/RTX 3060: sincronía, TV, HDR,
    fullscreen, monitores y rendimiento. No se hicieron mediciones GPU aquí.
-3. Añadir siguiente episodio automático en Nova Qt. EOF ya se informa de forma
-   explícita y marca el progreso completo; no se inventa el siguiente episodio.
+3. **Implementado en esta continuación:** siguiente episodio automático en Nova Qt
+   solo al EOF real si `playback_history_.auto_next` está activo y la página
+   del catálogo contiene el episodio siguiente contiguo de la misma serie.
+   Se captura el candidato al iniciar el episodio para que cambiar de sección
+   mientras reproduce no mezcle programas. No se inventa la secuencia,
+   no avanza películas, canales, búsquedas sin orden ni páginas ambiguas.
+   Prueba C++: `nova_auto_next_test` (CTest, assert activo incluso en Release).
 4. Fuentes con cabeceras especiales o subtítulos externos aún usan MPV. No se
    debe eliminar esa protección hasta traducirlos correctamente.
 5. Integración visual del video dentro de Nova sigue pendiente. Hay dos ventanas.
@@ -66,3 +71,11 @@ condicionales. La comprobación MSVC necesitó `/Zc:__cplusplus` para Qt.
 Nunca subir datos de instalación, PIN, tokens ni enlaces de reproducción privados.
 Los artefactos Windows incluyen Nova y el adaptador/launcher; NO incluyen un Veyra
 modificado listo para usar. No anunciarlos como integración GPU final.
+
+## Continuación posterior al último commit de Astra
+
+- Lógica de auto-siguiente en `include/nova_auto_next.hpp` y `source/nova_qt_home.cpp`.
+- Pruebas `tests/nova_auto_next_test.cpp` registradas en `CMakeLists.txt`.
+- Guía de compilación real del motor: `docs/NOVA_VEYRA_FULL_BUILD.md`.
+- Releer Actions actual para confirmar empaquetado final antes de anunciar un ZIP.
+- Aún falta el binario Veyra completo parcheado y pruebas RTX 3060; no hacer merge.
