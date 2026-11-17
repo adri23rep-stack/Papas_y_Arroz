@@ -68,6 +68,14 @@ inline ServiceDeviceProfile service_device_profile(bool android_test, bool andro
             "Nintendo Switch", "nx", "homebrew", "Horizon homebrew"};
 }
 
+inline std::string service_device_state_filename(bool android_test, bool android_tv_test=false) {
+    // Isolate experimental activation state from the production installation.
+    // These are stable files per profile: no rotation and no identity cloning.
+    if (android_tv_test) return "device_state.android-tv-test.json";
+    if (android_test) return "device_state.android-test.json";
+    return "device_state.json";
+}
+
 inline std::string local_test_android_id(const std::string& installation_serial) {
     // Reuse only this installation's existing locally generated serial as a
     // stable synthetic Android ID. Never copy an emulator or third-party ID.
