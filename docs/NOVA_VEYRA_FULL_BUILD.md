@@ -69,3 +69,36 @@ silenciosamente características para lograr un EXE que aparenta tenerlas.
 comprobar configuración CMake, registrar exactamente qué archivo/SDK falta,
 compilar `veyra_qml_ui` y ejecutar smoke local con un video sin credenciales.
 No confundir esta prueba con la de GitHub que solo comprueba la interfaz C++.
+
+## Herramienta añadida en esta continuación
+
+La rama ahora tiene `tools/Build-NovaVeyraEngine.ps1`. A diferencia de ejecutar
+CMake a ciegas, verifica Qt, FFmpeg, NVIDIA DLSS SDK, Optical Flow SDK, NVENC
+y las herramientas de compilación **antes de tocar las fuentes**.
+
+Desde una terminal x64 de Visual Studio 2022, con rutas REALES a componentes
+oficiales instalados, ejecutar:
+
+```powershell
+$common = @{
+  VeyraSource = 'C:\Proyectos\Veyra-NRVideo-main'
+  QtRoot = 'C:\Qt\6.8.3\msvc2022_64'
+  FfmpegRoot = 'C:\veyra-deps\installed\x64-windows'
+  DlssSdkRoot = 'C:\SDK\DLSS_SDK_310.7.0'
+  OpticalFlowSdkRoot = 'C:\SDK\Optical_Flow_SDK_5.0.7'
+  NvencHeadersRoot = 'C:\SDK\nv-codec-headers-13.0'
+}
+.\tools\Build-NovaVeyraEngine.ps1 @common -CheckOnly
+# Solo cuando todo indique OK:
+.\tools\Build-NovaVeyraEngine.ps1 @common
+```
+
+El chequeo muestra los archivos ausentes sin descargarlos ni modificar el
+Veyra instalado. La segunda orden instala el parche en la COPIA de las
+fuentes y compila el destino `veyra_qml_ui` en `out/nova-veyra-bridge`.
+Se puede usar `-ConfigureOnly` o `-DisableDeinterlace` explícitamente.
+El EXE compilado aún necesita sus recursos QML y dependencias para funcionar
+fuera del árbol de compilación: **no llamarlo portable sin esas pruebas**.
+
+GitHub Actions prueba la sintaxis del script y su respuesta ante SDK ausentes,
+pero **no prueba una compilación GPU completa**.
