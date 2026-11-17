@@ -67,6 +67,20 @@ public:
         if(settings_(engine_,&next)==0)return false;
         requested_=next;return true;
     }
+    bool srQuality(uint32_t quality) {
+        if(!ready())return false;
+        // Same accepted provider/tier IDs as Veyra 2.1.9:
+        // DLSS 0; standard RTX 1..4; FSR 5;
+        // high-bitrate 16..19; streaming RTX 21/23.
+        const bool valid=quality<=5||(quality>=16&&quality<=19)||quality==21||quality==23;
+        if(!valid)return false;
+        auto next=requested_;
+        next.sr_quality=quality;
+        next.features|=NOVA_VEYRA_FEATURE_SR;
+        if(settings_(engine_,&next)==0)return false;
+        requested_=next;
+        return true;
+    }
     bool multiplier(uint32_t value) {
         if(!ready())return false;
         auto next=requested_;
