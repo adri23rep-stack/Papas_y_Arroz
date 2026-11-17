@@ -97,6 +97,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                 veyraBridgeReady_=false;
                 veyraLastPosition_=-1.0;
                 veyraResumeSeconds_=live?0.0:resumeSeconds;
+                veyraStopRequested_=false;
                 veyraLive_=live;
                 veyraProcess_->setProgram(executable);
                 veyraProcess_->setArguments({}); // source sent only after IPC handshake
@@ -169,14 +170,30 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                     }
                 });
                 QObject::connect(veyraProcess_.get(), &QProcess::finished, this,
-                    [this](int, QProcess::ExitStatus){
-                        playing_.store(false);
-                        notice_=QStringLiteral("Veyra terminó la reproducción");
-                        emit changed();
-                        emit finishedPlayback(veyraLive_?-1.0:veyraLastPosition_,false);
+                    [this,result,title,live,resumeSeconds](int, QProcess::ExitStatus){
+                        const bool handshake=veyraBridgeReady_;
+                        const bool intentional=veyraStopRequested_;
+                        const double position=veyraLive_?-1.0:veyraLastPosition_;
+                        // End old session BEFORE notifying home; the callback may
+                        // immediately activate the next episode/channel.
                         xs::RemoteServer::shared().end_playback();
+                        playing_.store(false);
                         veyraBridgeReady_=false;
                         veyraSource_.clear();
+                        notice_=QStringLiteral("Veyra terminó la reproducción");
+                        emit changed();
+                        if(!handshake && !intentional){
+                            // Failed before the 10s handshake timeout: use MPV,
+                            // never relaunch an unresponsive Veyra in a loop.
+                            QTimer::singleShot(0,this,[this,result,title,live,resumeSeconds]{
+                                if(veyraProcess_ && veyraProcess_->state()==QProcess::NotRunning)
+                                    veyraProcess_.reset();
+                                skipVeyraOnce_=true;
+                                play(result,title,live,resumeSeconds);
+                            });
+                        }else{
+                            emit finishedPlayback(position,false);
+                        }
                     });
                 veyraProcess_->start();
                 if(veyraProcess_->waitForStarted(3000)){
@@ -244,6 +261,7 @@ void NovaQtPlayer::command(const char* name,const char* argument){
 
 void NovaQtPlayer::stop(){
     if(veyraProcess_ && veyraProcess_->state()!=QProcess::NotRunning){
+        veyraStopRequested_=true;
         veyraProcess_->terminate();
         return;
     }
