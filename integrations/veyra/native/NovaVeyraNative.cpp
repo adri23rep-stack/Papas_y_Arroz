@@ -12,6 +12,8 @@
 #include <memory>
 #include <new>
 #include <algorithm>
+#include <cstring>
+#include <string>
 
 namespace {
 using veyra::engine::EnhancementSettings;
@@ -129,6 +131,42 @@ int NOVA_VEYRA_CALL nova_veyra_snapshot(void* ptr,NovaVeyraSnapshot* out){
         out->generated_frames=s.generated;
         out->session_id=s.sessionId;
         return 1;
+    } catch (...) {return 0;}
+}
+uint32_t NOVA_VEYRA_CALL nova_veyra_audio_count(void* ptr){
+    if(!ptr)return 0;
+    try {
+        const auto state=static_cast<Session*>(ptr)->engine.snapshot();
+        return uint32_t(std::min<size_t>(state.audioTracks.size(),64));
+    } catch(...) {return 0;}
+}
+int NOVA_VEYRA_CALL nova_veyra_audio_at(
+    void* ptr,uint32_t position,NovaVeyraAudioTrack* out){
+    if(!ptr||!out||out->size!=sizeof(NovaVeyraAudioTrack)||position>=64)return 0;
+    try {
+        const auto state=static_cast<Session*>(ptr)->engine.snapshot();
+        if(position>=state.audioTracks.size())return 0;
+        const auto& t=state.audioTracks[position];
+        NovaVeyraAudioTrack value{};
+        value.size=sizeof(value);
+        value.stream_index=t.streamIndex;
+        value.channels=t.channels;
+        value.selected=t.streamIndex==state.selectedAudioTrack?1u:0u;
+        std::string label=t.language.empty()?"Audio":t.language;
+        if(!t.title.empty()){label+=" · ";label+=t.title;}
+        if(!t.codec.empty()){label+=" (";label+=t.codec;label+=")";}
+        const size_t count=std::min(label.size(),sizeof(value.label_utf8)-1);
+        std::memcpy(value.label_utf8,label.data(),count);
+        *out=value;
+        return 1;
+    } catch(...) {return 0;}
+}
+int NOVA_VEYRA_CALL nova_veyra_select_audio(void* ptr,int32_t stream_index){
+    if(!ptr||stream_index<0)return 0;
+    try {
+        auto& engine=static_cast<Session*>(ptr)->engine;
+        const auto state=engine.snapshot();
+        return engine.selectAudioTrack(state.sessionId,stream_index)?1:0;
     } catch (...) {return 0;}
 }
 } // extern "C"
