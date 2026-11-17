@@ -89,3 +89,38 @@ y acceso regional. El reproductor no fabrica canales ni evade restricciones
 del proveedor. Si la pantalla presenta un error de red o permiso, ese texto
 es el diagnóstico que debemos revisar antes de asegurar que el catálogo
 está conectado.
+
+## Perfil de registro Android de prueba (solo Nova Windows)
+
+El proveedor puede rechazar el registro en `/api/portalCore/v3/snToken` con
+`portal200001`. Para **diagnosticar** si la ficha de dispositivo influye,
+Nova admite un perfil experimental que simula metadatos publicos de
+Android 7.1.1 / OnePlus A5000. **No copia identificadores ni sesiones del APK
+Focuz, no altera permisos ni garantiza acceso al servicio.**
+
+El perfil esta **desactivado por defecto**. En PowerShell, desde la carpeta
+del **nuevo** `XuperTVNovaQt.exe` compilado tras este cambio:
+
+```powershell
+$env:NOVA_DEVICE_PROFILE = "android-test"
+.\XuperTVNovaQt.exe
+```
+
+Si el servicio rechaza la solicitud, el diagnostico mostrara
+`Registro del dispositivo [Android de prueba]: ...` para confirmar que el
+modo se activo. Cierra Nova y vuelve al perfil original con:
+
+```powershell
+Remove-Item Env:\NOVA_DEVICE_PROFILE -ErrorAction SilentlyContinue
+.\XuperTVNovaQt.exe
+```
+
+El modo solo cambia en memoria los metadatos de plataforma enviados durante
+la conexion. Conserva `service.json`, `device_state.json`, favoritos,
+biblioteca y ajustes del reproductor. No edites ni publiques esos archivos
+privados. No necesitas virtualizacion, root ni el APK para probarlo.
+
+**Limites:** usa valores sinteticos generales, no el perfil real del emulador.
+Si ambos perfiles devuelven `portal200001`, habremos descartado esta prueba
+de metadatos, no identificado toda la diferencia del cliente Android.
+La reproduccion con RIFE/RTX AI no se modifica.
