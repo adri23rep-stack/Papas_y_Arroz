@@ -11,7 +11,7 @@ inline std::optional<Entry> nova_next_episode(
     const Entry& current, const std::vector<Entry>& ordered, bool autoNext){
     if(!autoNext || current.kind!=EntryKind::Episode ||
        current.program_type!="0" || current.content_id.empty() ||
-       current.series_id.empty())return std::nullopt;
+       current.series_id.empty() || ordered.size()<2)return std::nullopt;
     std::size_t currentIndex=ordered.size();
     for(std::size_t i=0;i<ordered.size();++i){
         const Entry& item=ordered[i];
