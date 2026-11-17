@@ -31,6 +31,16 @@ static std::string text(const Json& object,const char* key,const std::string& fa
     auto it=object.find(key);if(it==object.end())return fallback;
     return it->is_string()?it->get<std::string>():it->is_number()?it->dump():fallback;
 }
+// Windows builds must report their own platform during login and registration.
+static void apply_windows_platform(Json& payload) {
+#ifdef _WIN32
+    payload["sysVersion"]="Windows";
+    payload["hardwareInfo"]="x86_64";
+    payload["model"]="PC";
+    payload["product"]="Nova Windows";
+    payload["cpu"]="x86_64";
+#endif
+}
 struct Buffer {std::string data;bool too_large=false;};
 static size_t append(char* p,size_t size,size_t count,void* user) {
     auto* buffer=static_cast<Buffer*>(user);
@@ -67,7 +77,12 @@ static bool request(const std::string& url,const std::string* post,const Json& c
     if(post) {
         headers=curl_slist_append(headers,"Content-Type: application/json;charset=utf-8");
         for(const auto& pair:{std::pair<const char*,std::string>{"apk",text(config,"app_id")},
-                             {"apkVer",text(config,"apk_version")},{"spkgVer","Horizon homebrew"}}) {
+                             {"apkVer",text(config,"apk_version")},
+#ifdef _WIN32
+                             {"spkgVer","Nova Windows"}}) {
+#else
+                             {"spkgVer","Horizon homebrew"}}) {
+#endif
             if(pair.second.find_first_of("\r\n")==std::string::npos)
                 headers=curl_slist_append(headers,(std::string(pair.first)+": "+pair.second).c_str());
         }
@@ -124,6 +139,7 @@ LoginAttempt service_login(const std::string& path,const std::string& username,c
         {"model","Nintendo Switch"},{"product","Horizon homebrew"},{"cpu","arm64-v8a"},
         {"B29",""},{"reserve1",""},{"portalCode",""},{"deviceToken",""},
         {"sn",""},{"drmId",""},{"sdkVer",0} };
+    apply_windows_platform(payload);
     if(text(payload,"macAddr").empty()){out.status="Falta identificador de instalacion en service.json.";return out;}
     std::string encrypted;
     if(!encode_request(payload.dump(),key,encrypted)){out.status="No se pudo codificar la solicitud.";return out;}
@@ -408,6 +424,7 @@ LoginAttempt service_bootstrap(const std::string& path) {
         {"hardwareInfo","Tegra X1"},{"model","Nintendo Switch"},{"product","Horizon homebrew"},
         {"cpu","arm64-v8a"},{"B29",""},{"reserve1",text(config,"device_id")},{"portalCode",""},
         {"deviceToken",""},{"sn",text(state,"sn")},{"drmId",""},{"sdkVer",0}};
+    apply_windows_platform(common);
     auto post=[&](const char* route,Json payload,Json& data){
         return api_post(config,common,route,std::move(payload),data,out.status);
     };
@@ -417,6 +434,17 @@ LoginAttempt service_bootstrap(const std::string& path) {
         {"brand","Nintendo"},{"verId","Horizon"},{"cpuAbi","arm64-v8a"},{"hardware","Tegra X1"},
         {"manufacturer","Nintendo"},{"fingerprint",""},{"host",""},{"device","Nintendo Switch"},
         {"board","nx"},{"tags","homebrew"}};
+#ifdef _WIN32
+    device["display"]="Windows";
+    device["brand"]="PC";
+    device["verId"]="Windows";
+    device["cpuAbi"]="x86_64";
+    device["hardware"]="x86_64";
+    device["manufacturer"]="";
+    device["device"]="PC";
+    device["board"]="";
+    device["tags"]="";
+#endif
     Json token_data;
     if(!post("/api/portalCore/v3/snToken",device,token_data))return out;
     const std::string token=text(token_data,"snToken");const bool existing=text(token_data,"isNew")=="1";
