@@ -50,6 +50,8 @@ class NovaQtHome : public QObject {
     Q_PROPERTY(QString videoPresetLabel READ videoPresetLabel NOTIFY changed)
     Q_PROPERTY(bool veyraActive READ veyraActive NOTIFY changed)
     Q_PROPERTY(bool win32PilotEnabled READ win32PilotEnabled CONSTANT)
+    Q_PROPERTY(bool qmlPilotEnabled READ qmlPilotEnabled CONSTANT)
+    Q_PROPERTY(bool veyraPilotTestAvailable READ veyraPilotTestAvailable CONSTANT)
     Q_PROPERTY(QVariantMap veyraState READ veyraState NOTIFY changed)
     Q_PROPERTY(int motionMode READ motionMode NOTIFY changed)
     Q_PROPERTY(QString motionLabel READ motionLabel NOTIFY changed)
@@ -92,6 +94,14 @@ public:
     bool win32PilotEnabled() const {
         return qEnvironmentVariableIntValue("NOVA_VEYRA_PILOT")==1 &&
             !qEnvironmentVariable("NOVA_VEYRA_WIN32_EXE").isEmpty();
+    }
+    bool qmlPilotEnabled() const {
+        return qEnvironmentVariableIntValue("NOVA_VEYRA_PILOT")==1 &&
+            !qEnvironmentVariable("NOVA_VEYRA_QML_ORIGINAL_EXE").isEmpty() &&
+            !qEnvironmentVariable("NOVA_VEYRA_PROXY_SCRIPT").isEmpty();
+    }
+    bool veyraPilotTestAvailable() const {
+        return win32PilotEnabled() || qmlPilotEnabled();
     }
     QVariantMap veyraState() const {return player_.veyraState();}
     Q_INVOKABLE void setVeyraSetting(const QString& key,int value){player_.setVeyraSetting(key,value);}
