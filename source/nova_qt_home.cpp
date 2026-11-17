@@ -32,6 +32,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <unordered_set>
 #include <vector>
 
 namespace {
@@ -152,9 +153,15 @@ PublicPlaylistResult publicSpanishPlaylist(){
 void addEntry(std::vector<xs::Entry>& out,const xs::Entry& e,int maxItems);
 QVariantList listFor(const std::vector<xs::Entry>& entries);
 void appendPublicChannels(HomeSnapshot& out,const xs::Catalog& playlist){
-    for(const auto& item:playlist.entries)
-        if(item.kind==xs::EntryKind::Media&&xs::valid_source(item.source))
-            addEntry(out.tv_entries,item,5000);
+    std::unordered_set<std::string> seen;
+    for(const auto& item:out.tv_entries)
+        if(!item.source.empty())seen.insert(item.source);
+    for(const auto& item:playlist.entries){
+        if(out.tv_entries.size()>=5000)break;
+        if(item.kind==xs::EntryKind::Media && xs::valid_source(item.source) &&
+           seen.insert(item.source).second)
+            out.tv_entries.push_back(item);
+    }
 }
 QVariantList tvPreview(const std::vector<xs::Entry>& entries){
     const size_t count=std::min(entries.size(),size_t{80});
