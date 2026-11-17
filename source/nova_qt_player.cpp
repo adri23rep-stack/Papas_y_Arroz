@@ -597,6 +597,14 @@ void NovaQtPlayer::setVolume(int value){
     mpv_set_property_async(handle_,0,"volume",MPV_FORMAT_DOUBLE,&volume);
 }
 void NovaQtPlayer::setSpeed(int percent){
+    if(nativeVeyra_){
+        const auto speed=std::clamp(percent,50,200)/100.0;
+        if(!nativeVeyra_->rate(speed)){
+            notice_=QStringLiteral("Veyra nativo no aceptó el cambio de velocidad.");
+            emit changed();
+        }
+        return;
+    }
     if(veyraProcess_ && veyraProcess_->state()==QProcess::Running){
         sendVeyraControl({{"cmd","speed"},{"value",std::clamp(percent,50,200)/100.0}});
         return;
