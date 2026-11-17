@@ -1,5 +1,6 @@
 #pragma once
 #include "service.hpp"
+#include "nova_veyra_native_loader.hpp"
 #include <QObject>
 #include <QWindow>
 #include <QProcess>
@@ -30,7 +31,7 @@ public:
     QString title() const {return title_;}
     QString notice() const {return notice_;}
     QString diagnostics() const {return diagnostics_;}
-    bool veyraActive() const {return veyraBridgeReady_ && !veyraState_.isEmpty();}
+    bool veyraActive() const {return (veyraBridgeReady_ || (nativeVeyra_ && nativeVeyra_->ready())) && !veyraState_.isEmpty();}
     QVariantMap veyraState() const {return veyraState_;}
     bool setVeyraSetting(const QString& key,int value);
     void play(const xs::SourceResult& result,const QString& title,bool live,double resumeSeconds=0);
@@ -55,6 +56,13 @@ private:
     bool eventFilter(QObject* object,QEvent* event) override;
     std::unique_ptr<QWindow> videoWindow_;
     std::unique_ptr<QProcess> veyraProcess_;
+    // Optional original GPLv3 Veyra engine in Nova's OWN process. No subprocess.
+    // When absent/not compatible Nova uses its normal working MPV player.
+    std::unique_ptr<NovaVeyraNativeLoader> nativeVeyra_;
+    QTimer nativeVeyraPoll_;
+    bool nativeVeyraStarted_=false;
+    bool nativeVeyraPaused_=false;
+    double nativeVeyraLastPosition_=-1.0;
     QByteArray veyraOutput_;
     QString veyraSource_;
     QVariantMap veyraState_;
