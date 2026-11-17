@@ -30,6 +30,11 @@ target_compile_features(nova_veyra_native PRIVATE cxx_std_20)
 target_include_directories(nova_veyra_native PRIVATE "${VEYRA_SOURCE_ROOT}/include")
 target_compile_definitions(nova_veyra_native PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 target_compile_options(nova_veyra_native PRIVATE /utf-8)
+# The original NGX/veyra_engine static libraries use /MT. Using /MD here
+# crosses the CRT ownership boundary inside EngineController and can corrupt
+# std::string, vectors and allocation lifetimes.
+set_property(TARGET nova_veyra_native PROPERTY
+  MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 target_link_libraries(nova_veyra_native PRIVATE veyra_engine)
 set_target_properties(nova_veyra_native PROPERTIES OUTPUT_NAME "nova_veyra_native")
 # The original shaders, FFmpeg and NVIDIA runtime DLLs must also be present.
