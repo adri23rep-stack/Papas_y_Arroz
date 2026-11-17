@@ -64,7 +64,7 @@ Remove-Item Env:\NOVA_VEYRA_ALLOW_NETWORK -ErrorAction SilentlyContinue
   proyecto Veyra o implementar IPC local entre ambos procesos.
 - Conectar **pausa, volumen, seek, cambio de canal, pistas, subtítulos,
   pantalla completa y cambio de monitor** sin usar teclas simuladas.
-- Conservar el minuto reproducido y la sesión tras cambiar de motor.
+- Conservar el minuto reproducido y la sesión tras cambiar de motor.\n  El piloto conserva el valor anterior en Nova y no guarda el progreso que se\n  alcanza dentro de Veyra.
 - Resolver autorización y fuentes protegidas **sin exponer tokens** en argumentos,
   registros ni configuraciones.
 - Validar canales HLS, MPEG-TS, audio multilingüe, subtítulos y cambio rápido de
