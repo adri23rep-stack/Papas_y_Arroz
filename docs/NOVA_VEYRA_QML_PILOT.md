@@ -1,53 +1,54 @@
-# Nova + Veyra 2.1.9 — resultado de la comprobación del atajo QML
+# Nova + Veyra Qt/QML 2.1.9 — piloto del ejecutable real del usuario
 
-**Estado actual: NO COMPATIBLE con el Veyra 2.1.9 NVIDIA portable oficial.**
-**No utilizar la ruta QML sin recompilar como una versión lista para el usuario.**
-No hay un Veyra QML oficial en la descarga que podamos modificar sin recompilar.
+**Estado: PREPARACIÓN LOCAL CONFIRMADA, reproducción no confirmada.**
 
-## Verificación directa contra el código de Veyra que subió el usuario
+Corrección basada en los resultados de PowerShell proporcionados por el usuario
+(noviembre de 2026): dentro de su portable NVIDIA 2.1.9 sí existen
+`veyra_qml_ui.exe`, `qml/Veyra/Main.qml` y `qml/Veyra/qmldir`.
+Su ejecución de `tools/Stage-NovaVeyraQml.ps1` terminó correctamente y
+creó `C:\NovaVeyraQmlPrueba`.
 
-- `scripts/package-portable.ps1` empaqueta el objetivo **`veyra.exe`** como
-  **`Veyra.exe`**, además de DLL, shaders y runtimes del motor. No incluye
-  `qml/Veyra/Main.qml`, `qmldir` ni `veyra_qml_ui.exe`.
-- `apps/veyra/main.cpp` inicia la interfaz Win32 `AppShell`; **no usa
-  QQmlApplicationEngine ni carga módulos QML**.
-- `apps/veyra-qml/main.cpp` SÍ carga `Veyra/Main.qml`, pero corresponde
-  a un ejecutable **diferente**.
-- En `CMakeLists.txt`, `VEYRA_BUILD_QML_UI` está **OFF por defecto**; el
-  objetivo `veyra_qml_ui.exe` solo existe si se compila con esa opción.
-- Por lo tanto agregar `NovaControl.qml` a una copia del ZIP oficial
-  **no permite controlar el `Veyra.exe` de la versión de lanzamiento**.
+La comprobación anterior basada en `scripts/package-portable.ps1` concluía
+que el ZIP oficial solo contenía `Veyra.exe`, pero **esa conclusión no se
+aplica al paquete real que el usuario extrajo**. No suponer por defecto que
+un portable carece de QML. El Win32 AppShell y el QML son dos ejecutables
+diferentes: solo el segundo carga el módulo que podemos modificar.
 
-Este es un problema de diseño de la ruta de prueba, no de permisos/DRM.
-Las pruebas automáticas de `tests/test_veyra_qml_proxy.py` solo verifican
-el proxy Python y el formato de mensajes, NO que exista la interfaz QML
-en el programa distribuido.
+## Cómo funciona este experimento
 
-## Acciones preventivas ya aplicadas
+1. El preparador hace una COPIA de Veyra en otra carpeta y modifica solamente
+   el `Main.qml` y `qmldir` de la copia.
+2. `NovaControl.qml` envía y recibe comandos por HTTP en
+   `127.0.0.1` usando una clave aleatoria de sesión.
+3. `tools/nova_veyra_qml_proxy.py` convierte los mensajes locales
+   entre Nova (stdin/stdout JSON) y el componente QML invisible.
+4. El ejecutable QML original en esa COPIA sigue utilizando las DLL,
+   shaders y archivos GPU de la versión portátil que pasó el chequeo.
+5. El reproductor MPV sigue funcionando si la fuente está protegida con
+   cabeceras o si falla el puente.
 
-- `tools/Stage-NovaVeyraQml.ps1` detecta la existencia del Veyra.exe
-  oficial y se detiene ANTES de copiar o modificar cualquier archivo.
-- `tools/Stage-NovaVeyraLocal.ps1` ya no trata el paquete Win32
-  como si trajera el runtime completo de la interfaz Qt QML.
-- Windows CI comprueba que ambos programas de preparación rechazan
-  explícitamente una distribución Win32 original en modo `-CheckOnly`.
-- Los archivos del experimento QML permanecen aislados en la rama para
-  revisión, pero **no constituyen una alternativa validada sin recompilar**.
+**Limitaciones:** la mera apertura de Nova no significa que Veyra funcionó.
+El catálogo puede tener enlaces con parámetros de sesión o autorización y
+Nova los manda deliberadamente a MPV. Todavía faltan las pruebas físicas
+de video/sonido/FG en la RTX 3060.
 
-## Qué camino SÍ es técnicamente viable
+## Prueba sin depender del catálogo
 
-La vía segura actual es compilar el **objetivo QML real** de Veyra 2.1.9
-con el adaptador `integrations/veyra/NovaStdioBridge.hpp`, usando:
+La rama ahora muestra el botón `Probar Veyra · test.mp4` en
+**Calidad de video**, tanto en el piloto QML como en el Win32.
+Colocar un video propio llamado `test.mp4` al lado de
+`XuperTVNovaQt.exe`. Iniciar con el lanzador
+`C:\NovaVeyraQmlPrueba\Start-NovaVeyraQml.ps1`.
+Pulsar el botón y comprobar si aparece el proceso `veyra_qml_ui.exe`.
 
-1. `tools/Apply-VeyraNovaBridge.py --check` en una copia de las fuentes.
-2. `tools/Build-NovaVeyraEngine.ps1 -CheckOnly` para verificar SDK/Qt/FFmpeg.
-3. Compilar `veyra_qml_ui.exe` cuando estén sus dependencias legales.
-4. Probarlo con `tools/Run-NovaVeyraSmoke.ps1` desde la rama experimental.
-5. Medir reproducción y filtros GPU en la RTX 3060. `main` permanece intacta.
+El nuevo botón necesita un ZIP de Nova recompilado DESPUÉS del commit
+`10dd0bda868dec9f6a430b96c346fec2ecfeb4d1`: no aparece en el
+ZIP anterior. Se recomienda usar una carpeta nueva para el ZIP y
+actualizar la ruta del lanzador al nuevo Nova o crear una NUEVA copia
+de piloto QML con `Stage-NovaVeyraQml.ps1`, nueva carpeta de salida.
 
-Existe además un proyecto QML/proxy experimental reutilizable una vez se
-disponga de una build QML real, pero NO representa una forma de integrar el
-`Veyra.exe` que trae la versión NVIDIA portable.
+El nombre de comando de PowerShell `PS C:\...>` y las líneas `>>`
+son indicadores de la consola, **no deben pegarse como comandos**.
 
-**Conclusión:** no se ha probado Nova reproduciendo con el Veyra oficial;
-este atajo no es apto para el paquete del usuario. No afirmarlo como hecho.
+No modificar `main` ni el Veyra original. El motor Qt GPU todavía
+no tiene prueba de reproducción integrada en el hardware del usuario.
