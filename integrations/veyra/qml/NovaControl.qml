@@ -11,6 +11,7 @@ Item {
     property bool polling: false
     property bool posting: false
     property bool connected: false
+    property int failedPolls: 0
     property real pendingResume: -1
     readonly property string endpoint: NovaConfig.endpoint || ""
     readonly property string token: NovaConfig.token || ""
@@ -67,7 +68,12 @@ Item {
             request.onreadystatechange = function() {
                 if (request.readyState !== 4) return
                 control.polling = false
-                if (request.status !== 200) return
+                if (request.status !== 200) {
+                    if (control.connected && ++control.failedPolls >= 30)
+                        Qt.quit() // The Nova parent/loopback proxy disappeared.
+                    return
+                }
+                control.failedPolls = 0
                 control.connected = true
                 try { control.execute(JSON.parse(request.responseText)) }
                 catch (e) { console.warn("Nova QML bridge invalid control reply") }
