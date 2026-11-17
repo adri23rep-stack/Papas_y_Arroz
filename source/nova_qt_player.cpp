@@ -77,7 +77,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                         playing_.store(false);
                         notice_=QStringLiteral("Veyra terminó la reproducción");
                         emit changed();
-                        emit finishedPlayback(0.0,false);
+                        emit finishedPlayback(-1.0,false); // Veyra position unknown: do not erase resume data.
                     });
                 veyraProcess_->start();
                 if(veyraProcess_->waitForStarted(3000)){
