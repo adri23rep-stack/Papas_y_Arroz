@@ -23,6 +23,7 @@ $items = @(
     Label = 'DLSS_SDK_310.7.0'
     Repository = 'https://github.com/NVIDIA/DLSS.git'
     Tag = 'v310.7.0'
+    Commit = 'a291cc7d2cc642a51566f3dfd5376f635cd1b284'
     Required = @('include\nvsdk_ngx.h',
                  'lib\Windows_x86_64\x64\nvsdk_ngx_s.lib')
   },
@@ -30,6 +31,7 @@ $items = @(
     Label = 'nv-codec-headers-13.0'
     Repository = 'https://github.com/FFmpeg/nv-codec-headers.git'
     Tag = 'n13.0.19.0'
+    Commit = 'e844e5b26f46bb77479f063029595293aa8f812d'
     Required = @('include\ffnvcodec\nvEncodeAPI.h')
   }
 )
@@ -37,7 +39,7 @@ $items = @(
 if ($CheckOnly) {
   foreach ($item in $items) {
     $path = Join-Path $root $item.Label
-    Write-Output "$($item.Repository) ($($item.Tag)) => $path"
+    Write-Output "$($item.Repository) ($($item.Tag), commit $($item.Commit)) => $path"
     foreach ($part in $item.Required) {
       if (Test-Path -LiteralPath (Join-Path $path $part) -PathType Leaf) {
         Write-Output "  OK: $part"
@@ -66,10 +68,17 @@ foreach ($item in $items) {
   if ($LASTEXITCODE -ne 0) {
     throw "Git clone failed. Check or remove this NEW folder manually: $path"
   }
+  $actualCommit = (& git.exe -C $path rev-parse HEAD).Trim()
+  if ($LASTEXITCODE -ne 0 -or $actualCommit -ne $item.Commit) {
+    throw "Unexpected SDK commit. Refusing unreviewed source at $path (expected $($item.Commit), got $actualCommit)"
+  }
   foreach ($part in $item.Required) {
     $file = Join-Path $path $part
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
       throw "Official SDK checkout is incomplete; no substitute downloaded: $file"
+    }
+    if ($part -like '*.lib' -and (Get-Item -LiteralPath $file).Length -lt 4096) {
+      throw "DLL import library appears to be a Git LFS pointer or incomplete download: $file"
     }
   }
 }
