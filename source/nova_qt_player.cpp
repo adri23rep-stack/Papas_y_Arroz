@@ -93,8 +93,9 @@ bool NovaQtPlayer::setVeyraSetting(const QString& key,int value){
             accepted=nativeVeyra_->change(NOVA_VEYRA_FEATURE_SR,value!=0);
         else if((value==0||value==1) && key=="veyra_nr")
             accepted=nativeVeyra_->change(NOVA_VEYRA_FEATURE_NR,value!=0);
-        // HDR is intentionally not exposed until its original Veyra output
-        // and monitor-capability settings are mapped without pretending success.
+        else if((value==0||value==1) && key=="veyra_hdr")
+            accepted=nativeVeyra_->change(NOVA_VEYRA_FEATURE_HDR,value!=0);
+        // Veyra reports whether RTX Video HDR is actually active; no fake flag.
         notice_=accepted?QStringLiteral("Veyra nativo: esperando confirmar el efecto en GPU."):
             QStringLiteral("Este efecto no está disponible en la sesión Veyra.");
         emit changed();
