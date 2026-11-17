@@ -18,6 +18,7 @@
 #include <QGuiApplication>
 #include "nova_quality.hpp"
 #include "nova_motion.hpp"
+#include "nova_auto_next.hpp"
 #include <QImage>
 #include <QMetaObject>
 #include <QMouseEvent>
@@ -326,8 +327,19 @@ NovaQtHome::NovaQtHome(QObject* parent):QObject(parent),player_(this){
         if(queued_remote_entry_){
             const auto entry=*queued_remote_entry_;
             queued_remote_entry_.reset();
+            next_episode_.reset();
             activate(entry);
-        }
+        }else if(ended && playback_history_.auto_next && next_episode_ &&
+                 active_entry_.kind==xs::EntryKind::Episode &&
+                 active_entry_.program_type=="0" &&
+                 !active_entry_.content_id.empty()){
+            // Only a real EOF (not manual stop or error) advances. The next
+            // provider episode was captured when playback started, so browsing
+            // another category while watching cannot change the target.
+            const auto next=*next_episode_;
+            next_episode_.reset();
+            activate(next);
+        }else next_episode_.reset();
     });
     refreshContinue();
     // SDL is used ONLY as the existing iPhone remote's event queue; Qt draws
@@ -657,6 +669,7 @@ void NovaQtHome::browseEntry(const xs::Entry& e){
 }
 void NovaQtHome::playEntry(const xs::Entry& e){
     if(player_.playing()||loading_)return;
+    next_episode_=xs::nova_next_episode(e,page_.entries,playback_history_.auto_next);
     active_entry_=e;
     saved_.remember(e);
     refreshContinue();
