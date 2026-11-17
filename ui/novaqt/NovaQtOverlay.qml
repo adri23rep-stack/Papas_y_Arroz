@@ -348,6 +348,59 @@ Item {
                         }
                     }
                 }
+                Rectangle {
+                    id: srPicker
+                    visible: !!novaHome.veyraState.nativeEngine
+                    width: qualityPanel.width - 48
+                    height: visible ? 42 : 0
+                    radius: 10
+                    color: srMouse.containsMouse ? "#37304B" : "#282435"
+                    border.color: "#8E70CD"
+                    property var choices: [
+                        {id:0, label:"DLSS SR (Transformer)"},
+                        {id:1, label:"RTX Video SR · Bajo"},
+                        {id:2, label:"RTX Video SR · Medio"},
+                        {id:3, label:"RTX Video SR · Alto"},
+                        {id:4, label:"RTX Video SR · Ultra"},
+                        {id:5, label:"FSR"},
+                        {id:16, label:"RTX alto bitrate · Bajo"},
+                        {id:17, label:"RTX alto bitrate · Medio"},
+                        {id:18, label:"RTX alto bitrate · Alto"},
+                        {id:19, label:"RTX alto bitrate · Ultra"},
+                        {id:21, label:"RTX streaming · Medio"},
+                        {id:23, label:"RTX streaming · Ultra"}
+                    ]
+                    property int currentQuality: novaHome.veyraState.requestedSrQuality === undefined
+                        ? 2 : Number(novaHome.veyraState.requestedSrQuality)
+                    function currentLabel() {
+                        for (var i = 0; i < choices.length; i++)
+                            if (choices[i].id === currentQuality) return choices[i].label
+                        return "Modelo " + currentQuality
+                    }
+                    function cycleQuality() {
+                        var index = -1
+                        for (var i = 0; i < choices.length; i++)
+                            if (choices[i].id === currentQuality) { index = i; break }
+                        novaHome.setVeyraSetting("veyra_sr_quality",
+                            choices[(index + 1) % choices.length].id)
+                    }
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Modelo de superresolución de Veyra: " + currentLabel()
+                    Accessible.onPressAction: srPicker.cycleQuality()
+                    Text {
+                        anchors.centerIn: parent
+                        text: "RTX SR: " + srPicker.currentLabel() + "   ↻"
+                        color: "#FFFFFF"
+                        font.pixelSize: 14
+                    }
+                    MouseArea {
+                        id: srMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: srPicker.cycleQuality()
+                    }
+                }
                 Text {
                     width: parent.width; wrapMode: Text.WordWrap
                     text: novaHome.playbackDiagnostics
