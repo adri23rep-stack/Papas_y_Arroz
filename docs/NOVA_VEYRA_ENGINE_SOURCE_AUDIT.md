@@ -37,7 +37,8 @@ C++ de ambos compiladores directamente sería incorrecto.
 - `integrations/veyra/native/NovaVeyraNative.cpp`: adaptador que
   **llama el `veyra::engine::EngineController` original**, no un sustituto.
   Abre archivo o URL permitida, pausa, avanza, velocidad, volumen, SR/NR/FG,
-  RTX Video HDR, y devuelve el snapshot REAL de frames/FPS.
+  RTX Video HDR, enumera y selecciona pistas reales de audio, y devuelve
+  el snapshot REAL de frames/FPS.
 - `integrations/veyra/native/CMakeLists.txt`: compila el `veyra_engine`
   original como parte del mismo build nativo MSVC; genera
   `nova_veyra_native.dll`, sin compilar UI Win32 ni QML de Veyra.
