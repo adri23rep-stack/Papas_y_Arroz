@@ -63,8 +63,8 @@ private:
             {"paused", player_.paused()},
             {"failed", player_.failed()},
             {"hasSource", player_.hasSource()},
-            {"position", std::isfinite(position) ? std::max(0.0, position) : 0.0},
-            {"duration", std::isfinite(duration) ? std::max(0.0, duration) : 0.0},
+            {"position", std::isfinite(position) ? (position > 0.0 ? position : 0.0) : 0.0},
+            {"duration", std::isfinite(duration) ? (duration > 0.0 ? duration : 0.0) : 0.0},
             {"audioTracks", QJsonArray::fromVariantList(player_.audioTracks())},
             {"selectedAudioTrack", player_.selectedAudioTrack()}
         });
