@@ -31,10 +31,11 @@ public:
         pause_=reinterpret_cast<decltype(&nova_veyra_pause)>(lib_.resolve("nova_veyra_pause"));
         seek_=reinterpret_cast<decltype(&nova_veyra_seek)>(lib_.resolve("nova_veyra_seek"));
         volume_=reinterpret_cast<decltype(&nova_veyra_volume)>(lib_.resolve("nova_veyra_volume"));
+        rate_=reinterpret_cast<decltype(&nova_veyra_rate)>(lib_.resolve("nova_veyra_rate"));
         settings_=reinterpret_cast<decltype(&nova_veyra_settings)>(lib_.resolve("nova_veyra_settings"));
         snapshot_=reinterpret_cast<decltype(&nova_veyra_snapshot)>(lib_.resolve("nova_veyra_snapshot"));
         if(!abi_||!create_||!destroy_||!open_||!stop_||!pause_||!seek_||
-           !volume_||!settings_||!snapshot_||abi_()!=NOVA_VEYRA_NATIVE_ABI){
+           !volume_||!rate_||!settings_||!snapshot_||abi_()!=NOVA_VEYRA_NATIVE_ABI){
             close();return false;
         }
         engine_=create_();
@@ -53,6 +54,7 @@ public:
     void pause(bool p){if(ready())pause_(engine_,p?1u:0u);}
     void seek(double seconds){if(ready())seek_(engine_,seconds);}
     void volume(double volume){if(ready())volume_(engine_,static_cast<float>(volume));}
+    bool rate(double value){return ready() && rate_(engine_,value)!=0;}
     bool change(uint32_t flag,bool on) {
         if(!ready())return false;
         auto next=requested_;
@@ -79,7 +81,7 @@ public:
         if(lib_.isLoaded())lib_.unload();
         abi_=nullptr;create_=nullptr;destroy_=nullptr;open_=nullptr;
         stop_=nullptr;pause_=nullptr;seek_=nullptr;volume_=nullptr;
-        settings_=nullptr;snapshot_=nullptr;
+        settings_=nullptr;snapshot_=nullptr;rate_=nullptr;
     }
 private:
     QLibrary lib_;
@@ -93,6 +95,7 @@ private:
     decltype(&nova_veyra_pause) pause_=nullptr;
     decltype(&nova_veyra_seek) seek_=nullptr;
     decltype(&nova_veyra_volume) volume_=nullptr;
+    decltype(&nova_veyra_rate) rate_=nullptr;
     decltype(&nova_veyra_settings) settings_=nullptr;
     decltype(&nova_veyra_snapshot) snapshot_=nullptr;
 };
