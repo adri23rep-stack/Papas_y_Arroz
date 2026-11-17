@@ -220,10 +220,10 @@ def main() -> int:
         output({"protocol": 1, "type": "nova-error"})
         return 3
 
-    http = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    http.daemon_threads = True
-    http.timeout = 0.25
-    port = http.server_address[1]
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.daemon_threads = True
+    server.timeout = 0.25
+    port = server.server_address[1]
     temp = config.with_suffix(".nova.tmp")
     temp.write_text(
         "var endpoint = " + json.dumps("http://127.0.0.1:" + str(port)) + "\n"
@@ -241,13 +241,13 @@ def main() -> int:
         job = job_for_child(child)
         threading.Thread(target=input_worker, daemon=True).start()
         while child.poll() is None:
-            http.handle_request()
+            server.handle_request()
         return 0 if child.returncode == 0 else 4
     except (OSError, ValueError):
         output({"protocol": 1, "type": "nova-error"})
         return 5
     finally:
-        http.server_close()
+        server.server_close()
         if child is not None and child.poll() is None:
             child.terminate()
             try:
