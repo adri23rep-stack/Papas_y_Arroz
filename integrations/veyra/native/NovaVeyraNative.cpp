@@ -25,7 +25,7 @@ struct Session {
 
 bool checked(const NovaVeyraSettings* options){
     if(!options || options->size!=sizeof(NovaVeyraSettings))return false;
-    if(options->features & ~(NOVA_VEYRA_FEATURE_NR|NOVA_VEYRA_FEATURE_SR|NOVA_VEYRA_FEATURE_FG))return false;
+    if(options->features & ~(NOVA_VEYRA_FEATURE_NR|NOVA_VEYRA_FEATURE_SR|NOVA_VEYRA_FEATURE_FG|NOVA_VEYRA_FEATURE_HDR))return false;
     if(options->fg_backend>NOVA_VEYRA_FG_AMD_FRC || options->sr_quality>4)return false;
     if(options->software_decode>1)return false;
     if((options->features&NOVA_VEYRA_FEATURE_FG)!=0){
@@ -44,6 +44,7 @@ EnhancementSettings settingsFrom(const NovaVeyraSettings& in,EnhancementSettings
     base.multiplier=(in.features&NOVA_VEYRA_FEATURE_FG)?in.fg_multiplier:1u;
     base.frameGenerationBackend=static_cast<FrameGenerationBackend>(in.fg_backend);
     base.videoSrQuality=in.sr_quality;
+    base.videoHdr.enabled=(in.features&NOVA_VEYRA_FEATURE_HDR)!=0;
     return base;
 }
 }
