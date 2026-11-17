@@ -3,6 +3,8 @@
 #include <QObject>
 #include <QWindow>
 #include <QProcess>
+#include <QByteArray>
+class QJsonObject;
 #include <QMutex>
 #include <QString>
 #include <atomic>
@@ -45,6 +47,12 @@ private:
     bool eventFilter(QObject* object,QEvent* event) override;
     std::unique_ptr<QWindow> videoWindow_;
     std::unique_ptr<QProcess> veyraProcess_;
+    QByteArray veyraOutput_;
+    bool veyraBridgeReady_=false;
+    bool veyraLive_=false;
+    double veyraLastPosition_=-1.0;
+    double veyraResumeSeconds_=0.0;
+    void sendVeyraControl(const QJsonObject& command);
     bool restoreMaximized_=false;
     std::int64_t videoWindowId_=0;
     void command(const char* name,const char* argument);
