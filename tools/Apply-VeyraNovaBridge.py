@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 ANCHOR_INCLUDE = '#include "veyra/ui/QmlPlayerBridge.h"'
 NEW_INCLUDE = '#include "NovaStdioBridge.hpp"'
 ANCHOR_INIT = "    bridge.attachMainWindow(static_cast<qulonglong>(window->winId()));"
-NEW_INIT = "    NovaStdioBridge novaStdioBridge(bridge, &app);"
+NEW_INIT = "    NovaStdioBridge novaStdioBridge(bridge, window, &app);"
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -21,6 +21,7 @@ def main():
     args = parser.parse_args()
     target = args.veyra_source.resolve()
     main_cpp = target / "apps/veyra-qml/main.cpp"
+    # The QML entrypoint is required; the legacy Veyra GUI has another main.cpp.
     header = target / "apps/veyra-qml/NovaStdioBridge.hpp"
     source_header = ROOT / "integrations/veyra/NovaStdioBridge.hpp"
 
@@ -40,6 +41,13 @@ def main():
         shutil.copy2(main_cpp, backup)
         data = data.replace(ANCHOR_INCLUDE, ANCHOR_INCLUDE + "\n" + NEW_INCLUDE, 1)
         data = data.replace(ANCHOR_INIT, ANCHOR_INIT + "\n" + NEW_INIT, 1)
+        # The IPC child starts with no positional URL. Do not auto-reopen a previous
+        # file in the patched Veyra while Nova is waiting to send open_source.
+        old_auto = 'QTimer::singleShot(600, &bridge, [&bridge] { bridge.autoResumeLastSource(); });'
+        new_auto = 'if (qEnvironmentVariableIntValue("NOVA_VEYRA_STDIO") != 1) ' + old_auto
+        if data.count(old_auto) != 1:
+            sys.exit("Could not locate Veyra auto-resume hook; inspect original source.")
+        data = data.replace(old_auto, new_auto, 1)
         main_cpp.write_text(data, encoding="utf-8")
     elif NEW_INCLUDE not in data:
         sys.exit("Incomplete previous modification; inspect Veyra main.cpp.")
