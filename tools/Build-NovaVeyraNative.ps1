@@ -53,6 +53,12 @@ foreach($p in $req){if(-not(Test-Path -LiteralPath $p -PathType Leaf)){$missing.
 foreach($exe in @('cmake.exe','ninja.exe','cl.exe')){
   if(-not(Get-Command $exe -ErrorAction SilentlyContinue)){$missing.Add("$exe missing from PATH")}
 }
+if(-not $missing.Count){
+  $cmakeText=[IO.File]::ReadAllText((Join-Path $source 'CMakeLists.txt'))
+  if($cmakeText -notmatch '(?m)^project\(veyra VERSION 2[.]1[.]9 LANGUAGES C CXX RC\)'){
+    throw 'Expected official Veyra 2.1.9 source tree. Do not compile a different engine version silently.'
+  }
+}
 if($missing.Count){
   Write-Warning ("Veyra native GPU cannot compile: "+$missing.Count+" missing prerequisites.")
   foreach($item in $missing){Write-Output " - $item"}
