@@ -94,6 +94,19 @@ jobs:
       - name: Verify Nova-Veyra source patch and rollback (offline)
         shell: pwsh
         run: python -m unittest discover -s tests -p test_veyra_bridge_installer.py -v
+      - name: Validate Veyra GPU build helper (syntax and missing-SDK preflight)
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "tools/Build-NovaVeyraEngine.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count) { throw "Veyra PowerShell build script has syntax errors: $errors" }
+          $missing = Join-Path $env:RUNNER_TEMP 'nova-veyra-missing-dependencies'
+          $output = & ./tools/Build-NovaVeyraEngine.ps1 -VeyraSource $missing -QtRoot $missing -FfmpegRoot $missing -DlssSdkRoot $missing -OpticalFlowSdkRoot $missing -NvencHeadersRoot $missing -CheckOnly 3>&1 | Out-String
+          if ($output -notmatch 'Cannot build Veyra GPU yet' -or $output -notmatch 'NVIDIA DLSS SDK') {
+            throw "Veyra missing-SDK preflight failed: $output"
+          }
       - name: MSYS2 UCRT64 dependencies
         uses: msys2/setup-msys2@v2
         with:
