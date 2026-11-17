@@ -245,6 +245,16 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                         remoteState.engine="veyra";
                         remoteState.veyraSettings={{int(snap.fg_active),int(snap.sr_active),
                             int(snap.nr_active),int(snap.hdr_active),2}};
+                        // The original EngineController supplies stream indices,
+                        // languages and selected track. These feed the iPhone.
+                        for(const auto& track:nativeVeyra_->audioTracks()){
+                            xs::RemotePlaybackChoice choice;
+                            choice.kind="audio";
+                            choice.id=track.stream_index;
+                            choice.label=QString::fromUtf8(track.label_utf8).toStdString();
+                            choice.selected=track.selected!=0;
+                            remoteState.audio.push_back(std::move(choice));
+                        }
                         for(const auto& item:multipliers){
                             bool ok=false;
                             const int n=item.toMap().value("id").toString().toInt(&ok);
@@ -677,6 +687,12 @@ bool NovaQtPlayer::eventFilter(QObject* object,QEvent* event){
     return QObject::eventFilter(object,event);
 }
 void NovaQtPlayer::selectTrack(int kind,int id,uint32_t generation){
+    if(nativeVeyra_){
+        const auto current=xs::RemoteServer::shared().playback_options();
+        if(kind==1 && current.active && current.generation==generation && id>=0)
+            nativeVeyra_->selectAudio(id);
+        return;
+    }
     if(veyraProcess_ && veyraProcess_->state()==QProcess::Running){
         const auto snapshot=xs::RemoteServer::shared().playback_options();
         if(snapshot.active && snapshot.generation==generation){
