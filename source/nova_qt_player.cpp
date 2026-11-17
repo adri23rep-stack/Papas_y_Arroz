@@ -12,6 +12,10 @@
 #include <QFileInfo>
 #include <QTemporaryDir>
 #include <QByteArray>
+#include <QProcessEnvironment>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 #include <QProcess>
 #include <QUrl>
 #include <mpv/client.h>
@@ -28,6 +32,13 @@
 
 NovaQtPlayer::NovaQtPlayer(QObject* parent):QObject(parent){}
 NovaQtPlayer::~NovaQtPlayer(){
+    if(veyraProcess_ && veyraProcess_->state()!=QProcess::NotRunning){
+        veyraProcess_->terminate();
+        if(!veyraProcess_->waitForFinished(1500)){
+            veyraProcess_->kill();
+            veyraProcess_->waitForFinished(1000);
+        }
+    }
     stop_.store(true);
     {
         QMutexLocker lock(&mutex_);
@@ -43,6 +54,14 @@ void NovaQtPlayer::finish(const QString& message){
         notice_=message;
         emit changed();
     },Qt::QueuedConnection);
+}
+
+void NovaQtPlayer::sendVeyraControl(const QJsonObject& command){
+    if(!veyraBridgeReady_ || !veyraProcess_ ||
+       veyraProcess_->state()!=QProcess::Running)return;
+    QJsonObject msg=command;
+    msg.insert(QStringLiteral("protocol"),1);
+    veyraProcess_->write(QJsonDocument(msg).toJson(QJsonDocument::Compact)+"\n");
 }
 
 void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool live,double resumeSeconds){
@@ -68,21 +87,77 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                 veyraProcess_.reset();
             if(!veyraProcess_){
                 veyraProcess_=std::make_unique<QProcess>();
+                veyraOutput_.clear();
+                veyraBridgeReady_=false;
+                veyraLastPosition_=-1.0;
+                veyraResumeSeconds_=live?0.0:resumeSeconds;
+                veyraLive_=live;
                 veyraProcess_->setProgram(executable);
                 veyraProcess_->setArguments({source});
                 veyraProcess_->setWorkingDirectory(QFileInfo(executable).absolutePath());
                 veyraProcess_->setProcessChannelMode(QProcess::ForwardedErrorChannel);
+                QProcessEnvironment env=QProcessEnvironment::systemEnvironment();
+                env.insert(QStringLiteral("NOVA_VEYRA_STDIO"),QStringLiteral("1"));
+                veyraProcess_->setProcessEnvironment(env);
+                QObject::connect(veyraProcess_.get(), &QProcess::readyReadStandardOutput,
+                    this, [this] {
+                    if(!veyraProcess_)return;
+                    veyraOutput_.append(veyraProcess_->readAllStandardOutput());
+                    if(veyraOutput_.size()>16384){veyraOutput_.clear();return;}
+                    for(;;){
+                        const auto newline=veyraOutput_.indexOf('\n');
+                        if(newline<0)break;
+                        const QByteArray line=veyraOutput_.left(newline);
+                        veyraOutput_.remove(0,newline+1);
+                        const QJsonDocument doc=QJsonDocument::fromJson(line);
+                        if(!doc.isObject())continue;
+                        const QJsonObject msg=doc.object();
+                        if(msg.value(QStringLiteral("protocol")).toInt()!=1)continue;
+                        const QString type=msg.value(QStringLiteral("type")).toString();
+                        if(type==QStringLiteral("nova-ready")){
+                            veyraBridgeReady_=true;
+                            notice_=QStringLiteral("Veyra conectado: controles básicos disponibles");
+                            if(veyraResumeSeconds_>0)
+                                sendVeyraControl({{"cmd","resume"},{"seconds",veyraResumeSeconds_}});
+                            emit changed();
+                        }else if(type==QStringLiteral("nova-status") && veyraBridgeReady_){
+                            const double pos=msg.value(QStringLiteral("position")).toDouble(-1);
+                            if(!veyraLive_ && msg.value(QStringLiteral("hasSource")).toBool() &&
+                               std::isfinite(pos) && pos>=0)
+                                veyraLastPosition_=pos;
+                            const QJsonArray audio=msg.value(QStringLiteral("audioTracks")).toArray();
+                            xs::RemotePlaybackSnapshot state;
+                            state.title=title_.toStdString();
+                            const int selected=msg.value(QStringLiteral("selectedAudioTrack")).toInt(-1);
+                            for(const QJsonValue& value:audio){
+                                const QJsonObject track=value.toObject();
+                                const int index=track.value(QStringLiteral("index")).toInt(-1);
+                                if(index<0)continue;
+                                xs::RemotePlaybackChoice choice;
+                                choice.kind="audio";
+                                choice.id=index;
+                                choice.label=track.value(QStringLiteral("label")).toString().toStdString();
+                                if(choice.label.empty())choice.label="Audio "+std::to_string(index);
+                                choice.selected=index==selected;
+                                state.audio.push_back(std::move(choice));
+                            }
+                            state.subtitles.push_back({-1,"subtitle","Control desde Veyra",true});
+                            xs::RemoteServer::shared().publish_playback_options(std::move(state));
+                        }
+                    }
+                });
                 QObject::connect(veyraProcess_.get(), &QProcess::finished, this,
                     [this](int, QProcess::ExitStatus){
                         playing_.store(false);
                         notice_=QStringLiteral("Veyra terminó la reproducción");
                         emit changed();
-                        emit finishedPlayback(-1.0,false); // Veyra position unknown: do not erase resume data.
+                        emit finishedPlayback(veyraLive_?-1.0:veyraLastPosition_,false);
+                        veyraBridgeReady_=false;
                     });
                 veyraProcess_->start();
                 if(veyraProcess_->waitForStarted(3000)){
                     title_=title;
-                    notice_=QStringLiteral("Reproduciendo en Veyra (controles externos pendientes)");
+                    notice_=QStringLiteral("Reproduciendo en Veyra (esperando conexión de controles)");
                     playing_.store(true);
                     emit changed();
                     return;
@@ -132,6 +207,10 @@ void NovaQtPlayer::stop(){
     command("stop",nullptr);
 }
 void NovaQtPlayer::togglePause(){
+    if(veyraProcess_ && veyraProcess_->state()==QProcess::Running){
+        sendVeyraControl({{"cmd","pause"}});
+        return;
+    }
     QMutexLocker lock(&mutex_);
     if(!handle_)return;
     int paused=0;
@@ -141,12 +220,20 @@ void NovaQtPlayer::togglePause(){
     }
 }
 void NovaQtPlayer::setVolume(int value){
+    if(veyraProcess_ && veyraProcess_->state()==QProcess::Running){
+        sendVeyraControl({{"cmd","volume"},{"value",std::clamp(value,0,100)/100.0}});
+        return;
+    }
     QMutexLocker lock(&mutex_);
     if(!handle_)return;
     double volume=static_cast<double>(std::clamp(value,0,100));
     mpv_set_property_async(handle_,0,"volume",MPV_FORMAT_DOUBLE,&volume);
 }
 void NovaQtPlayer::setSpeed(int percent){
+    if(veyraProcess_ && veyraProcess_->state()==QProcess::Running){
+        sendVeyraControl({{"cmd","speed"},{"value",std::clamp(percent,50,200)/100.0}});
+        return;
+    }
     QMutexLocker lock(&mutex_);
     if(!handle_)return;
     double speed=std::clamp(percent,50,200)/100.0;
@@ -188,6 +275,12 @@ bool NovaQtPlayer::eventFilter(QObject* object,QEvent* event){
     return QObject::eventFilter(object,event);
 }
 void NovaQtPlayer::selectTrack(int kind,int id,uint32_t generation){
+    if(veyraProcess_ && veyraProcess_->state()==QProcess::Running){
+        const auto snapshot=xs::RemoteServer::shared().playback_options();
+        if(snapshot.active && snapshot.generation==generation && kind==1 && id>=0)
+            sendVeyraControl({{"cmd","audio_track"},{"index",id}});
+        return;
+    }
     QMutexLocker lock(&mutex_);
     const auto snapshot=xs::RemoteServer::shared().playback_options();
     if(!handle_||!snapshot.active||snapshot.generation!=generation||(kind!=1&&kind!=2))return;
@@ -298,6 +391,11 @@ void NovaQtPlayer::applySetting(int id,int value){
     }
 }
 void NovaQtPlayer::seek(double seconds){
+    if(veyraProcess_ && veyraProcess_->state()==QProcess::Running){
+        if(std::isfinite(seconds))
+            sendVeyraControl({{"cmd","seek_by"},{"seconds",seconds}});
+        return;
+    }
     QMutexLocker lock(&mutex_);
     if(!handle_)return;
     const std::string amount=std::to_string(seconds);
