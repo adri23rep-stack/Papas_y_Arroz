@@ -5,16 +5,6 @@ import json
 import re
 import uuid
 from pathlib import Path
-from loguru import logger
-logger.remove()
-from androguard.core.apk import APK
-from androguard.core.dex import DEX
-from cryptography.hazmat.primitives.ciphers import Cipher,modes
-from cryptography.hazmat.primitives.padding import PKCS7
-try:
-    from cryptography.hazmat.decrepit.ciphers.algorithms import TripleDES
-except ImportError:
-    from cryptography.hazmat.primitives.ciphers.algorithms import TripleDES
 
 def android_base64(value):
     alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
@@ -29,6 +19,12 @@ def android_base64(value):
     return bytes(out)
 
 def decrypt(value,key):
+    from cryptography.hazmat.primitives.ciphers import Cipher, modes
+    from cryptography.hazmat.primitives.padding import PKCS7
+    try:
+        from cryptography.hazmat.decrepit.ciphers.algorithms import TripleDES
+    except ImportError:
+        from cryptography.hazmat.primitives.ciphers.algorithms import TripleDES
     cipher=android_base64(bytes.fromhex(value).decode('ascii'))
     decoded=android_base64(key)
     if len(decoded)<24:raise ValueError('Invalid extracted key')
@@ -37,6 +33,16 @@ def decrypt(value,key):
     return (unpad.update(padded)+unpad.finalize()).decode('utf-8')
 
 def configure(apk_path,output,platform='switch'):
+    # A changed obfuscation layout must NEVER silently generate invalid service.json.
+    from inspect_apk_compat import inspect
+    compat=inspect(apk_path)
+    if compat.get("extractor_anterior", {}).get("tipo_encontrado") == "UUID":
+        raise ValueError("APK incompatible con extractor anterior: Lk2/b.g ahora devuelve un UUID. "
+                         "Ejecuta --inspect-only para un diagnostico; no se modifico service.json.")
+    from loguru import logger
+    logger.remove()
+    from androguard.core.apk import APK
+    from androguard.core.dex import DEX
     apk=APK(str(apk_path));root=None;app_id=None;salt=None;aes_key=None;api_version=None
     for raw in apk.get_all_dex():
         dex=DEX(raw)
@@ -92,6 +98,15 @@ def configure(apk_path,output,platform='switch'):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('apk',type=Path);parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('apk',type=Path);parser.add_argument('--output',type=Path)
     parser.add_argument('--platform',choices=['switch','windows'],default='switch')
-    args=parser.parse_args();configure(args.apk,args.output,args.platform)
+    parser.add_argument('--inspect-only',action='store_true',
+                        help='Analisis local sin descifrar claves ni generar service.json')
+    args=parser.parse_args()
+    if args.inspect_only:
+        from inspect_apk_compat import inspect
+        print(json.dumps(inspect(args.apk),indent=2,ensure_ascii=False))
+    else:
+        if args.output is None:
+            parser.error('--output es obligatorio al generar una configuracion')
+        configure(args.apk,args.output,args.platform)
