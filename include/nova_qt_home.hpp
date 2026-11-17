@@ -49,6 +49,7 @@ class NovaQtHome : public QObject {
     Q_PROPERTY(int videoPreset READ videoPreset NOTIFY changed)
     Q_PROPERTY(QString videoPresetLabel READ videoPresetLabel NOTIFY changed)
     Q_PROPERTY(bool veyraActive READ veyraActive NOTIFY changed)
+    Q_PROPERTY(bool win32PilotEnabled READ win32PilotEnabled CONSTANT)
     Q_PROPERTY(QVariantMap veyraState READ veyraState NOTIFY changed)
     Q_PROPERTY(int motionMode READ motionMode NOTIFY changed)
     Q_PROPERTY(QString motionLabel READ motionLabel NOTIFY changed)
@@ -88,6 +89,10 @@ public:
     int videoPreset() const;
     QString videoPresetLabel() const;
     bool veyraActive() const {return player_.veyraActive();}
+    bool win32PilotEnabled() const {
+        return qEnvironmentVariableIntValue("NOVA_VEYRA_PILOT")==1 &&
+            !qEnvironmentVariable("NOVA_VEYRA_WIN32_EXE").isEmpty();
+    }
     QVariantMap veyraState() const {return player_.veyraState();}
     Q_INVOKABLE void setVeyraSetting(const QString& key,int value){player_.setVeyraSetting(key,value);}
     int motionMode() const;
@@ -99,6 +104,7 @@ public:
     Q_INVOKABLE void closeFeaturedInfo(){featured_info_visible_=false;emit changed();}
     Q_INVOKABLE void openContinue(int index);
     Q_INVOKABLE void openDemo(int index);
+    Q_INVOKABLE bool playLocalPilotSample();
     Q_INVOKABLE void openSection(int row);
     Q_INVOKABLE void openHomeCard(int row,int index);
     Q_INVOKABLE void selectGridItem(int index);
