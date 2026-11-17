@@ -2,6 +2,7 @@
 #include "service.hpp"
 #include <QObject>
 #include <QWindow>
+#include <QProcess>
 #include <QMutex>
 #include <QString>
 #include <atomic>
@@ -43,6 +44,7 @@ signals:
 private:
     bool eventFilter(QObject* object,QEvent* event) override;
     std::unique_ptr<QWindow> videoWindow_;
+    std::unique_ptr<QProcess> veyraProcess_;
     bool restoreMaximized_=false;
     std::int64_t videoWindowId_=0;
     void command(const char* name,const char* argument);
