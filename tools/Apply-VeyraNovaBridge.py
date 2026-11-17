@@ -37,70 +37,92 @@ def atomic_text_write(path: Path, data: str) -> None:
             os.unlink(temporary)
 
 
+TRANSPORT_ANCHOR = "void QmlPlayerBridge::tickPlaylist() {\n"
+TRANSPORT_GUARD = """    // Nova owns episode progression; expose exact EOF without advancing Veyra's playlist.
+    if (qEnvironmentVariableIntValue("NOVA_VEYRA_STDIO") == 1) {
+        setProperty("_novaPlaybackEnded", impl_->snapshot.transport == engine::TransportState::Ended);
+        return;
+    }
+"""
+
+
+def patched_main(data: str) -> str:
+    return (data.replace(ANCHOR_INCLUDE, ANCHOR_INCLUDE + "\n" + NEW_INCLUDE, 1)
+            .replace(ANCHOR_INIT, ANCHOR_INIT + "\n" + NEW_INIT, 1)
+            .replace(AUTO_RESUME, GUARDED_RESUME, 1))
+
+
 def patch(target: Path, *, check_only: bool = False, restore: bool = False) -> str:
     main_cpp = target / "apps/veyra-qml/main.cpp"
+    transport = target / "src/ui/bridge/Playback.cpp"
     header = target / "apps/veyra-qml/NovaStdioBridge.hpp"
-    backup = main_cpp.with_suffix(".cpp.nova-pre-bridge.bak")
     source_header = ROOT / "integrations/veyra/NovaStdioBridge.hpp"
-    if not main_cpp.is_file() or not source_header.is_file():
-        raise ValueError("Missing Veyra Qt main.cpp or Nova adapter source. No changes made.")
-    data = main_cpp.read_text(encoding="utf-8")
-    patched = NEW_INCLUDE in data and NEW_INIT in data and GUARDED_RESUME in data
-
-    if restore:
-        if not backup.is_file():
-            raise ValueError("No Nova bridge backup exists. Nothing restored.")
-        if not patched:
-            raise ValueError("The Veyra entrypoint has changed. Refusing to overwrite it.")
-        original = backup.read_text(encoding="utf-8")
-        expected = original.replace(ANCHOR_INCLUDE, ANCHOR_INCLUDE + "\n" + NEW_INCLUDE, 1)
-        expected = expected.replace(ANCHOR_INIT, ANCHOR_INIT + "\n" + NEW_INIT, 1)
-        expected = expected.replace(AUTO_RESUME, GUARDED_RESUME, 1)
-        if data != expected:
-            raise ValueError("The Veyra entrypoint has changed since installation. Nothing restored.")
-        if check_only:
-            return "Bridge can be restored."
-        # Preserve another person's changes in NovaStdioBridge.hpp if it diverged.
-        atomic_text_write(main_cpp, original)
-        backup.unlink()
-        if header.is_file() and header.read_bytes() == source_header.read_bytes():
-            header.unlink()
-        return "Original Veyra main.cpp restored. Check adapter header if it was modified."
-
-    if not patched:
-        if NEW_INCLUDE in data or NEW_INIT in data or GUARDED_RESUME in data:
-            raise ValueError("Partial or modified Nova bridge present. Inspect main.cpp manually.")
-        if backup.exists():
-            raise ValueError("A prior Nova backup exists. Inspect it before applying the bridge.")
-        if any(data.count(anchor) != 1 for anchor in (ANCHOR_INCLUDE, ANCHOR_INIT, AUTO_RESUME)):
-            raise ValueError("Veyra injection points do not match the reviewed source ZIP.")
-        patched_source = data.replace(ANCHOR_INCLUDE, ANCHOR_INCLUDE + "\n" + NEW_INCLUDE, 1)
-        patched_source = patched_source.replace(ANCHOR_INIT, ANCHOR_INIT + "\n" + NEW_INIT, 1)
-        patched_source = patched_source.replace(AUTO_RESUME, GUARDED_RESUME, 1)
-    else:
-        patched_source = data
-        if not backup.exists():
-            raise ValueError("Patched Veyra has no original backup; refusing to claim success.")
-
+    if not all(path.is_file() for path in (main_cpp, transport, source_header)):
+        raise ValueError("Missing Veyra Qt sources or Nova adapter source. No changes made.")
+    specs = [
+        (main_cpp, (ANCHOR_INCLUDE, ANCHOR_INIT, AUTO_RESUME),
+         (NEW_INCLUDE, NEW_INIT, GUARDED_RESUME), patched_main),
+        (transport, (TRANSPORT_ANCHOR,), (TRANSPORT_GUARD,),
+         lambda data: data.replace(TRANSPORT_ANCHOR, TRANSPORT_ANCHOR + TRANSPORT_GUARD, 1)),
+    ]
+    # Validate every file before writing any of them. Earlier main-only installs
+    # are upgraded without replacing their original backup.
+    changes = []
+    for path, anchors, markers, transform in specs:
+        data = path.read_text(encoding="utf-8")
+        backup = path.with_suffix(".cpp.nova-pre-bridge.bak")
+        installed = all(marker in data for marker in markers)
+        if installed:
+            if not backup.is_file():
+                raise ValueError("Patched Veyra has no original backup.")
+            original = backup.read_text(encoding="utf-8")
+            if transform(original) != data:
+                raise ValueError("The Veyra entrypoint has changed since installation. Nothing restored.")
+        else:
+            if any(marker in data for marker in markers):
+                raise ValueError("Partial or modified Nova bridge present.")
+            if backup.exists():
+                raise ValueError("A prior Nova backup exists. Inspect it before applying the bridge.")
+            if any(data.count(anchor) != 1 for anchor in anchors):
+                raise ValueError("Veyra injection points do not match the reviewed source ZIP.")
+            original = data
+        if restore and not installed:
+            if path == main_cpp:
+                raise ValueError("No Nova bridge backup exists. Nothing restored.")
+            continue # legacy main-only install
+        changes.append((path, backup, installed, original, transform(original)))
     if check_only:
-        return "Bridge already installed." if patched else "Injection anchors valid; ready to install."
+        if restore:
+            return "Bridge can be restored."
+        return "Bridge already installed." if all(c[2] for c in changes) else "Injection anchors valid; ready to install."
+
     adapter = source_header.read_text(encoding="utf-8")
-    old_header = header.read_text(encoding="utf-8") if header.exists() else None
-    if not patched:
-        shutil.copy2(main_cpp, backup)
-        try:
-            # Install the dependency first; main.cpp must never reference a missing header.
+    # Keep pre-operation bytes for rollback; never restore a user's later edits.
+    paths = [header] + [p for c in changes for p in c[:2]]
+    before = {path: path.read_bytes() if path.exists() else None for path in paths}
+    try:
+        if not restore:
             atomic_text_write(header, adapter)
-            atomic_text_write(main_cpp, patched_source)
-        except Exception:
-            if old_header is not None:
-                atomic_text_write(header, old_header)
-            else:
-                header.unlink(missing_ok=True)
-            backup.unlink(missing_ok=True)
-            raise
-    else:
-        atomic_text_write(header, adapter)
+        for path, backup, installed, original, modified in changes:
+            if restore:
+                atomic_text_write(path, original)
+                backup.unlink()
+            elif not installed:
+                shutil.copy2(path, backup)
+                atomic_text_write(path, modified)
+        if restore and header.is_file() and header.read_bytes() == source_header.read_bytes():
+            header.unlink()
+    except Exception:
+        for path, content in before.items():
+            if content is None:
+                path.unlink(missing_ok=True)
+            elif not path.exists() or path.read_bytes() != content:
+                # The rollback must also work if a mocked/failed text writer caused
+                # the original exception. These are byte-identical saved originals.
+                path.write_bytes(content)
+        raise
+    if restore:
+        return "Original Veyra sources restored. Check adapter header if it was modified."
     return "Nova bridge installed. Compile Veyra's veyra_qml_ui.exe from this separate source copy."
 
 

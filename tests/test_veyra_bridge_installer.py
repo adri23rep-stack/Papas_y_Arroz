@@ -29,6 +29,9 @@ class InstallerTests(unittest.TestCase):
             '}\n'
         )
         self.entrypoint.write_text(self.original, encoding="utf-8")
+        self.transport=self.root/"src/ui/bridge/Playback.cpp"
+        self.transport.parent.mkdir(parents=True)
+        self.transport.write_text(patcher.TRANSPORT_ANCHOR + "    // existing playlist logic\n}\n",encoding="utf-8")
 
     def test_apply_is_idempotent_and_restorable(self):
         self.assertIn("ready to install", patcher.patch(self.root, check_only=True))
@@ -88,6 +91,32 @@ class InstallerTests(unittest.TestCase):
             with self.assertRaises(OSError):patcher.patch(self.root)
         self.assertEqual(self.entrypoint.read_text(encoding="utf-8"),self.original)
         self.assertFalse((self.qml/"NovaStdioBridge.hpp").exists())
+
+    def test_transport_guard_is_restored_and_user_edits_are_protected(self):
+        original=self.transport.read_text(encoding="utf-8")
+        patcher.patch(self.root)
+        self.assertIn(patcher.TRANSPORT_GUARD,self.transport.read_text(encoding="utf-8"))
+        patcher.patch(self.root,restore=True)
+        self.assertEqual(self.transport.read_text(encoding="utf-8"),original)
+        patcher.patch(self.root)
+        edited=self.transport.read_text(encoding="utf-8")+"// keep me\n"
+        self.transport.write_text(edited,encoding="utf-8")
+        with self.assertRaisesRegex(ValueError,"changed since installation"):
+            patcher.patch(self.root,restore=True)
+        self.assertIn(patcher.NEW_INIT,self.entrypoint.read_text(encoding="utf-8"))
+        self.assertEqual(self.transport.read_text(encoding="utf-8"),edited)
+
+    def test_failed_second_source_write_restores_both_sources(self):
+        original_transport=self.transport.read_text(encoding="utf-8")
+        real_write=patcher.atomic_text_write
+        def fail_transport(path,data):
+            if path==self.transport:raise OSError("disk full")
+            real_write(path,data)
+        with mock.patch.object(patcher,"atomic_text_write",side_effect=fail_transport):
+            with self.assertRaises(OSError):patcher.patch(self.root)
+        self.assertEqual(self.entrypoint.read_text(encoding="utf-8"),self.original)
+        self.assertEqual(self.transport.read_text(encoding="utf-8"),original_transport)
+        self.assertFalse(self.entrypoint.with_suffix(".cpp.nova-pre-bridge.bak").exists())
 
 
 if __name__ == "__main__":

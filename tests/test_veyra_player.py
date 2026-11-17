@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 nova, fixture = (str(Path(p).resolve()) for p in sys.argv[1:3])
-for mode in ('controls','failure','crash','unpatched'):
+for mode in ('controls','failure','crash','unpatched','ended'):
     result=subprocess.run([nova,'--smoke-veyra'],timeout=25,env={**os.environ,
         'NOVA_VEYRA_PILOT':'1','NOVA_VEYRA_EXE':fixture,
         'NOVA_VEYRA_FIXTURE_MODE':mode,'QT_QPA_PLATFORM':'offscreen','QT_QUICK_BACKEND':'software'})

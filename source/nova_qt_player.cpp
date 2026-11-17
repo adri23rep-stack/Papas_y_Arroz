@@ -130,6 +130,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                 veyraBridgeReady_=false;
                 veyraState_.clear();
                 veyraStarted_=false;
+                veyraEnded_=false;
                 veyraFallbackPending_=false;
                 veyraClock_.start();
                 veyraLastStatus_=0;
@@ -200,6 +201,13 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                         }else if(type==QStringLiteral("nova-status") && veyraBridgeReady_){
                             veyraLastStatus_=veyraClock_.elapsed();
                             if(msg.value("failed").toBool()){scheduleVeyraFallback();return;}
+                            if(!veyraLive_ && msg.value("ended").toBool() && !veyraStopRequested_){
+                                veyraEnded_=true;
+                                const double duration=msg.value("duration").toDouble(-1.0);
+                                if(std::isfinite(duration) && duration>0)veyraLastPosition_=duration;
+                                stop();
+                                return;
+                            }
                             veyraStarted_|=msg.value("running").toBool();
                             veyraState_=msg.toVariantMap();
                             diagnostics_=QStringLiteral("Veyra · %1 · origen %2 FPS · salida %3 FPS")
@@ -265,7 +273,8 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                             scheduleVeyraFallback();
                             return;
                         }
-                        QTimer::singleShot(0,this,[this,attempt,position]{
+                        const bool ended=veyraEnded_;
+                        QTimer::singleShot(0,this,[this,attempt,position,ended]{
                             if(attempt!=veyraAttemptId_)return;
                             veyraWatchdog_.stop();
                             veyraState_.clear();
@@ -277,7 +286,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                             veyraSource_.clear();
                             notice_=QStringLiteral("Veyra terminó la reproducción");
                             emit changed();
-                            emit finishedPlayback(position,false);
+                            emit finishedPlayback(position,ended);
                         });
                     });
                 veyraProcess_->start();

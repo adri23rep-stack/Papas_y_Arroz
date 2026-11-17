@@ -47,17 +47,20 @@ int main(int argc,char** argv){
         app.setQuitOnLastWindowClosed(false);
         NovaQtPlayer player;
         const QString mode=qEnvironmentVariable("NOVA_VEYRA_FIXTURE_MODE");
+        const bool expectEnd=mode=="ended";
         const bool fallback=mode=="failure" || mode=="crash" || mode=="unpatched";
         xs::SourceResult source;
         source.ok=true; source.source="test.mp4";
         int stage=0;
-        QObject::connect(&player,&NovaQtPlayer::finishedPlayback,&app,[&](double position,bool){
+        QObject::connect(&player,&NovaQtPlayer::finishedPlayback,&app,[&](double position,bool ended){
+            if(expectEnd){app.exit(ended && position==120 ? 0 : 15);return;}
             if(!fallback){
                 app.exit(stage==2 && position>=41 ? 0 : 11);
             }
         });
         QTimer poll;
         QObject::connect(&poll,&QTimer::timeout,&app,[&]{
+            if(expectEnd)return;
             if(fallback){
                 if(player.videoWindow() && !player.veyraActive()){
                     player.stop();

@@ -23,13 +23,16 @@ No modificar main sin petición del usuario. No crear ramas adicionales para arr
 - Instalador idempotente con rollback ante escritura fallida y rechazo de restauración
   si main.cpp tiene cambios posteriores ajenos al instalador.
 
+- EOF exacto del transporte Veyra marca la película como completada y cierra el hijo.
+  Se inhibe el autoavance de su playlist para que no abra un archivo ajeno a Nova.
+
 ## Pruebas y alcance
 
-- `tests/test_veyra_bridge_installer.py`: 7 pruebas offline de instalación y rollback.
+- `tests/test_veyra_bridge_installer.py`: 9 pruebas offline de instalación y rollback.
 - `tests/test_veyra_stdio.py`: adaptador REAL con motor simulado; protocolos de abrir,
   pausa, ajustes, subtítulos, resume, TV, JSON fragmentado y cierre del padre.
 - `tests/test_veyra_player.py`: Nova REAL contra hijo simulado; controles, cierre,
-  fallo reportado, salida con error y ejecutable sin handshake; verifica entrada a MPV.
+  fallo reportado, salida con error, EOF y ejecutable sin handshake; verifica entrada a MPV.
 - `remote_server_test`: opciones MPV conservadas, controles Veyra condicionales,
   rechazo de multiplicador no ofrecido y estado no actualizado prematuramente.
 - `bootstrap-windows.yml`: compila Nova, corre pruebas anteriores y smoke portable.
@@ -54,9 +57,8 @@ condicionales. La comprobación MSVC necesitó `/Zc:__cplusplus` para Qt.
    La comprobación de cabeceras y el motor simulado NO sustituyen esa build.
 2. Verificar reproducción y mejoras en Windows/RTX 3060: sincronía, TV, HDR,
    fullscreen, monitores y rendimiento. No se hicieron mediciones GPU aquí.
-3. Integrar fin natural de reproducción y siguiente episodio usando el estado real
-   de transporte Veyra. Actualmente el cierre de ventana termina sesión; no se
-   identifica automáticamente EOF ni se marca como episodio completado.
+3. Añadir siguiente episodio automático en Nova Qt. EOF ya se informa de forma
+   explícita y marca el progreso completo; no se inventa el siguiente episodio.
 4. Fuentes con cabeceras especiales o subtítulos externos aún usan MPV. No se
    debe eliminar esa protección hasta traducirlos correctamente.
 5. Integración visual del video dentro de Nova sigue pendiente. Hay dos ventanas.

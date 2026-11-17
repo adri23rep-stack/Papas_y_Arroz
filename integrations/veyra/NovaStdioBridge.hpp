@@ -67,6 +67,7 @@ private:
             {"running", player_.running()},
             {"paused", player_.paused()},
             {"failed", player_.failed()},
+            {"ended", player_.property("_novaPlaybackEnded").toBool()},
             {"hasSource", player_.hasSource()},
             {"position", std::isfinite(position) ? (position > 0.0 ? position : 0.0) : 0.0},
             {"duration", std::isfinite(duration) ? (duration > 0.0 ? duration : 0.0) : 0.0},

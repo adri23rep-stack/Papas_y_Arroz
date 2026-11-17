@@ -113,7 +113,8 @@ python .\tools\Apply-VeyraNovaBridge.py --restore "C:\Proyectos\Veyra-NRVideo-ma
   sigue con MPV hasta que exista un soporte seguro y verificable.
 - No están migrados cuadros de ajustes ni la interfaz de Nova dentro del
   proceso de Veyra. Sigue siendo una ventana de video independiente.
-- Sigue pendiente detectar el fin natural del video y pasar al siguiente episodio.
+- El fin natural cierra la sesión y marca el progreso completo. Sigue pendiente
+  pasar automáticamente al siguiente episodio desde Nova Qt.
 - Queda probar seek/HLS en vivo, reconexión, sincronización audio/video,
   pausa, cambio rápido de episodios, TV con streaming irregular y múltiples
   pantallas.

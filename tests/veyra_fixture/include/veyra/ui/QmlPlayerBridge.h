@@ -1,10 +1,11 @@
 #pragma once
 // Transport fixture, not a renderer. The separate MSVC job checks the real API.
 #include <QString>
+#include <QObject>
 #include <QVariantList>
 #include <QVariantMap>
 namespace veyra::ui {
-class QmlPlayerBridge {
+class QmlPlayerBridge : public QObject {
 public:
     bool active=false, pause=false, failure=false, fg=false, sr=false, nr=false, hdr=false;
     double pos=0, length=120, gain=1, rate=1;

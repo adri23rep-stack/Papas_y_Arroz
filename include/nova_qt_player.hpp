@@ -62,6 +62,7 @@ private:
     QElapsedTimer veyraClock_;
     qint64 veyraLastStatus_=0;
     bool veyraStarted_=false;
+    bool veyraEnded_=false;
     bool veyraFallbackPending_=false;
     std::function<void()> veyraFallback_;
     void scheduleVeyraFallback();
