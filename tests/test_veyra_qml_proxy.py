@@ -42,6 +42,7 @@ class ProxyHTTPTests(unittest.TestCase):
         proxy.output = cls.original_output
 
     def test_rejects_bad_token(self):
+        proxy.ready.clear()  # tests are independent of unittest method ordering
         with self.assertRaises(HTTPError) as context:
             urlopen(self.base + "/poll?token=wrong", timeout=3)
         self.assertEqual(context.exception.code, 403)
