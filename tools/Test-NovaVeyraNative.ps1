@@ -5,7 +5,8 @@
 .DESCRIPTION
   Strict local file test, no network/playlist/login. Calls the compiled
   Veyra EngineController via native C ABI and reports actual engine counters.
-  --fg2x requires confirmed generated frames; requests are not success.
+  --fg2x requires >=6 seconds of real generated DXGI Present submissions,
+  steady progress and >=1.5x source FPS. Physical monitor scanout is not measured.
 #>
 [CmdletBinding()]
 param(
@@ -57,6 +58,10 @@ if($Vfg2x){
 }
 Write-Host 'Testing ORIGINAL Veyra EngineController with real video and a Win32 render window.' -ForegroundColor Cyan
 Write-Host 'This test will not use MPV, QML, Python or a fake GPU renderer.' -ForegroundColor Cyan
+if($Vfg2x){
+  Write-Host 'Sustained VFG 2x needs a progressive MP4 of at least 20 seconds. Use -Video "C:\path\long.mp4".' -ForegroundColor Yellow
+  Write-Host 'DXGI Present calls are counted; actual monitor scanout is not confirmed.' -ForegroundColor Yellow
+}
 Push-Location $root
 try{
   if($Vfg2x){
@@ -69,4 +74,4 @@ try{
 if($code -ne 0){
   throw "Veyra hardware smoke failed (exit code $code). Copy the printed transport/frames/generated counters; no fallback was used."
 }
-Write-Host 'Veyra GPU test PASSED with real frame counters.' -ForegroundColor Green
+Write-Host 'Veyra GPU test PASSED with real frame counters (not display scanout).' -ForegroundColor Green
