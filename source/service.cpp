@@ -19,6 +19,12 @@
 #include <map>
 #include <set>
 #include "mbedtls_compat.hpp"
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 #ifdef __SWITCH__
 #include <switch.h>
 #else
@@ -413,6 +419,32 @@ static SourceResult resolve_ranger(const std::shared_ptr<ServiceSession>& s,Rang
     out.status="Ranger: no hay una ruta CDN compatible con la licencia de esta fuente.";return out;
 }
 
+// Preserve the last authorized identity across a failed activation or an
+// interrupted write. No secrets or identity values are ever logged here.
+static bool save_device_state_atomically(
+    const std::string& state_path,const Json& state,
+    const std::function<bool(unsigned char*,size_t)>& entropy) {
+    unsigned char nonce[8]{};
+    if(!entropy(nonce,sizeof(nonce)))return false;
+    const char* hex="0123456789abcdef";
+    std::string tmp=state_path+".tmp-";
+    for(unsigned char byte:nonce){tmp+=hex[byte>>4];tmp+=hex[byte&15];}
+    {
+        std::ofstream saved(tmp,std::ios::binary|std::ios::trunc);
+        if(!saved)return false;
+        saved<<state.dump(2)<<'\\n';
+        saved.flush();
+        if(!saved){saved.close();std::remove(tmp.c_str());return false;}
+    }
+#ifdef _WIN32
+    const bool ok=MoveFileExA(tmp.c_str(),state_path.c_str(),
+                             MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)!=0;
+#else
+    const bool ok=std::rename(tmp.c_str(),state_path.c_str())==0;
+#endif
+    if(!ok)std::remove(tmp.c_str());
+    return ok;
+}
 LoginAttempt service_bootstrap(const std::string& path) {
     LoginAttempt out;Json config;
     auto entropy=[](unsigned char* bytes,size_t size){
@@ -483,9 +515,8 @@ LoginAttempt service_bootstrap(const std::string& path) {
     std::string serial=existing?text(token_data,"sn"):"";
     if(serial.empty())serial=derive_device_serial(token,text(config,"password_salt"));
     if(serial.empty()){out.status="El servicio no entrego identidad del dispositivo.";return out;}
-    state["sn"]=serial;state["open_count"]=open_count;
-    {std::ofstream saved(state_path,std::ios::trunc);saved<<state.dump(2);saved.flush();
-        if(!saved){out.status="No se pudo guardar la identidad de esta instalacion.";return out;}}
+    // Do NOT overwrite a previously authorized device state just because
+    // snToken succeeded. A failed /active must leave the last state intact.
     common["sn"]=serial;
     Json activation={{"snToken",existing?"":token},{"authVersion",""},{"authCode",""},{"preCode",nullptr},
         {"macAddr",text(config,"device_id")},{"reserve1",text(config,"device_id")},
@@ -494,6 +525,15 @@ LoginAttempt service_bootstrap(const std::string& path) {
     auto portals=session.find("portalCodeList");
     if(text(session,"userId").empty()||text(session,"userToken").empty()||portals==session.end()||!portals->is_array()||portals->empty()||text(portals->front(),"portalCode").empty()){
         out.status="Activacion sin sesion completa. No se recibieron permisos del servicio.";return out;
+    }
+    // Persist only after the service has accepted activation and delivered
+    // a complete authorized session. Replace atomically, never truncate the
+    // previous good state in place.
+    state["sn"]=serial;
+    state["open_count"]=open_count;
+    if(!save_device_state_atomically(state_path,state,entropy)){
+        out.status="Activacion aceptada, pero no se pudo guardar el estado del dispositivo.";
+        return out;
     }
     out.authenticated=true;
     out.session=std::make_shared<ServiceSession>();
