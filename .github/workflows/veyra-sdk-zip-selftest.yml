@@ -125,6 +125,7 @@ jobs:
           STUB(nova_veyra_rate)
           STUB(nova_veyra_settings)
           STUB(nova_veyra_snapshot)
+          STUB(nova_veyra_flow_snapshot)
           STUB(nova_veyra_audio_count)
           STUB(nova_veyra_audio_at)
           STUB(nova_veyra_select_audio)
