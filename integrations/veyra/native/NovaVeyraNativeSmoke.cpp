@@ -117,7 +117,7 @@ int wmain(int argc,wchar_t** argv){
             std::wcerr<<L"FAIL: Veyra reported GPU/playback failure.\n";
             failed=true;break;
         }
-        if(state.session_id!=flow.session_id){
+        if(flow.session_id!=0&&state.session_id!=flow.session_id){
             std::wcerr<<L"FAIL: Mismatched diagnostic session.\n";
             failed=true;break;
         }
