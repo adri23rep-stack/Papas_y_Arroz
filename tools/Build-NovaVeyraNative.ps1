@@ -90,12 +90,17 @@ $cmakeArgs=@(
 & cmake.exe @cmakeArgs
 if($LASTEXITCODE -ne 0){throw 'Veyra native engine CMake configure failed.'}
 if($ConfigureOnly){Write-Output 'Configured. No GPU DLL compiled yet.';return}
-& cmake.exe --build $build --target nova_veyra_native --parallel 2
+& cmake.exe --build $build --target nova_veyra_native nova_veyra_native_smoke --parallel 2
 if($LASTEXITCODE -ne 0){throw 'Original Veyra GPU engine failed compilation/linking.'}
 $dll=Join-Path $build 'nova_veyra_native.dll'
 if(-not(Test-Path -LiteralPath $dll -PathType Leaf)){
   throw "Build reported success but missing native DLL: $dll"
 }
+$smoke=Join-Path $build 'nova_veyra_native_smoke.exe'
+if(-not(Test-Path -LiteralPath $smoke -PathType Leaf)){
+  throw "GPU module linked, but genuine Win32 smoke test EXE missing: $smoke"
+}
 Write-Output "Compiled Veyra GPU module: $dll"
+Write-Output "Compiled real GPU smoke tester: $smoke"
 Write-Output 'Do NOT copy DLL alone: the original shaders, FFmpeg, NVIDIA runtime files and licenses are needed.'
 Write-Output 'Requires real RTX 3060 decode, FG/SR/NR, memory usage and stream test before default activation.'
