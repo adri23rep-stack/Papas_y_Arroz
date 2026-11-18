@@ -25,7 +25,7 @@ LRESULT CALLBACK windowProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp){
 void pumpWindow(){
     MSG msg{};
     while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){
-        TranslateMessage(&msg);DispatchMessageW(msg.hwnd,msg.message,msg.wParam,msg.lParam);
+        TranslateMessage(&msg);DispatchMessageW(&msg);
     }
 }
 double asSeconds(Clock::duration d){return std::chrono::duration<double>(d).count();}
