@@ -238,7 +238,8 @@ Window {
         border.color: "#95515E"
         visible: !novaHome.loading &&
                  (!novaHome.serviceConnected ||
-                  (novaHome.series.length === 0 && novaHome.movies.length === 0))
+                  (!novaHome.previewsLoading &&
+                   novaHome.series.length === 0 && novaHome.movies.length === 0))
         z: 35
         Text {
             anchors.fill: parent
