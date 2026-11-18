@@ -62,7 +62,7 @@ $requiredExports=@(
  'nova_veyra_abi','nova_veyra_create','nova_veyra_destroy',
  'nova_veyra_open','nova_veyra_stop','nova_veyra_pause',
  'nova_veyra_seek','nova_veyra_volume','nova_veyra_rate',
- 'nova_veyra_settings','nova_veyra_snapshot',
+ 'nova_veyra_settings','nova_veyra_snapshot','nova_veyra_flow_snapshot',
  'nova_veyra_audio_count','nova_veyra_audio_at','nova_veyra_select_audio'
 )
 foreach($name in $requiredExports){
