@@ -76,6 +76,8 @@ struct HomeSnapshot {
     std::shared_ptr<xs::ServiceSession> session;
     xs::Catalog root;
     QString status;
+    QString service_status;
+    bool service_connected=false;
 };
 constexpr const char* kPublicSpanishPlaylist =
     "https://iptv-org.github.io/iptv/languages/spa.m3u";
@@ -219,23 +221,31 @@ HomeSnapshot loadHome(){
     const auto public_tv=publicSpanishPlaylist();
     auto login=xs::service_bootstrap("service.json");
     out.session=login.session;
+    out.service_connected=(out.session!=nullptr);
+    // Preserve the real service error even when public TV is available.
+    out.service_status=QString::fromStdString(login.status);
+    if(!out.service_connected&&out.service_status.isEmpty())
+        out.service_status=QStringLiteral("Sin sesión autorizada de XuperTV.");
     out.root=std::move(login.catalog);
     if(out.session&&out.root.entries.empty()){
         const auto response=xs::service_root(out.session);
         if(response.ok)out.root=response.catalog;
-        else out.status=QString::fromStdString(response.status);
+        else {
+            out.service_status=QString::fromStdString(response.status);
+            out.status=out.service_status;
+        }
     }
     if(!out.session){
         appendPublicChannels(out,public_tv.catalog);
         out.channels=tvPreview(out.tv_entries);
         if(!out.channels.isEmpty()){
-            out.status=QStringLiteral("TV pública en español: %1 canales de IPTV-org%2. "
-                "El servicio anterior sigue desconectado; algunos enlaces pueden no funcionar.")
+            out.status=QStringLiteral("Solo TV pública (%1 canales%2). "
+                "XuperTV desconectado: %3")
                 .arg(static_cast<qulonglong>(out.tv_entries.size()))
-                .arg(public_tv.from_cache?QStringLiteral(" (caché)"):QString());
+                .arg(public_tv.from_cache?QStringLiteral(", caché"):QString())
+                .arg(out.service_status);
         }else{
-            out.status=QString::fromStdString(login.status);
-            if(out.status.isEmpty())out.status=QStringLiteral("Sin conexión al servicio.");
+            out.status=out.service_status;
         }
         return out;
     }
@@ -280,12 +290,13 @@ HomeSnapshot loadHome(){
     out.channels=tvPreview(out.tv_entries);
     out.series=listFor(out.series_entries);
     out.movies=listFor(out.movie_entries);
-    if(out.channels.empty()&&out.series.empty()&&out.movies.empty()){
-        if(out.status.isEmpty())out.status=QString::fromStdString(login.status);
-        if(out.status.isEmpty())out.status=QStringLiteral("Conectado, pero Inicio todavía no tiene contenido. Prueba las categorías de TV, Series o Películas.");
+    if(out.series.isEmpty()&&out.movies.isEmpty()){
+        if(out.service_status.isEmpty()||out.service_status.contains(QStringLiteral("Catalogo cargado")))
+            out.service_status=QStringLiteral("XuperTV autorizó la sesión, pero no devolvió títulos de series o películas.");
+        out.status=out.service_status;
     }else if(!public_tv.catalog.entries.empty())
-        out.status=QStringLiteral("TV pública de IPTV-org disponible; reproducción según cada canal.");
-    else out.status=QStringLiteral("Catálogo conectado.");
+        out.status=QStringLiteral("Catálogo de XuperTV y TV pública disponibles.");
+    else out.status=QStringLiteral("Catálogo de XuperTV conectado.");
     return out;
 }
 
@@ -546,6 +557,8 @@ void NovaQtHome::refresh(){
     connect(watcher,&QFutureWatcher<HomeSnapshot>::finished,this,[this,watcher](){
         const auto snap=watcher->result();
         channels_=snap.channels;series_=snap.series;movies_=snap.movies;
+        service_connected_=snap.service_connected;
+        service_status_=snap.service_status;
         demo_items_=snap.demo_items;demo_entries_=snap.demo_entries;
         catalog_connected_=!snap.channels.isEmpty() ||
             (snap.session!=nullptr && (!snap.root.entries.empty() ||
