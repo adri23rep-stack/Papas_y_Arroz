@@ -34,7 +34,9 @@ public:
     bool veyraActive() const {return (veyraBridgeReady_ || (nativeVeyra_ && nativeVeyra_->ready())) && !veyraState_.isEmpty();}
     QVariantMap veyraState() const {return veyraState_;}
     bool setVeyraSetting(const QString& key,int value);
-    void play(const xs::SourceResult& result,const QString& title,bool live,double resumeSeconds=0);
+    // Experimental native VFG may run only for explicitly tagged public-live media.
+    void play(const xs::SourceResult& result,const QString& title,bool live,
+              double resumeSeconds=0,bool publicLiveNativeCandidate=false);
     Q_INVOKABLE void stop();
     Q_INVOKABLE void togglePause();
     Q_INVOKABLE void setVolume(int value);
@@ -62,6 +64,7 @@ private:
     QTimer nativeVeyraPoll_;
     bool nativeVeyraStarted_=false;
     bool nativeVeyraPaused_=false;
+    bool nativeVeyraAutoFgRequested_=false;
     double nativeVeyraLastPosition_=-1.0;
     QByteArray veyraOutput_;
     QString veyraSource_;
