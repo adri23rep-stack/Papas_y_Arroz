@@ -33,7 +33,8 @@ jobs:
             'Build-NovaVeyraNative.ps1',
             'Build-NovaVeyraEngine.ps1',
             'Stage-NovaVeyraNative.ps1',
-            'Test-NovaVeyraNative.ps1'
+            'Test-NovaVeyraNative.ps1',
+            'Use-NovaVeyraCatalog.ps1'
           )) {
             $tokens=$null;$errors=$null
             [System.Management.Automation.Language.Parser]::ParseFile(
@@ -94,6 +95,38 @@ jobs:
              throw 'Complete build must auto-detect CUDA Driver headers before compiling VFG'
           }
           Write-Host 'PASS: Windows MSVC, SDK preflight and FFmpeg vcpkg native argument building'
+
+      - name: Test optional catalog import stays local and backs up Alpha state
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'catalog-import-test'
+          $source=Join-Path $root 'old-nova'
+          $alpha=Join-Path $root 'nova-alpha'
+          New-Item -ItemType Directory -Path $source,$alpha -Force | Out-Null
+          @'
+          {"installation_serial":"test-only","password_salt":"test-only","key_base64":"test-only","portal_hosts":["example.invalid"]}
+          '@ | Set-Content -LiteralPath (Join-Path $source 'service.json')
+          '{"sn":"from-old-nova"}' | Set-Content -LiteralPath (Join-Path $source 'device_state.json')
+          '{"sn":"previous-alpha-state"}' | Set-Content -LiteralPath (Join-Path $alpha 'device_state.json')
+          '{"installation_serial":"previous-alpha"}' | Set-Content -LiteralPath (Join-Path $alpha 'service.json')
+          foreach($name in @('XuperTVNovaQt.exe','nova_veyra_native.dll','Start-NovaVeyraNative.ps1')){
+            'Synthetic placeholder' | Set-Content -LiteralPath (Join-Path $alpha $name)
+          }
+          & ./tools/Use-NovaVeyraCatalog.ps1 -SourceDirectory $source -AlphaDirectory $alpha -CheckOnly
+          $before=Get-Content -LiteralPath (Join-Path $alpha 'service.json') -Raw
+          if($before -notmatch 'previous-alpha'){throw 'Catalog CheckOnly changed existing Alpha config'}
+          & ./tools/Use-NovaVeyraCatalog.ps1 -SourceDirectory $source -AlphaDirectory $alpha
+          $after=Get-Content -LiteralPath (Join-Path $alpha 'service.json') -Raw
+          if($after -notmatch 'test-only'){throw 'Expected existing local config import'}
+          $backup=@(Get-ChildItem $alpha -Directory -Filter 'catalog-backup-*')
+          if($backup.Count -ne 1 -or -not(Test-Path (Join-Path $backup[0].FullName 'service.json'))){
+            throw 'Expected local Alpha configuration backup'
+          }
+          if((Get-Content -LiteralPath (Join-Path $source 'device_state.json') -Raw) -notmatch 'from-old-nova'){
+            throw 'Original device state was altered'
+          }
+          Write-Host 'PASS: opt-in import backed up Alpha and left original untouched'
 
       - name: Validate native GPU staging without vendor binaries
         shell: pwsh
