@@ -100,6 +100,12 @@ $smoke=Join-Path $build 'nova_veyra_native_smoke.exe'
 if(-not(Test-Path -LiteralPath $smoke -PathType Leaf)){
   throw "GPU module linked, but genuine Win32 smoke test EXE missing: $smoke"
 }
+foreach($shader in @('ScaleBlit.dxil','PresentBlit_vs.dxil','PresentBlit_ps.dxil')){
+  $actual=Join-Path (Join-Path $build 'shaders') $shader
+  if(-not(Test-Path -LiteralPath $actual -PathType Leaf) -or (Get-Item -LiteralPath $actual).Length -lt 100){
+     throw "Original Veyra shader was not compiled or not copied to runtime path: $actual"
+  }
+}
 Write-Output "Compiled Veyra GPU module: $dll"
 Write-Output "Compiled real GPU smoke tester: $smoke"
 Write-Output 'Do NOT copy DLL alone: the original shaders, FFmpeg, NVIDIA runtime files and licenses are needed.'
