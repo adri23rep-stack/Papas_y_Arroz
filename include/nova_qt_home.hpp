@@ -20,6 +20,8 @@ class NovaQtHome : public QObject {
     Q_PROPERTY(QVariantList channels READ channels NOTIFY changed)
     Q_PROPERTY(QVariantList demoItems READ demoItems NOTIFY changed)
     Q_PROPERTY(bool catalogConnected READ catalogConnected NOTIFY changed)
+    Q_PROPERTY(bool serviceConnected READ serviceConnected NOTIFY changed)
+    Q_PROPERTY(QString serviceStatus READ serviceStatus NOTIFY changed)
     Q_PROPERTY(QVariantList series READ series NOTIFY changed)
     Q_PROPERTY(QVariantList movies READ movies NOTIFY changed)
     Q_PROPERTY(QVariantList items READ items NOTIFY changed)
@@ -62,6 +64,8 @@ public:
     const QVariantList& channels() const{return channels_;}
     const QVariantList& demoItems() const{return demo_items_;}
     bool catalogConnected() const{return catalog_connected_;}
+    bool serviceConnected() const{return service_connected_;}
+    QString serviceStatus() const{return service_status_;}
     const QVariantList& series() const{return series_;}
     const QVariantList& movies() const{return movies_;}
     const QVariantList& items() const{return items_;}
@@ -163,7 +167,8 @@ private:
     QString page_title_,status_=QStringLiteral("Preparando catálogo...");
     QString address_,pin_,qr_;
     bool loading_=false,browsing_=false,remote_ready_=false,remote_connected_=false;
-    bool catalog_connected_=false;
+    bool catalog_connected_=false,service_connected_=false;
+    QString service_status_;
     bool featured_info_visible_=false;
     int selected_item_=0,selected_section_=0,selected_home_card_=0;
     int brightness_=100;
