@@ -44,6 +44,10 @@ Estas pruebas no son una conexión real al proveedor, una prueba de interfaz hum
 - Confirmar que películas con autorización/subtítulos usan MPV aunque el lanzador tenga modo estricto, y que el video local y TV pública apta siguen usando Veyra cuando corresponde.
 - Repetir NVIDIA-VFG en RTX 3060, pantalla completa, audio, cierre y recuperación a MPV. Actions no dispone de esa GPU ni de los SDK privados del usuario.
 
+## Incidencia detectada en Actions
+
+La primera compilación Windows (`44397135310`) compiló los objetos de Nova, pero falló al enlazar `remote_browse_test`: su función simulada conservaba la firma anterior a la cancelación. Se actualizó esa función y se repitió el workflow; este fallo no se presenta como una compilación exitosa.
+
 ## Límites pendientes
 
 No hay evidencia nueva del servicio real de esta instalación; no puede atribuirse su fallo exclusivamente a identidad, versión, red o CDN. El arranque de registro/categorías y la búsqueda completa aún conservan sus límites por petición, no un presupuesto global de toda la operación. La cancelación HTTP depende del progreso de cURL; un resolvedor DNS síncrono de una plataforma puede tardar en responder. La publicación tardía queda invalidada en la interfaz aunque el transporte tarde en salir. Las navegaciones/búsquedas distintas de la fuente conservan su comportamiento anterior al pulsar Inicio.

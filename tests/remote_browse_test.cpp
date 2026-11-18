@@ -8,7 +8,7 @@
 #include <thread>
 namespace xs {
 struct ServiceSession {};
-BrowseResult service_browse_remote(const std::shared_ptr<ServiceSession>&,const Entry& entry){
+BrowseResult service_browse_remote(const std::shared_ptr<ServiceSession>&,const Entry& entry,std::shared_ptr<ServiceRequest>){
     BrowseResult r;r.ok=true;r.catalog.title=entry.title;
     if(entry.kind==EntryKind::Category){
         Entry tv;tv.kind=EntryKind::Channel;tv.title="Canal de prueba";tv.channel_code="c1";
