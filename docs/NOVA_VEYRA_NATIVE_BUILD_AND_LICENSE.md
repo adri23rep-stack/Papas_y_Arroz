@@ -166,6 +166,42 @@ con GPU Nvidia sobre archivo MP4 y medición de cuadros.
 Un `Nova` compilado por MinGW y los tests del extractor no certifican
 que el motor Veyra GPU esté funcionando.
 
+## Nueva prueba sostenida NVIDIA-VFG (RTX 3060)
+
+La compilación con CUDA 13.5 ya consiguió activar la ruta experimental Ampere SM86
+y generar un fotograma (`fg_active=1`, `generated_frames=1`). Sin embargo,
+el registro de esa prueba mostraba `generatedPresented=0`: no demostraba
+reproducción continua. El test antiguo terminaba en el primer fotograma.
+
+Ahora `-Vfg2x` NO termina con un único fotograma. Espera el primer cuadro
+generado **enviado a DXGI Present** y mide 6 segundos adicionales:
+
+- exige al menos 12 envíos de cuadros generados;
+- mide envíos reales+generados y exige >=1.5 veces los FPS de origen;
+- detecta pausas de envíos mayores a 1500 ms;
+- muestra `real_submitted`, `generated_submitted`, FPS de envío, 1% low
+  (cuando esté disponible), y el mayor intervalo sin envíos.
+
+NOTA: una llamada `DXGI Present` NO confirma que el monitor haya mostrado
+físicamente el fotograma. La comprobación de *scanout* requiere PresentMon;
+separar esos conceptos evita informar 48 FPS en pantalla sin evidencia.
+La función opcional `nova_veyra_flow_snapshot()` no cambia ABI 4 de Nova.
+
+El `test.mp4` corto (4 segundos) ya no alcanza. Usa un MP4 progresivo local
+de **20 segundos o más**. Una vez recompilada y empaquetada una Alpha nueva:
+
+```powershell
+$alpha = Get-ChildItem "$env:USERPROFILE\NovaVeyraNativeBuild" -Directory |
+  Where-Object { $_.Name -like 'NovaVeyraNative-*' -and
+    (Test-Path (Join-Path $_.FullName 'Test-NovaVeyraNative.ps1')) } |
+  Sort-Object LastWriteTime -Descending | Select-Object -First 1
+& (Join-Path $alpha.FullName 'Test-NovaVeyraNative.ps1') -Vfg2x -Video 'C:\ruta\video-largo.mp4'
+```
+
+La prueba física se hace en Windows con la RTX 3060. La acción de CI
+solo comprueba la compilación del adaptador y del ejecutable de prueba;
+no demuestra el rendimiento real de la GPU.
+
 ## Primer smoke GPU Alpha 1 (solo en tu PC)
 
 El módulo nativo compila también `nova_veyra_native_smoke.exe`: NO es el
@@ -243,6 +279,6 @@ git -C $repo pull --ff-only
 La rama fijada de Veyra incluye una ruta experimental de compatibilidad
 Ampere, que puede no funcionar en la RTX 3060. Ninguna instalación de
 cabeceras ni compilación exitosa equivale a compatibilidad confirmada:
-el smoke `-Vfg2x` exige `fg_active=1` y
-`generated_frames > 0` para PASS. No instalar ni redistribuir runtimes
+el nuevo smoke `-Vfg2x` exige una prueba sostenida con cuadros
+generados enviados a DXGI, no solo `fg_active=1`. No instalar ni redistribuir runtimes
 NVIDIA no autorizados.
