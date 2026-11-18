@@ -10,7 +10,9 @@ param(
  [string]$NovaDirectory='',
  [string]$VeyraPortableDirectory='',
  [switch]$CheckOnly,
- [switch]$DisableDeinterlace,
+ # Alpha 1 targets progressive local MP4 playback. The optional FFmpeg
+ # avfilter/deinterlace module can be enabled later with -DisableDeinterlace:$false.
+ [switch]$DisableDeinterlace=$true,
  [switch]$SkipFfmpegInstall
 )
 Set-StrictMode -Version Latest
