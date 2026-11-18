@@ -202,3 +202,47 @@ Una prueba de GitHub Actions solo valida el adaptador MSVC y el
 empaquetado con componentes sintéticos; no sustituye el render D3D12
 real en la tarjeta del usuario. No incluir SDK/modelos NVIDIA en
 artifacts públicos.
+
+### CUDA / NVIDIA-VFG en RTX 3060
+
+La primera prueba real de la GPU confirmó D3D12VA, DXGI y 96 cuadros
+de origen, pero **VFG no funcionó**: `generated=0`, `fg_active=0`,
+`VFG unavailable: configure VEYRA_CUDA_DRIVER_INCLUDE_DIR`.
+La primera DLL se había compilado sin `cuda.h`, por lo que el código
+CUDA Driver/VFG estaba desactivado en tiempo de compilación. El SDK
+Optical Flow 5.0.7 no contiene ese encabezado.
+
+Para una nueva compilación habilitada, instala **NVIDIA CUDA Toolkit**
+con las cabeceras del Driver API, o señala una instalación existente:
+
+```powershell
+$repo="$env:USERPROFILE\NovaVeyra-Alpha1-Fuente"
+git -C $repo pull --ff-only
+& "$repo\tools\Complete-NovaVeyraNative.ps1" `
+  -OpticalFlowZip "$env:USERPROFILE\Downloads\Optical_Flow_SDK_5.0.7.zip"
+# En rutas no convencionales: añade -CudaIncludeDirectory "C:\ruta\CUDA\include"
+```
+
+`Complete-NovaVeyraNative.ps1` detecta automáticamente `CUDA_PATH`,
+`CUDA_PATH_V*` y las instalaciones estándar de CUDA. Por defecto
+`-RequireVfg` evita construir otra DLL sin VFG por accidente;
+`-RequireVfg:$false` solo permite un diagnóstico de reproducción sin FG.
+
+**No confundas tres SDK/runtimes distintos:**
+
+- Optical Flow: `nvOpticalFlowD3D12.h` (ya proporcionado).
+- CUDA Driver: `cuda.h` (requerido para compilar VFG).
+- NVIDIA Video Effects VFG 1.3: `NVVideoEffects.dll`,
+  `NVCVImage.dll`, `nvVFXVideoFrameGeneration.dll` y modelos
+  compatibles, que deben venir del runtime legítimo del usuario.
+  El empaquetador ahora detecta los proveedores completos dentro de
+  `runtime/experimental/vfg`, `runtime/nvidia-vfg` o
+  `runtime_local/nvidia/vfg`.
+
+**Compatibilidad:** NVIDIA documenta su VFG para GPU Ada y Blackwell.
+La rama fijada de Veyra incluye una ruta experimental de compatibilidad
+Ampere, que puede no funcionar en la RTX 3060. Ninguna instalación de
+cabeceras ni compilación exitosa equivale a compatibilidad confirmada:
+el smoke `-Vfg2x` exige `fg_active=1` y
+`generated_frames > 0` para PASS. No instalar ni redistribuir runtimes
+NVIDIA no autorizados.
