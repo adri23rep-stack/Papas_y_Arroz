@@ -198,6 +198,48 @@ rechaza el registro o no ofrece secciones de películas/series,
 la prueba seguirá mostrando la TV pública. En ese caso se debe
 diagnosticar la respuesta de servicio sin publicar los identificadores.
 
+## Beta de NVIDIA-VFG para TV pública en Nova
+
+**Causa confirmada del efecto ausente:** `NovaQtPlayer::play()`
+excluía explícitamente `live` del motor nativo; además la petición
+inicial de `features=0` no habilitaba NVIDIA-VFG automáticamente.
+El smoke independiente sí solicitaba VFG después de decodificar.
+
+El nuevo modo **opcional** intenta Veyra en URLs HTTP(S) de medios
+marcados por Nova como `public-live` (IPTV-org) solo cuando:
+- Se lanza con `NOVA_VEYRA_NATIVE_LIVE_BETA=1` y
+  `NOVA_VEYRA_NATIVE_ALLOW_NETWORK=1`;
+- La fuente es pública, sin credenciales en URL, consulta `?`,
+  fragmentos ni cabeceras/subtítulos especiales;
+- Existe y carga la DLL nativa compatible.
+
+Tras al menos **10 fotogramas reales**, solicita NVIDIA-VFG 2x una
+sola vez; muestra el resultado real en los diagnósticos y, si la DLL
+dispone de `nova_veyra_flow_snapshot`, cuenta los cuadros generados
+enviados a DXGI, sin confundirlos con cuadros mostrados por el monitor.
+En un fallo de Veyra vuelve a MPV sin repetir intentos. **No está
+validado aún en TV física ni garantiza una reproducción fluida.**
+
+Las fuentes de XuperTV que usen cabeceras de autenticación, URLs
+temporales/firmadas, DRM, o formatos incompatibles permanecen en MPV.
+Esta beta **no restaura el catálogo XuperTV**, no reemplaza
+autenticación y no incluye todavía el búfer de 15 segundos.
+
+El empaquetador ofrece dos lanzadores. `Start-NovaVeyraNative.ps1`
+sigue siendo la Alpha original; para experimentar con TV pública se
+usa `Start-NovaVeyraLiveBeta.ps1`. Se necesita **el EXE de Nova
+recompilado**: actualizar solo `tools` con git no cambia un EXE
+empaquetado previamente. Para una prueba local desde el checkout:
+
+```powershell
+$repo="$env:USERPROFILE\NovaVeyra-Alpha1-Fuente"
+git -C $repo pull --ff-only
+& "$repo\tools\Compilar-Nova.ps1"
+# Guardar una copia del XuperTVNovaQt.exe viejo de la Alpha.
+# Usar la nueva compilación desde dist/Xuper-TV-NovaQt-Local al
+# preparar una Alpha separada con Stage-NovaVeyraNative.ps1.
+```
+
 ## Nueva prueba sostenida NVIDIA-VFG (RTX 3060)
 
 La compilación con CUDA 13.5 ya consiguió activar la ruta experimental Ampere SM86
