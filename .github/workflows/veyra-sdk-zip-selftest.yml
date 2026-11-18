@@ -1,0 +1,58 @@
+name: Nova Veyra Optical Flow ZIP preflight
+
+on:
+  push:
+    branches: [feature/nova-veyra-engine]
+    paths:
+      - 'tools/Prepare-NovaVeyraOpticalFlow.ps1'
+      - 'tools/Complete-NovaVeyraNative.ps1'
+      - 'tools/Build-NovaVeyraNative.ps1'
+      - 'tools/Build-NovaVeyraEngine.ps1'
+      - '.github/workflows/veyra-sdk-zip-selftest.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+jobs:
+  validate-user-sdk-layout:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse PowerShell and extract synthetic sample
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach ($name in @(
+            'Prepare-NovaVeyraOpticalFlow.ps1',
+            'Complete-NovaVeyraNative.ps1',
+            'Build-NovaVeyraNative.ps1',
+            'Build-NovaVeyraEngine.ps1'
+          )) {
+            $tokens=$null;$errors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Join-Path 'tools' $name),[ref]$tokens,[ref]$errors) | Out-Null
+            if($errors.Count){ throw ("Script parse failed: "+$name+" "+($errors | Out-String)) }
+          }
+          $fixture=Join-Path $env:RUNNER_TEMP 'veyra-test-zip'
+          $froot=Join-Path $fixture 'input/Optical_Flow_SDK_5.0.7'
+          foreach ($rel in @(
+            'NvOFInterface/nvOpticalFlowCommon.h',
+            'NvOFInterface/nvOpticalFlowD3D12.h',
+            'Common/NvOFBase/NvOF.h',
+            'Common/NvOFBase/NvOFD3D12.h',
+            'LicenseAgreement.pdf'
+          )) {
+            $file=Join-Path $froot $rel
+            New-Item -ItemType Directory -Path (Split-Path -Parent $file) -Force | Out-Null
+            'Synthetic fixture: no NVIDIA content' | Set-Content -LiteralPath $file
+          }
+          $zip=Join-Path $fixture 'synthetic.zip'
+          Compress-Archive -Path $froot -DestinationPath $zip
+          $out=Join-Path $fixture 'stage'
+          & ./tools/Prepare-NovaVeyraOpticalFlow.ps1 -ZipPath $zip -Destination $out -CheckOnly
+          if(Test-Path $out){throw 'CheckOnly wrote unexpected data'}
+          & ./tools/Prepare-NovaVeyraOpticalFlow.ps1 -ZipPath $zip -Destination $out
+          foreach ($rel in @('Common/NvOFBase/NvOF.h','NvOFInterface/nvOpticalFlowD3D12.h')){
+            if(-not(Test-Path (Join-Path $out $rel))){throw "Unpacked SDK layout incomplete: $rel"}
+          }
+          Write-Host 'PASS: syntactic and isolated NVIDIA Optical Flow SDK ZIP layout checks'
