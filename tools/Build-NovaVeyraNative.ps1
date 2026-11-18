@@ -46,7 +46,7 @@ $req=@(
   (Join-Path $dlss 'include\nvsdk_ngx.h'),
   (Join-Path $dlss 'lib\Windows_x86_64\x64\nvsdk_ngx_s.lib'),
   (Join-Path $nvof 'NvOFInterface\nvOpticalFlowCommon.h'),
-  (Join-Path $nvof 'Common\NvOFBase\NvOFBase.h'),
+  (Join-Path $nvof 'Common\NvOFBase\NvOF.h'),
   (Join-Path $nvenc 'include\ffnvcodec\nvEncodeAPI.h')
 )
 if(-not $DisableDeinterlace){
