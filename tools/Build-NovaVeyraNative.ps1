@@ -16,6 +16,8 @@ param(
   [Parameter(Mandatory=$true)][string]$DlssSdkRoot,
   [Parameter(Mandatory=$true)][string]$OpticalFlowSdkRoot,
   [Parameter(Mandatory=$true)][string]$NvencHeadersRoot,
+  [string]$CudaIncludeDirectory = '',
+  [switch]$RequireVfg,
   [string]$BuildDirectory = '',
   [switch]$CheckOnly,
   [switch]$ConfigureOnly,
@@ -29,6 +31,10 @@ $ffmpeg=[IO.Path]::GetFullPath($FfmpegRoot)
 $dlss=[IO.Path]::GetFullPath($DlssSdkRoot)
 $nvof=[IO.Path]::GetFullPath($OpticalFlowSdkRoot)
 $nvenc=[IO.Path]::GetFullPath($NvencHeadersRoot)
+$cuda=if($CudaIncludeDirectory){[IO.Path]::GetFullPath($CudaIncludeDirectory)}else{''}
+if($RequireVfg -and (-not $cuda -or -not(Test-Path -LiteralPath (Join-Path $cuda 'cuda.h') -PathType Leaf))){
+  throw 'NVIDIA-VFG 2x build requested but official CUDA Driver header cuda.h is missing. Install CUDA Toolkit (headers), then pass -CudaIncludeDirectory <CUDA include folder>. No hardware test is possible without rebuilding the DLL.'
+}
 $build=if($BuildDirectory){[IO.Path]::GetFullPath($BuildDirectory)}else{Join-Path $source 'out\nova-native-gpu'}
 $missing=New-Object 'System.Collections.Generic.List[string]'
 $req=@(
@@ -49,6 +55,7 @@ $req=@(
   (Join-Path $nvof 'Common\NvOFBase\NvOF.h'),
   (Join-Path $nvenc 'include\ffnvcodec\nvEncodeAPI.h')
 )
+if($cuda){$req+=Join-Path $cuda 'cuda.h'}
 if(-not $DisableDeinterlace){
   $req+=Join-Path $ffmpeg 'include\libavfilter\avfilter.h'
 }
@@ -80,6 +87,7 @@ $cmakeArgs=@(
   ("-DVEYRA_FFMPEG_ROOT="+$ffmpeg),
   ("-DVEYRA_DLSS_SDK_ROOT="+$dlss),
   ("-DVEYRA_NVOF_SDK_ROOT="+$nvof),
+  ("-DVEYRA_CUDA_DRIVER_INCLUDE_DIR="+$cuda),
   ("-DVEYRA_NVENC_HEADERS_ROOT="+$nvenc),
   '-DVEYRA_ENABLE_DLSS_SR=ON',
   '-DVEYRA_ENABLE_DLSS_FG=ON',
@@ -89,6 +97,9 @@ $cmakeArgs=@(
 )
 & cmake.exe @cmakeArgs
 if($LASTEXITCODE -ne 0){throw 'Veyra native engine CMake configure failed.'}
+if($RequireVfg){
+  Write-Output "CUDA Driver API enabled for NVIDIA-VFG from $cuda; CMake will define VEYRA_HAVE_CUDA_DRIVER_HEADERS for veyra_pipeline."
+}
 if($ConfigureOnly){Write-Output 'Configured. No GPU DLL compiled yet.';return}
 & cmake.exe --build $build --target nova_veyra_native nova_veyra_native_smoke --parallel 2
 if($LASTEXITCODE -ne 0){throw 'Original Veyra GPU engine failed compilation/linking.'}
