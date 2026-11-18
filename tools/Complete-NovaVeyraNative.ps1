@@ -131,11 +131,25 @@ try{
    }else{
      'ffmpeg[avcodec,avformat,avfilter,swresample,swscale]:x64-windows'
    }
+   # PowerShell's native argument parsing does not evaluate the expression
+   # appended to --x-install-root=. Pass ONE evaluated absolute path instead.
+   # Visual Studio may set VCPKG_ROOT to its own vcpkg copy; keep this build
+   # pinned to the cloned vcpkg without modifying the user's permanent config.
+   $installRoot=Join-Path $deps 'installed'
+   $previousVcpkgRoot=$env:VCPKG_ROOT
    Push-Location $root
    try{
-     & $exe install $features --x-install-root=(Join-Path $deps 'installed')
-     if($LASTEXITCODE -ne 0){throw 'FFmpeg build failed; inspect build.log'}
-   }finally{Pop-Location}
+     $env:VCPKG_ROOT=$vcpkg
+     $vcpkgArgs=@('install',$features,"--x-install-root=$installRoot")
+     Write-Host ("Installing Windows FFmpeg from pinned vcpkg: "+($vcpkgArgs -join ' '))
+     & $exe @vcpkgArgs
+     if($LASTEXITCODE -ne 0){
+       throw ("FFmpeg dependency build failed (vcpkg exit "+$LASTEXITCODE+"). Inspect build.log and "+(Join-Path $vcpkg 'buildtrees')+" for details.")
+     }
+   }finally{
+     $env:VCPKG_ROOT=$previousVcpkgRoot
+     Pop-Location
+   }
  }
  $buildArgs=@{
    VeyraSource=$source
