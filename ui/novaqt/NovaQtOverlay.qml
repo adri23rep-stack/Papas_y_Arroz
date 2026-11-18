@@ -284,7 +284,9 @@ Item {
                 font.family: "Segoe UI"
                 font.pixelSize: 12
                 wrapMode: Text.WordWrap
-                text: novaHome.playing ? novaHome.playbackDiagnostics :
+                text: (novaHome.playing ||
+                       (novaHome.veyraPilotTestAvailable && novaHome.playbackDiagnostics.length > 0))
+                    ? novaHome.playbackDiagnostics :
                     "Al cambiar de modo, Nova reinicia solo MPV y recupera la posición. " +
                     "En TV en vivo se reconecta al canal."
             }
