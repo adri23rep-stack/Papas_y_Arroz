@@ -34,6 +34,27 @@ if(-not(Test-Path -LiteralPath $file -PathType Leaf)){
 if([IO.Path]::GetExtension($file) -ine '.mp4'){
   throw 'First Alpha supports only a local progressive MP4 hardware smoke.'
 }
+if($Vfg2x){
+  $runtimeRoot=if(Test-Path -LiteralPath (Join-Path $root 'runtime\experimental') -PathType Container){
+    Join-Path $root 'runtime\experimental'
+  }else{
+    Join-Path $root 'runtime_local\nvidia'
+  }
+  $candidates=@(
+    (Join-Path $runtimeRoot 'vfg'),
+    (Join-Path (Split-Path -Parent $runtimeRoot) 'nvidia-vfg'),
+    $runtimeRoot
+  )
+  $required=@('NVVideoEffects.dll','NVCVImage.dll','nvVFXVideoFrameGeneration.dll')
+  $ready=$false
+  foreach($dir in $candidates){
+    $present=@($required | Where-Object { Test-Path -LiteralPath (Join-Path $dir $_) -PathType Leaf })
+    if($present.Count -eq $required.Count){$ready=$true;break}
+  }
+  if(-not $ready){
+    throw 'NVIDIA-VFG 2x cannot start: missing official Video Effects SDK 1.3 VFG provider binaries (NVVideoEffects.dll, NVCVImage.dll, nvVFXVideoFrameGeneration.dll). These are separate from DLSS and CUDA Driver headers; copy licensed NVIDIA runtime assets to runtime\experimental\vfg or runtime\nvidia-vfg.'
+  }
+}
 Write-Host 'Testing ORIGINAL Veyra EngineController with real video and a Win32 render window.' -ForegroundColor Cyan
 Write-Host 'This test will not use MPV, QML, Python or a fake GPU renderer.' -ForegroundColor Cyan
 Push-Location $root
