@@ -9,6 +9,10 @@ param(
  [string]$Workspace=(Join-Path $env:USERPROFILE 'NovaVeyraNativeBuild'),
  [string]$NovaDirectory='',
  [string]$VeyraPortableDirectory='',
+ # CUDA Driver API header cuda.h, separate from the Optical Flow SDK.
+ [string]$CudaIncludeDirectory='',
+ # Alpha 1 is expected to test real NVIDIA-VFG, not silently omit it.
+ [switch]$RequireVfg=$true,
  [switch]$CheckOnly,
  # Alpha 1 targets progressive local MP4 playback. The optional FFmpeg
  # avfilter/deinterlace module can be enabled later with -DisableDeinterlace:$false.
@@ -40,6 +44,31 @@ function ClonePinned([string]$url,[string]$dir,[string]$sha){
  if($LASTEXITCODE -ne 0){throw ('Cannot checkout pinned source '+$sha)}
  $actual=(& git.exe -C $dir rev-parse HEAD).Trim()
  if($actual -ne $sha){throw ('Unexpected git revision: '+$actual)}
+}
+function FindCudaDriverHeaders {
+ $candidates=New-Object 'System.Collections.Generic.List[string]'
+ if($CudaIncludeDirectory){$candidates.Add($CudaIncludeDirectory)}
+ if($env:CUDA_PATH){$candidates.Add((Join-Path $env:CUDA_PATH 'include'))}
+ # Includes CUDA_PATH_V12_9, CUDA_PATH_V13_0, etc.
+ $envVars=[Environment]::GetEnvironmentVariables('Process')
+ foreach($key in $envVars.Keys){
+   if([string]$key -match '^CUDA_PATH_V[0-9_]+' -and $envVars[$key]){
+      $candidates.Add((Join-Path ([string]$envVars[$key]) 'include'))
+   }
+ }
+ $cudaBase=Join-Path $env:ProgramFiles 'NVIDIA GPU Computing Toolkit\CUDA'
+ if(Test-Path -LiteralPath $cudaBase -PathType Container){
+   foreach($dir in @(Get-ChildItem -LiteralPath $cudaBase -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending)){
+     $candidates.Add((Join-Path $dir.FullName 'include'))
+   }
+ }
+ foreach($candidate in $candidates){
+   $absolute=[IO.Path]::GetFullPath($candidate)
+   if(Test-Path -LiteralPath (Join-Path $absolute 'cuda.h') -PathType Leaf){
+     return $absolute
+   }
+ }
+ return ''
 }
 function SetupMSVC {
  # Supports Visual Studio 2022 and 2026, using the newest installation
@@ -94,6 +123,12 @@ Need $extract
 & $extract -ZipPath $OpticalFlowZip -Destination $of -CheckOnly
 if($CheckOnly){
  SetupMSVC
+ $driverInclude=FindCudaDriverHeaders
+ if($driverInclude){
+   Write-Output "CUDA Driver API headers found: $driverInclude"
+ }else{
+   Write-Warning 'CUDA Driver API header cuda.h NOT found. Basic video works, but NVIDIA-VFG 2x needs CUDA Toolkit headers and a new DLL build.'
+ }
  Write-Output 'SDK ZIP and Windows/MSVC toolchain valid; no downloads or disk changes made.'
  return
 }
@@ -109,6 +144,15 @@ try{
  Need (Join-Path $of 'NvOFInterface\nvOpticalFlowD3D12.h')
  Need (Join-Path $of 'Common\NvOFBase\NvOF.h')
  SetupMSVC
+ $driverInclude=FindCudaDriverHeaders
+ if($RequireVfg -and -not $driverInclude){
+   throw 'CUDA Driver API cuda.h missing. Download official NVIDIA CUDA Toolkit for Windows (https://developer.nvidia.com/cuda-downloads) with development headers, or pass -CudaIncludeDirectory C:\path\to\CUDA\include. Basic Veyra decode works; VFG was compiled out. No other SDK downloads or FFmpeg rebuild needed.'
+ }
+ if($driverInclude){
+   Write-Host ("NVIDIA-VFG will compile with CUDA Driver API header: "+$driverInclude)
+ }else{
+   Write-Warning 'CUDA header missing: generating decode-only DLL, NVIDIA-VFG unavailable.'
+ }
  ClonePinned 'https://github.com/Likely7/Veyra-NRVideo.git' $source 'bf596e11112ab350e66d91dfb9c7ea742c254fb4'
  if(-not(Test-Path (Join-Path $dlss 'include\nvsdk_ngx.h')) -or
     -not(Test-Path (Join-Path $nvenc 'include\ffnvcodec\nvEncodeAPI.h'))){
@@ -157,6 +201,8 @@ try{
    DlssSdkRoot=$dlss
    OpticalFlowSdkRoot=$of
    NvencHeadersRoot=$nvenc
+   CudaIncludeDirectory=$driverInclude
+   RequireVfg=$RequireVfg
    BuildDirectory=$build
  }
  if($DisableDeinterlace){$buildArgs.DisableDeinterlace=$true}
