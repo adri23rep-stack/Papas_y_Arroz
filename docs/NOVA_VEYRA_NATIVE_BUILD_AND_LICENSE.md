@@ -235,9 +235,9 @@ empaquetado previamente. Para una prueba local desde el checkout:
 $repo="$env:USERPROFILE\NovaVeyra-Alpha1-Fuente"
 git -C $repo pull --ff-only
 & "$repo\tools\Compilar-Nova.ps1"
-# Guardar una copia del XuperTVNovaQt.exe viejo de la Alpha.
-# Usar la nueva compilación desde dist/Xuper-TV-NovaQt-Local al
-# preparar una Alpha separada con Stage-NovaVeyraNative.ps1.
+& "$repo\tools\Enable-NovaVeyraLiveBeta.ps1"
+# La herramienta crea una copia del EXE anterior y conserva service.json.
+# Después abre Start-NovaVeyraLiveBeta.ps1 en la Alpha indicada.
 ```
 
 ## Nueva prueba sostenida NVIDIA-VFG (RTX 3060)
