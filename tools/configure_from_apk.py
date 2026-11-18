@@ -40,11 +40,11 @@ def configure(apk_path,output,platform='switch'):
     logger.remove()
     from androguard.core.apk import APK
     from androguard.core.dex import DEX
-    apk=APK(str(apk_path));root=None;root_candidates=[];app_id=None;salt=None;aes_key=None;api_version=None;client_meta_suffix=None
+    apk=APK(str(apk_path));root=None;root_candidates=[];app_id=None;salt=None;aes_key=None;api_version=None;client_meta_suffix=None;http_package_version=None
     for raw in apk.get_all_dex():
         dex=DEX(raw)
         for cls in dex.get_classes():
-            wanted={'Lk2/b;':{'g','i'},'Lj7/a;':{'i'},'Lk2/a;':{'b'},'Lo7/a;':{'i'},'Lib/c;':{'c'},'Lzb/a;':{'maybeInjectClientMeta'}}.get(cls.get_name())
+            wanted={'Lk2/b;':{'g','i','k'},'Lj7/a;':{'i'},'Lk2/a;':{'b'},'Lo7/a;':{'i'},'Lib/c;':{'c'},'Lzb/a;':{'maybeInjectClientMeta'}}.get(cls.get_name())
             if wanted is None:continue
             for method in cls.get_methods():
                 if method.get_name() not in wanted or not method.get_code():continue
@@ -65,6 +65,13 @@ def configure(apk_path,output,platform='switch'):
                             candidates.append(candidate)
                     if len(set(candidates))==1:
                         client_meta_suffix=candidates[0]
+                    continue
+                if cls.get_name()=='Lk2/b;' and method.get_name()=='k':
+                    # HTTP spkgVer is a separate APK constant. Keep it local.
+                    strings=[ins.get_string() for ins in method.get_instructions()
+                             if ins.get_name().startswith('const-string')]
+                    if len(strings)==1 and isinstance(strings[0],str) and 1<=len(strings[0])<=128:
+                        http_package_version=strings[0]
                     continue
                 if cls.get_name()=='Lo7/a;':
                     values=[v for i in method.get_instructions() if i.get_name().startswith('const') and hasattr(i,'get_literals') for v in i.get_literals()]
@@ -128,6 +135,8 @@ def configure(apk_path,output,platform='switch'):
     # service.json; never print it, check it into Git, or send it to the iPhone.
     if client_meta_suffix is not None:
         config['client_meta_suffix']=client_meta_suffix
+    if http_package_version is not None:
+        config['http_package_version']=http_package_version
     output.parent.mkdir(parents=True,exist_ok=True)
     output.write_text(json.dumps(config,indent=2)+'\n',encoding='utf-8')
     output.chmod(0o600)
