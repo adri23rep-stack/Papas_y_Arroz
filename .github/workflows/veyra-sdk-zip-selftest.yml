@@ -104,9 +104,8 @@ jobs:
           $source=Join-Path $root 'old-nova'
           $alpha=Join-Path $root 'nova-alpha'
           New-Item -ItemType Directory -Path $source,$alpha -Force | Out-Null
-          @'
-          {"installation_serial":"test-only","password_salt":"test-only","key_base64":"test-only","portal_hosts":["example.invalid"]}
-          '@ | Set-Content -LiteralPath (Join-Path $source 'service.json')
+          '{"installation_serial":"test-only","password_salt":"test-only","key_base64":"test-only","portal_hosts":["example.invalid"]}' |
+            Set-Content -LiteralPath (Join-Path $source 'service.json')
           '{"sn":"from-old-nova"}' | Set-Content -LiteralPath (Join-Path $source 'device_state.json')
           '{"sn":"previous-alpha-state"}' | Set-Content -LiteralPath (Join-Path $alpha 'device_state.json')
           '{"installation_serial":"previous-alpha"}' | Set-Content -LiteralPath (Join-Path $alpha 'service.json')
