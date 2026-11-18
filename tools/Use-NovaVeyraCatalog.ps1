@@ -80,19 +80,40 @@ Write-Host "Destination: $target"
 Write-Host ('Files available for local transfer: ' + ($copy -join ', '))
 Write-Host 'Originals will NOT be changed. A copy may contain private device information.'
 if($CheckOnly){Write-Host 'CheckOnly: no changes made.';return}
-foreach($name in $copy){
-  $src=Join-Path $source $name
-  $dst=Join-Path $target $name
-  if(Test-Path -LiteralPath $dst){
-    throw "Destination already has $name. No existing Alpha configuration will be overwritten."
+if(-not $PSCmdlet.ShouldProcess($target,'Import existing service configuration into this isolated Alpha')){
+  return
+}
+$existing=@($names | Where-Object { Test-Path -LiteralPath (Join-Path $target $_) -PathType Leaf })
+$backup=''
+if($existing.Count){
+  $backup=Join-Path $target ('catalog-backup-'+(Get-Date -Format 'yyyyMMdd-HHmmssfff'))
+  New-Item -ItemType Directory -Path $backup -ErrorAction Stop | Out-Null
+  foreach($name in $existing){
+    # This local backup is never committed or packaged.
+    Copy-Item -LiteralPath (Join-Path $target $name) -Destination (Join-Path $backup $name) -ErrorAction Stop
   }
 }
-foreach($name in $copy){
-  $src=Join-Path $source $name
-  $dst=Join-Path $target $name
-  if($PSCmdlet.ShouldProcess($dst,"Copy local $name from the chosen Nova installation")){
-    Copy-Item -LiteralPath $src -Destination $dst -ErrorAction Stop
+try{
+  foreach($name in $copy){
+    Copy-Item -LiteralPath (Join-Path $source $name) -Destination (Join-Path $target $name) -Force -ErrorAction Stop
   }
+  # The previous device identity must not remain if the chosen source had none.
+  if('device_state.json' -notin $copy){
+    $previous=Join-Path $target 'device_state.json'
+    if(Test-Path -LiteralPath $previous -PathType Leaf){Remove-Item -LiteralPath $previous -Force -ErrorAction Stop}
+  }
+}catch{
+  foreach($name in $names){
+    $dst=Join-Path $target $name
+    $bak=if($backup){Join-Path $backup $name}else{''}
+    if($bak -and (Test-Path -LiteralPath $bak -PathType Leaf)){
+      Copy-Item -LiteralPath $bak -Destination $dst -Force
+    }elseif(Test-Path -LiteralPath $dst -PathType Leaf){
+      Remove-Item -LiteralPath $dst -Force
+    }
+  }
+  throw
 }
+if($backup){Write-Host "Previous Alpha configuration safely backed up in: $backup"}
 Write-Host 'Local configuration imported into the Alpha. Restart it with Start-NovaVeyraNative.ps1.' -ForegroundColor Green
 Write-Host 'If the provider rejects authentication (for example portal200001), movies/series still cannot load.'
