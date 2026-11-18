@@ -40,14 +40,32 @@ def configure(apk_path,output,platform='switch'):
     logger.remove()
     from androguard.core.apk import APK
     from androguard.core.dex import DEX
-    apk=APK(str(apk_path));root=None;root_candidates=[];app_id=None;salt=None;aes_key=None;api_version=None
+    apk=APK(str(apk_path));root=None;root_candidates=[];app_id=None;salt=None;aes_key=None;api_version=None;client_meta_suffix=None
     for raw in apk.get_all_dex():
         dex=DEX(raw)
         for cls in dex.get_classes():
-            wanted={'Lk2/b;':{'g','i'},'Lj7/a;':{'i'},'Lk2/a;':{'b'},'Lo7/a;':{'i'},'Lib/c;':{'c'}}.get(cls.get_name())
+            wanted={'Lk2/b;':{'g','i'},'Lj7/a;':{'i'},'Lk2/a;':{'b'},'Lo7/a;':{'i'},'Lib/c;':{'c'},'Lzb/a;':{'maybeInjectClientMeta'}}.get(cls.get_name())
             if wanted is None:continue
             for method in cls.get_methods():
                 if method.get_name() not in wanted or not method.get_code():continue
+                if cls.get_name()=='Lzb/a;' and method.get_name()=='maybeInjectClientMeta':
+                    # Find the fixed suffix used by StringBuilder.append directly
+                    # before MessageDigest, without relying on any printable
+                    # version of an APK key or exposing it in console output.
+                    instructions=list(method.get_instructions())
+                    candidates=[]
+                    for index,ins in enumerate(instructions[:-1]):
+                        if not ins.get_name().startswith('const-string'):
+                            continue
+                        candidate=ins.get_string()
+                        next_ins=instructions[index+1]
+                        if (re.fullmatch(r'[A-Za-z0-9-]{36}',candidate) and
+                            next_ins.get_name().startswith('invoke') and
+                            'Ljava/lang/StringBuilder;->append(Ljava/lang/String;)' in next_ins.get_output()):
+                            candidates.append(candidate)
+                    if len(set(candidates))==1:
+                        client_meta_suffix=candidates[0]
+                    continue
                 if cls.get_name()=='Lo7/a;':
                     values=[v for i in method.get_instructions() if i.get_name().startswith('const') and hasattr(i,'get_literals') for v in i.get_literals()]
                     api_version=next((v for v in values if isinstance(v,int) and v>10000),None)
@@ -106,6 +124,10 @@ def configure(apk_path,output,platform='switch'):
         'installation_serial':installation_serial,'account_type':'auto','login_type':'2',
         'password_salt':salt,'password_aes_key':aes_key,
         'language':'es','device_id':device_id,'ca_file':'cacert.pem' if platform=='windows' else 'sdmc:/switch/xuperswitch/cacert.pem'}
+    # Optional per-request metadata suffix. Store it only in private/local
+    # service.json; never print it, check it into Git, or send it to the iPhone.
+    if client_meta_suffix is not None:
+        config['client_meta_suffix']=client_meta_suffix
     output.parent.mkdir(parents=True,exist_ok=True)
     output.write_text(json.dumps(config,indent=2)+'\n',encoding='utf-8')
     output.chmod(0o600)
