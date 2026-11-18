@@ -70,7 +70,7 @@ jobs:
           $source=Join-Path $root 'source'
           $portable=Join-Path $root 'veyra-portable'
           $out=Join-Path $root 'output'
-          $shaders=Join-Path $build 'veyra-original/shaders'
+          $shaders=Join-Path $build 'shaders'
           foreach($folder in @($build,$nova,$source,$portable,$shaders)){
             New-Item -ItemType Directory -Path $folder -Force | Out-Null
           }
