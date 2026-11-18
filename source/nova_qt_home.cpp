@@ -711,6 +711,7 @@ void NovaQtHome::playEntry(const xs::Entry& e){
         source.ok=xs::valid_source(e.source);
         source.source=e.source;
         if(source.ok)player_.play(source,QString::fromStdString(e.title),
+                                  e.program_type=="public-live",0.0,
                                   e.program_type=="public-live");
         else{status_=QStringLiteral("Esta lista local no contiene una fuente válida.");emit changed();}
         return;
