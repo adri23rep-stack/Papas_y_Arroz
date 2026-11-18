@@ -1,6 +1,6 @@
 <#
 Build the original Veyra 2.1.9 GPU DLL from the user's licensed Optical Flow ZIP.
-Run locally on Windows with VS2022 C++ build tools and Git for Windows.
+Run locally on Windows with VS2022 or VS2026 C++ build tools and Git for Windows.
 Never uploads NVIDIA binaries or private Nova settings.
 #>
 [CmdletBinding()]
@@ -42,11 +42,18 @@ function ClonePinned([string]$url,[string]$dir,[string]$sha){
  if($actual -ne $sha){throw ('Unexpected git revision: '+$actual)}
 }
 function SetupMSVC {
- if(Get-Command cl.exe -ErrorAction SilentlyContinue){return}
+ # Supports Visual Studio 2022 and 2026, using the newest installation
+ # that actually includes the x64 MSVC tools (not just Visual Studio IDE).
  $vswhere=Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Microsoft Visual Studio\Installer\vswhere.exe'
  Need $vswhere
  $vsroot=(& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1)
- if(-not $vsroot){throw 'Install official VS2022 C++ Desktop Build Tools'}
+ if($LASTEXITCODE -ne 0 -or -not $vsroot){
+   $installed=(& $vswhere -latest -products '*' -property installationPath | Select-Object -First 1)
+   if($installed){
+     throw "Visual Studio found at $installed but C++ Desktop MSVC x64 tools are missing. Use Visual Studio Installer > Modify > Desktop development with C++."
+   }
+   throw 'Visual Studio 2022/2026 not detected. Install Community or Build Tools with C++ Desktop workload.'
+ }
  $vcvars=Join-Path $vsroot 'VC\Auxiliary\Build\vcvars64.bat'
  Need $vcvars
  $lines=(& cmd.exe /d /s /c ('""'+$vcvars+'" >nul && set"'))
@@ -56,18 +63,37 @@ function SetupMSVC {
      [Environment]::SetEnvironmentVariable($Matches[1],$Matches[2],'Process')
    }
  }
+ # The user's PowerShell currently exposes MSYS2 CMake, unsuitable for
+ # this Windows/MSVC CMake build. Prefer Visual Studio's native Windows CMake.
  $cmakeBin=Join-Path $vsroot 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin'
  $ninjaBin=Join-Path $vsroot 'Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja'
- if(Test-Path (Join-Path $cmakeBin 'cmake.exe')){$env:Path="$cmakeBin;$env:Path"}
- if(Test-Path (Join-Path $ninjaBin 'ninja.exe')){$env:Path="$ninjaBin;$env:Path"}
+ $cmakeExe=Join-Path $cmakeBin 'cmake.exe'
+ if(Test-Path -LiteralPath $cmakeExe -PathType Leaf){$env:Path="$cmakeBin;$env:Path"}
+ $ninjaExe=Join-Path $ninjaBin 'ninja.exe'
+ if(Test-Path -LiteralPath $ninjaExe -PathType Leaf){$env:Path="$ninjaBin;$env:Path"}
  foreach($name in @('cl.exe','cmake.exe','ninja.exe')){
-   if(-not(Get-Command $name -ErrorAction SilentlyContinue)){throw ('Missing tool: '+$name)}
+   if(-not(Get-Command $name -ErrorAction SilentlyContinue)){
+     throw "Missing $name after initializing MSVC. Install Visual Studio C++ Desktop workload, CMake and Ninja."
+   }
  }
+ $compiler=Get-Command cl.exe -ErrorAction Stop
+ $cmake=Get-Command cmake.exe -ErrorAction Stop
+ $ninja=Get-Command ninja.exe -ErrorAction Stop
+ if($cmake.Source -match '(?i)[\\/]msys2[\\/]|[\\/]usr[\\/]bin[\\/]cmake\.exe$'){
+   throw "MSYS2 CMake is first on PATH: $($cmake.Source). Install Visual Studio's C++ CMake tools for Windows, or add native Windows CMake before MSYS2."
+ }
+ Write-Host "Detected MSVC: $($compiler.Source)"
+ Write-Host "Detected CMake: $($cmake.Source)"
+ Write-Host "Detected Ninja: $($ninja.Source)"
 }
 $extract=Join-Path $repo 'tools\Prepare-NovaVeyraOpticalFlow.ps1'
 Need $extract
 & $extract -ZipPath $OpticalFlowZip -Destination $of -CheckOnly
-if($CheckOnly){Write-Output 'SDK ZIP valid; no downloads or changes made.';return}
+if($CheckOnly){
+ SetupMSVC
+ Write-Output 'SDK ZIP and Windows/MSVC toolchain valid; no downloads or disk changes made.'
+ return
+}
 if(-not(Get-Command git.exe -ErrorAction SilentlyContinue)){throw 'Install Git for Windows first'}
 New-Item -ItemType Directory -Path $root -Force | Out-Null
 $logging=$false
