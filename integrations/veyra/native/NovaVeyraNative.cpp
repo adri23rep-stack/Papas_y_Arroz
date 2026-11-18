@@ -134,6 +134,8 @@ int NOVA_VEYRA_CALL nova_veyra_snapshot(void* ptr,NovaVeyraSnapshot* out){
         out->desired_sr_quality=s.desired.videoSrQuality;
         out->applied_fg_multiplier=s.applied.multiplier;
         out->desired_fg_multiplier=s.desired.multiplier;
+        out->applied_fg_backend=uint32_t(s.applied.frameGenerationBackend);
+        out->desired_fg_backend=uint32_t(s.desired.frameGenerationBackend);
         return 1;
     } catch (...) {return 0;}
 }
