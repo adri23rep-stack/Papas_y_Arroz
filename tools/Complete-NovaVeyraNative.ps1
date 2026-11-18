@@ -1,0 +1,135 @@
+<#
+Build the original Veyra 2.1.9 GPU DLL from the user's licensed Optical Flow ZIP.
+Run locally on Windows with VS2022 C++ build tools and Git for Windows.
+Never uploads NVIDIA binaries or private Nova settings.
+#>
+[CmdletBinding()]
+param(
+ [string]$OpticalFlowZip=(Join-Path $env:USERPROFILE 'Downloads\Optical_Flow_SDK_5.0.7.zip'),
+ [string]$Workspace=(Join-Path $env:USERPROFILE 'NovaVeyraNativeBuild'),
+ [string]$NovaDirectory='',
+ [string]$VeyraPortableDirectory='',
+ [switch]$CheckOnly,
+ [switch]$DisableDeinterlace,
+ [switch]$SkipFfmpegInstall
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference='Stop'
+$repo=(Resolve-Path (Join-Path $PSScriptRoot '..')).ProviderPath
+$root=[IO.Path]::GetFullPath($Workspace)
+$source=Join-Path $root 'Veyra-2.1.9-Source'
+$deps=Join-Path $root 'deps'
+$of=Join-Path $deps 'Optical_Flow_SDK_5.0.7'
+$public=Join-Path $deps 'public-sdk'
+$dlss=Join-Path $public 'DLSS_SDK_310.7.0'
+$nvenc=Join-Path $public 'nv-codec-headers-13.0'
+$vcpkg=Join-Path $deps 'vcpkg'
+$ff=Join-Path $deps 'installed\x64-windows'
+$build=Join-Path $root 'out\nova-native-gpu'
+function Need([string]$p) {
+ if(-not(Test-Path -LiteralPath $p -PathType Leaf)){throw ('Missing file: '+$p)}
+}
+function ClonePinned([string]$url,[string]$dir,[string]$sha){
+ if(-not(Test-Path -LiteralPath $dir -PathType Container)){
+   & git.exe clone $url $dir
+   if($LASTEXITCODE -ne 0){throw ('Clone failed: '+$url)}
+ }
+ & git.exe -C $dir checkout --detach $sha
+ if($LASTEXITCODE -ne 0){throw ('Cannot checkout pinned source '+$sha)}
+ $actual=(& git.exe -C $dir rev-parse HEAD).Trim()
+ if($actual -ne $sha){throw ('Unexpected git revision: '+$actual)}
+}
+function SetupMSVC {
+ if(Get-Command cl.exe -ErrorAction SilentlyContinue){return}
+ $vswhere=Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Microsoft Visual Studio\Installer\vswhere.exe'
+ Need $vswhere
+ $vsroot=(& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1)
+ if(-not $vsroot){throw 'Install official VS2022 C++ Desktop Build Tools'}
+ $vcvars=Join-Path $vsroot 'VC\Auxiliary\Build\vcvars64.bat'
+ Need $vcvars
+ $lines=(& cmd.exe /d /s /c ('""'+$vcvars+'" >nul && set"'))
+ if($LASTEXITCODE -ne 0){throw 'MSVC x64 environment initialization failed'}
+ foreach($line in $lines){
+   if($line -match '^([^=][^=]*)=(.*)$'){
+     [Environment]::SetEnvironmentVariable($Matches[1],$Matches[2],'Process')
+   }
+ }
+ $cmakeBin=Join-Path $vsroot 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin'
+ if(Test-Path (Join-Path $cmakeBin 'cmake.exe')){$env:Path="$cmakeBin;$env:Path"}
+ foreach($name in @('cl.exe','cmake.exe','ninja.exe')){
+   if(-not(Get-Command $name -ErrorAction SilentlyContinue)){throw ('Missing tool: '+$name)}
+ }
+}
+$extract=Join-Path $repo 'tools\Prepare-NovaVeyraOpticalFlow.ps1'
+Need $extract
+& $extract -ZipPath $OpticalFlowZip -Destination $of -CheckOnly
+if($CheckOnly){Write-Output 'SDK ZIP valid; no downloads or changes made.';return}
+if(-not(Get-Command git.exe -ErrorAction SilentlyContinue)){throw 'Install Git for Windows first'}
+New-Item -ItemType Directory -Path $root -Force | Out-Null
+$logging=$false
+try{
+ Start-Transcript -Path (Join-Path $root 'build.log') -Append | Out-Null
+ $logging=$true
+ if(-not(Test-Path -LiteralPath $of -PathType Container)){
+   & $extract -ZipPath $OpticalFlowZip -Destination $of
+ }
+ Need (Join-Path $of 'NvOFInterface\nvOpticalFlowD3D12.h')
+ Need (Join-Path $of 'Common\NvOFBase\NvOF.h')
+ SetupMSVC
+ ClonePinned 'https://github.com/Likely7/Veyra-NRVideo.git' $source 'bf596e11112ab350e66d91dfb9c7ea742c254fb4'
+ if(-not(Test-Path (Join-Path $dlss 'include\nvsdk_ngx.h')) -or
+    -not(Test-Path (Join-Path $nvenc 'include\ffnvcodec\nvEncodeAPI.h'))){
+   if((Test-Path $dlss) -or (Test-Path $nvenc)){
+     throw 'Public SDK folder is incomplete; move that folder aside before retrying'
+   }
+   & (Join-Path $repo 'tools\Fetch-NovaVeyraPublicSDKs.ps1') -Destination $public
+ }
+ Need (Join-Path $dlss 'lib\Windows_x86_64\x64\nvsdk_ngx_s.lib')
+ if(-not(Test-Path (Join-Path $ff 'lib\avcodec.lib'))){
+   if($SkipFfmpegInstall){throw ('FFmpeg development SDK missing: '+$ff)}
+   ClonePinned 'https://github.com/microsoft/vcpkg.git' $vcpkg '30ef65cad98f08e7197c9a1656fbd871bcb72f2d'
+   $exe=Join-Path $vcpkg 'vcpkg.exe'
+   if(-not(Test-Path -LiteralPath $exe)){
+     & (Join-Path $vcpkg 'bootstrap-vcpkg.bat') -disableMetrics
+     if($LASTEXITCODE -ne 0){throw 'vcpkg bootstrap failed'}
+   }
+   $features=if($DisableDeinterlace){
+     'ffmpeg[avcodec,avformat,swresample,swscale,network]:x64-windows'
+   }else{
+     'ffmpeg[avcodec,avformat,avfilter,swresample,swscale,network]:x64-windows'
+   }
+   Push-Location $root
+   try{
+     & $exe install $features --x-install-root=(Join-Path $deps 'installed')
+     if($LASTEXITCODE -ne 0){throw 'FFmpeg build failed; inspect build.log'}
+   }finally{Pop-Location}
+ }
+ $buildArgs=@{
+   VeyraSource=$source
+   FfmpegRoot=$ff
+   DlssSdkRoot=$dlss
+   OpticalFlowSdkRoot=$of
+   NvencHeadersRoot=$nvenc
+   BuildDirectory=$build
+ }
+ if($DisableDeinterlace){$buildArgs.DisableDeinterlace=$true}
+ & (Join-Path $repo 'tools\Build-NovaVeyraNative.ps1') @buildArgs -CheckOnly
+ & (Join-Path $repo 'tools\Build-NovaVeyraNative.ps1') @buildArgs
+ $dll=Join-Path $build 'nova_veyra_native.dll'
+ Need $dll
+ Write-Host ('Veyra original GPU DLL compiled: '+$dll)
+ if($NovaDirectory -and $VeyraPortableDirectory){
+   $stage=Join-Path $root ('NovaVeyraNative-'+(Get-Date -Format 'yyyyMMdd-HHmmss'))
+   $staging=@{
+     NovaDirectory=$NovaDirectory; NativeBuildDirectory=$build;
+     VeyraSource=$source; PortableVeyraDirectory=$VeyraPortableDirectory;
+     FfmpegRoot=$ff; Output=$stage
+   }
+   & (Join-Path $repo 'tools\Stage-NovaVeyraNative.ps1') @staging -CheckOnly
+   & (Join-Path $repo 'tools\Stage-NovaVeyraNative.ps1') @staging
+   Write-Host ('Native Nova launcher: '+(Join-Path $stage 'Start-NovaVeyraNative.ps1'))
+ }else{
+   Write-Host 'DLL compiled. Supply NovaDirectory and VeyraPortableDirectory to stage into Nova.'
+ }
+ Write-Host 'Real RTX 3060 playback and actual FPS still need a hardware test on this PC.'
+}finally{if($logging){Stop-Transcript | Out-Null}}
