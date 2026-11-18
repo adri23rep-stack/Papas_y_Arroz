@@ -117,6 +117,39 @@ jobs:
           [System.Management.Automation.Language.Parser]::ParseFile(
             "tools/Stage-NovaVeyraNative.ps1", [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count) { throw "Native Veyra runtime staging script has syntax errors: $errors" }
+          foreach ($nativeHelper in @('Prepare-NovaVeyraOpticalFlow.ps1', 'Complete-NovaVeyraNative.ps1')) {
+            $tokens = $null; $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Join-Path 'tools' $nativeHelper), [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count) { throw "$nativeHelper PowerShell syntax errors: $errors" }
+          }
+          # Synthetic minimal SDK ZIP exercises safe local extraction; NEVER
+          # upload, copy or publish the licensed SDK ZIP supplied by the user.
+          $fixture = Join-Path $env:RUNNER_TEMP 'nova-of-sdk-test'
+          $froot = Join-Path $fixture 'input\Optical_Flow_SDK_5.0.7'
+          foreach ($part in @(
+              'NvOFInterface\nvOpticalFlowCommon.h',
+              'NvOFInterface\nvOpticalFlowD3D12.h',
+              'Common\NvOFBase\NvOF.h',
+              'Common\NvOFBase\NvOFD3D12.h',
+              'LicenseAgreement.pdf'
+          )) {
+            $file = Join-Path $froot $part
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $file) | Out-Null
+            'Synthetic test fixture (NOT NVIDIA SDK)' | Set-Content -LiteralPath $file
+          }
+          $fakeZip = Join-Path $fixture 'synthetic-optical-flow.zip'
+          Compress-Archive -Path $froot -DestinationPath $fakeZip
+          $prepared = Join-Path $fixture 'prepared'
+          & ./tools/Prepare-NovaVeyraOpticalFlow.ps1 -ZipPath $fakeZip -Destination $prepared -CheckOnly
+          if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw 'Optical Flow ZIP validation failed' }
+          if (Test-Path $prepared) { throw 'CheckOnly unexpectedly wrote files' }
+          & ./tools/Prepare-NovaVeyraOpticalFlow.ps1 -ZipPath $fakeZip -Destination $prepared
+          if (-not (Test-Path (Join-Path $prepared 'Common\NvOFBase\NvOF.h'))) {
+            throw 'Optical Flow ZIP extractor failed to preserve the real NvOF.h path'
+          }
+          Write-Host 'Original SDK ZIP format fixture passed without distributing NVIDIA files.'
+
           $none = Join-Path $env:RUNNER_TEMP 'nova-native-missing-deps'
           $nativeCheck = & ./tools/Build-NovaVeyraNative.ps1 -VeyraSource $none -FfmpegRoot $none -DlssSdkRoot $none -OpticalFlowSdkRoot $none -NvencHeadersRoot $none -CheckOnly 3>&1 | Out-String
           if ($nativeCheck -notmatch 'Veyra native GPU cannot compile' -or
