@@ -249,6 +249,29 @@ HomeSnapshot loadHome(){
         }
         return out;
     }
+    // Publish the authorized catalog promptly; heavy rails are populated
+    // independently after the user can already navigate all sections.
+    for(const auto& e:out.root.entries)
+        if(e.kind==xs::EntryKind::Media)addEntry(out.tv_entries,e,80);
+    appendPublicChannels(out,public_tv.catalog);
+    out.channels=tvPreview(out.tv_entries);
+    out.status=out.root.entries.empty()
+        ?out.service_status
+        :QStringLiteral("XuperTV conectado. Cargando portadas y avances sin bloquear el catálogo...");
+    return out;
+}
+
+// Previews are optional: never hold the entire home screen hostage to
+// six TV categories plus VOD requests (each can take 25 seconds).
+// The entry points to the FULL provider catalog are already ready in root.
+HomeSnapshot loadHomePreviews(const std::shared_ptr<xs::ServiceSession>& session,
+                               const xs::Catalog& root,
+                               std::vector<xs::Entry> initial_tv){
+    HomeSnapshot out;
+    out.session=session;
+    out.root=root;
+    out.tv_entries=std::move(initial_tv);
+    out.service_connected=true;
     // Authorized M3U playlists can be returned directly as Media entries;
     // don't mistake them for an empty live service just because there are no
     // column/category entries.
@@ -261,7 +284,7 @@ HomeSnapshot loadHome(){
         // Skip those sections rather than ending the live-channel scan.
         if(category.kind!=xs::EntryKind::Category)continue;
         if(checkedLive++>=6||out.tv_entries.size()>=72)break;
-        const auto response=xs::service_channels(out.session,category.column_id);
+        const auto response=xs::service_browse_remote(out.session,category);
         if(response.ok){
             for(const auto& e:response.catalog.entries)
                 if(e.kind==xs::EntryKind::Channel)addEntry(out.tv_entries,e,72);
@@ -274,7 +297,7 @@ HomeSnapshot loadHome(){
                 return e.kind==xs::EntryKind::Section&&e.program_type==type;
             });
         if(section==out.root.entries.end())continue;
-        const auto response=xs::service_browse(out.session,*section);
+        const auto response=xs::service_browse_remote(out.session,*section);
         if(!response.ok)continue;
         addAssets(response.catalog,type,dest,60);
         int visited=0;
@@ -282,11 +305,11 @@ HomeSnapshot loadHome(){
             if(dest.size()>=60||visited>=5)break;
             if(e.kind!=xs::EntryKind::VodCategory)continue;
             ++visited;
-            const auto page=xs::service_browse(out.session,e);
+            const auto page=xs::service_browse_remote(out.session,e);
             if(page.ok)addAssets(page.catalog,type,dest,60);
         }
     }
-    appendPublicChannels(out,public_tv.catalog);
+    // Public channels were already inserted into this snapshot.
     out.channels=tvPreview(out.tv_entries);
     out.series=listFor(out.series_entries);
     out.movies=listFor(out.movie_entries);
