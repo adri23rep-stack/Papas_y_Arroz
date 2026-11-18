@@ -29,7 +29,9 @@ jobs:
             'Prepare-NovaVeyraOpticalFlow.ps1',
             'Complete-NovaVeyraNative.ps1',
             'Build-NovaVeyraNative.ps1',
-            'Build-NovaVeyraEngine.ps1'
+            'Build-NovaVeyraEngine.ps1',
+            'Stage-NovaVeyraNative.ps1',
+            'Test-NovaVeyraNative.ps1'
           )) {
             $tokens=$null;$errors=$null
             [System.Management.Automation.Language.Parser]::ParseFile(
@@ -114,7 +116,7 @@ jobs:
           & ./tools/Stage-NovaVeyraNative.ps1 @parameters -CheckOnly
           if(Test-Path -LiteralPath $out){throw 'Native stage CheckOnly unexpectedly wrote files'}
           & ./tools/Stage-NovaVeyraNative.ps1 @parameters
-          foreach($name in @('nova_veyra_native.dll','nova_veyra_native_smoke.exe','XuperTVNovaQt.exe','Start-NovaVeyraNative.ps1','LICENSE','LICENSE.MIT-UPSTREAM','shaders/ScaleBlit.dxil')){
+          foreach($name in @('nova_veyra_native.dll','nova_veyra_native_smoke.exe','XuperTVNovaQt.exe','Start-NovaVeyraNative.ps1','Test-NovaVeyraNative.ps1','LICENSE','LICENSE.MIT-UPSTREAM','shaders/ScaleBlit.dxil')){
             if(-not(Test-Path -LiteralPath (Join-Path $out $name) -PathType Leaf)){
               throw ('Native stage output missing: '+$name)
             }
