@@ -139,6 +139,30 @@ int NOVA_VEYRA_CALL nova_veyra_snapshot(void* ptr,NovaVeyraSnapshot* out){
         return 1;
     } catch (...) {return 0;}
 }
+int NOVA_VEYRA_CALL nova_veyra_flow_snapshot(void* ptr,NovaVeyraFlowStats* out){
+    if(!ptr||!out||out->size!=sizeof(NovaVeyraFlowStats))return 0;
+    try {
+        const auto state=static_cast<Session*>(ptr)->engine.snapshot();
+        const auto& flow=state.metrics.flow;
+        NovaVeyraFlowStats result{};
+        result.size=sizeof(result);
+        result.rate_window_ready=flow.rateWindowReady?1u:0u;
+        result.low1_known=flow.presentLow1Fps.has_value()?1u:0u;
+        result.session_id=state.sessionId;
+        result.settings_revision=flow.latest.frame.settingsRevision;
+        result.real_submitted=flow.counters.realPresented;
+        result.generated_submitted=flow.counters.generatedPresented;
+        result.generated_ready=flow.counters.fgReadyValid;
+        result.generated_expired=flow.counters.generatedExpiredAfterEval;
+        result.cancelled_before_present=flow.counters.cancelledBeforePresent;
+        result.present_submit_fps=flow.presentSubmitFps;
+        result.generated_submit_fps=flow.generatedPresentFps;
+        result.real_submit_fps=flow.realPresentFps;
+        result.present_low1_fps=flow.presentLow1Fps.value_or(0.0);
+        *out=result;
+        return 1;
+    } catch (...) {return 0;}
+}
 uint32_t NOVA_VEYRA_CALL nova_veyra_audio_count(void* ptr){
     if(!ptr)return 0;
     try {
