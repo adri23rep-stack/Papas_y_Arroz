@@ -76,6 +76,26 @@ typedef struct NovaVeyraSnapshot {
     uint32_t desired_fg_backend;
 } NovaVeyraSnapshot;
 
+// Optional hardware-smoke diagnostics, independent of Nova's ABI 4 state.
+// "submitted" is DXGI Present completion, NOT verified panel scanout.
+typedef struct NovaVeyraFlowStats {
+    uint32_t size;
+    uint32_t rate_window_ready;
+    uint32_t low1_known;
+    uint32_t reserved;
+    uint64_t session_id;
+    uint64_t settings_revision;
+    uint64_t real_submitted;
+    uint64_t generated_submitted;
+    uint64_t generated_ready;
+    uint64_t generated_expired;
+    uint64_t cancelled_before_present;
+    double present_submit_fps;
+    double generated_submit_fps;
+    double real_submit_fps;
+    double present_low1_fps;
+} NovaVeyraFlowStats;
+
 #if defined(_WIN32)
   #define NOVA_VEYRA_CALL __cdecl
   #if defined(NOVA_VEYRA_NATIVE_EXPORTS)
@@ -109,6 +129,9 @@ NOVA_VEYRA_EXPORT int NOVA_VEYRA_CALL nova_veyra_settings(
     void* engine, const NovaVeyraSettings* settings);
 NOVA_VEYRA_EXPORT int NOVA_VEYRA_CALL nova_veyra_snapshot(
     void* engine, NovaVeyraSnapshot* out);
+// Optional extension; does not change NovaVeyraSnapshot or ABI 4.
+NOVA_VEYRA_EXPORT int NOVA_VEYRA_CALL nova_veyra_flow_snapshot(
+    void* engine, NovaVeyraFlowStats* out);
 NOVA_VEYRA_EXPORT uint32_t NOVA_VEYRA_CALL nova_veyra_audio_count(void* engine);
 NOVA_VEYRA_EXPORT int NOVA_VEYRA_CALL nova_veyra_audio_at(
     void* engine, uint32_t position, NovaVeyraAudioTrack* out);
