@@ -132,12 +132,36 @@ La comprobación Windows `veyra-native-source-contract.yml` ya compila
 motor real. **No** enlaza `veyra_engine` ni puede sustituir las
 pruebas físicas de GPU.
 
-## Restricción externa que no se puede saltar
+## NVIDIA Optical Flow SDK recibido; compilación local pendiente
 
-Para compilar el motor original con NVOF real falta **NVIDIA Optical
-Flow SDK 5.0.7**, disponible bajo condiciones propias de NVIDIA:
-https://developer.nvidia.com/opticalflow/download .
-La copia de `veyra_qml_ui.exe` no aporta sus archivos de desarrollo.
-No hay permiso para asumir que aceptar la licencia en nombre del usuario
-sea automático, ni para redistribuir ese SDK dentro de un repositorio
-público. El script no lo descargará de fuentes dudosas.
+El usuario entregó el **`Optical_Flow_SDK_5.0.7.zip` original**.
+Se comprobaron directamente `NvOFInterface/nvOpticalFlowCommon.h`,
+`NvOFInterface/nvOpticalFlowD3D12.h` y
+`Common/NvOFBase/NvOF.h` / `NvOFD3D12.h`. El antiguo preflight
+buscaba erróneamente `NvOFBase.h`, que NO existe en el SDK real;
+se corrigió.
+
+`tools/Prepare-NovaVeyraOpticalFlow.ps1` valida y extrae el ZIP
+únicamente en el Windows local del usuario. La prueba en GitHub Actions
+usa un ZIP **sintético**, nunca el contenido licenciado del usuario.
+La obtención del SDK **ya está resuelta**; NO debe volver a pedirse.
+
+Para construir y, si están presentes los portables previos, crear
+automáticamente una Alpha 1 de prueba en una carpeta nueva:
+
+```powershell
+.\tools\Complete-NovaVeyraNative.ps1 -OpticalFlowZip "$env:USERPROFILE\Downloads\Optical_Flow_SDK_5.0.7.zip" -DisableDeinterlace
+```
+
+El código preparado descarga versiones públicas fijadas de Veyra,
+DLSS/NVENC y FFmpeg mediante vcpkg, inicializa MSVC y trata de
+compilar la DLL. Usa los nombres reales del SDK 5.0.7.
+La primera Alpha prueba video local progresivo y puede omitir
+desentrelazado para facilitar la compilación inicial.
+
+**Lo pendiente no es conseguir otro ZIP de Optical Flow**. Falta
+ejecutar el compilador completo en Windows con MSVC, verificar
+dependencias, generar `nova_veyra_native.dll`, y efectuar un smoke
+con GPU Nvidia sobre archivo MP4 y medición de cuadros.
+Un `Nova` compilado por MinGW y los tests del extractor no certifican
+que el motor Veyra GPU esté funcionando.
