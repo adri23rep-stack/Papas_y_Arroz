@@ -27,9 +27,10 @@ $source=[IO.Path]::GetFullPath($VeyraSource).TrimEnd('\')
 $ffmpeg=[IO.Path]::GetFullPath($FfmpegRoot).TrimEnd('\')
 $out=[IO.Path]::GetFullPath($Output).TrimEnd('\')
 $dll=Join-Path $build 'nova_veyra_native.dll'
+$smoke=Join-Path $build 'nova_veyra_native_smoke.exe'
 $shaders=Join-Path $build 'shaders'
 $expected=@(
- (Join-Path $nova 'XuperTVNovaQt.exe'), $dll,
+ (Join-Path $nova 'XuperTVNovaQt.exe'), $dll, $smoke,
  (Join-Path $shaders 'ScaleBlit.dxil'),
  (Join-Path $source 'LICENSE'),
  (Join-Path $source 'THIRD_PARTY_NOTICES.md'),
@@ -146,6 +147,7 @@ foreach($name in $allowedFolders){
  }
 }
 Copy-Item -LiteralPath $dll -Destination (Join-Path $out 'nova_veyra_native.dll')
+Copy-Item -LiteralPath $smoke -Destination (Join-Path $out 'nova_veyra_native_smoke.exe')
 $targetShaders=Join-Path $out 'shaders'
 if(-not(Test-Path -LiteralPath $targetShaders)){New-Item -ItemType Directory -Path $targetShaders | Out-Null}
 foreach($shader in $requiredShaders){
