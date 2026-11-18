@@ -87,7 +87,7 @@ jobs:
           $buildScript=Get-Content -LiteralPath 'tools/Build-NovaVeyraNative.ps1' -Raw
           if($buildScript -notmatch 'VEYRA_CUDA_DRIVER_INCLUDE_DIR=' -or
              $buildScript -notmatch 'RequireVfg' -or
-             $buildScript -notmatch "Join-Path \\$cuda 'cuda.h'"){
+             $buildScript -notmatch 'Join-Path \$cuda ''cuda.h'''){
              throw 'Native NVIDIA-VFG must configure CUDA Driver headers and refuse missing cuda.h'
           }
           if($complete -notmatch 'FindCudaDriverHeaders' -or $complete -notmatch 'CudaIncludeDirectory'){
