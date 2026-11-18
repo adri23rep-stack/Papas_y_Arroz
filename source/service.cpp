@@ -102,7 +102,7 @@ static bool request(const std::string& url,const std::string* post,const Json& c
     if(post) {
         headers=curl_slist_append(headers,"Content-Type: application/json;charset=utf-8");
         for(const auto& pair:{std::pair<const char*,std::string>{"apk",text(config,"app_id")},
-                             {"apkVer",text(config,"apk_version")},{"spkgVer",service_device_profile(text(config,"_nova_device_profile")=="android-test",text(config,"_nova_device_profile")=="android-tv-test").http_package_version}}) {
+                             {"apkVer",text(config,"apk_version")},{"spkgVer",text(config,"http_package_version",service_device_profile(text(config,"_nova_device_profile")=="android-test",text(config,"_nova_device_profile")=="android-tv-test").http_package_version)}}) {
             if(pair.second.find_first_of("\r\n")==std::string::npos)
                 headers=curl_slist_append(headers,(std::string(pair.first)+": "+pair.second).c_str());
         }
