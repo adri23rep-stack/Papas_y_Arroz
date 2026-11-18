@@ -6,7 +6,7 @@
 #include <type_traits>
 #include <cassert>
 
-static_assert(NOVA_VEYRA_NATIVE_ABI==3u);
+static_assert(NOVA_VEYRA_NATIVE_ABI==4u);
 static_assert(std::is_standard_layout<NovaVeyraSettings>::value);
 static_assert(std::is_trivial<NovaVeyraSettings>::value);
 static_assert(std::is_standard_layout<NovaVeyraSnapshot>::value);
@@ -14,7 +14,7 @@ static_assert(std::is_trivial<NovaVeyraSnapshot>::value);
 static_assert(offsetof(NovaVeyraSettings,size)==0);
 static_assert(offsetof(NovaVeyraSnapshot,size)==0);
 static_assert(sizeof(NovaVeyraSettings)==24);
-static_assert(sizeof(NovaVeyraSnapshot)==120);
+static_assert(sizeof(NovaVeyraSnapshot)==128);
 static_assert(sizeof(NovaVeyraAudioTrack)==144);
 static_assert(offsetof(NovaVeyraAudioTrack,label_utf8)==16);
 static_assert(NOVA_VEYRA_FG_DLSS==0 && NOVA_VEYRA_FG_VFG==4);
@@ -27,12 +27,12 @@ int main(){
     NovaVeyraSettings settings{};
     settings.size=sizeof(settings);
     settings.features=NOVA_VEYRA_FEATURE_SR|NOVA_VEYRA_FEATURE_FG;
-    settings.fg_backend=NOVA_VEYRA_FG_DLSS;
+    settings.fg_backend=NOVA_VEYRA_FG_VFG;
     settings.fg_multiplier=2;
     settings.sr_quality=2;
     NovaVeyraSnapshot snapshot{};
     snapshot.size=sizeof(snapshot);
-    assert(snapshot.size==120);
+    assert(snapshot.size==128);
     assert((settings.features & NOVA_VEYRA_FEATURE_FG)!=0);
     assert((settings.features & NOVA_VEYRA_FEATURE_NR)==0);
     assert((NOVA_VEYRA_FEATURE_NR|NOVA_VEYRA_FEATURE_SR|NOVA_VEYRA_FEATURE_FG|NOVA_VEYRA_FEATURE_HDR)==15);
