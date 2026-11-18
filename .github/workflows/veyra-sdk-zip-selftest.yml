@@ -97,6 +97,7 @@ jobs:
           $dll=Join-Path $build 'nova_veyra_native.dll'
           & cl.exe /nologo /LD /MT "/Fe:$dll" $cpp
           if($LASTEXITCODE -ne 0){throw 'Synthetic DLL compile failed'}
+          'Synthetic GPU tester EXE (not executable)' | Set-Content -LiteralPath (Join-Path $build 'nova_veyra_native_smoke.exe')
           'Synthetic Nova EXE (not executable)' | Set-Content -LiteralPath (Join-Path $nova 'XuperTVNovaQt.exe')
           'Synthetic Veyra EXE (not executable)' | Set-Content -LiteralPath (Join-Path $portable 'veyra_qml_ui.exe')
           'Synthetic source license test data' | Set-Content -LiteralPath (Join-Path $source 'LICENSE')
@@ -113,7 +114,7 @@ jobs:
           & ./tools/Stage-NovaVeyraNative.ps1 @parameters -CheckOnly
           if(Test-Path -LiteralPath $out){throw 'Native stage CheckOnly unexpectedly wrote files'}
           & ./tools/Stage-NovaVeyraNative.ps1 @parameters
-          foreach($name in @('nova_veyra_native.dll','XuperTVNovaQt.exe','Start-NovaVeyraNative.ps1','LICENSE','LICENSE.MIT-UPSTREAM','shaders/ScaleBlit.dxil')){
+          foreach($name in @('nova_veyra_native.dll','nova_veyra_native_smoke.exe','XuperTVNovaQt.exe','Start-NovaVeyraNative.ps1','LICENSE','LICENSE.MIT-UPSTREAM','shaders/ScaleBlit.dxil')){
             if(-not(Test-Path -LiteralPath (Join-Path $out $name) -PathType Leaf)){
               throw ('Native stage output missing: '+$name)
             }
