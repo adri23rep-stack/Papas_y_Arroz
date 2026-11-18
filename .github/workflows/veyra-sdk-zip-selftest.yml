@@ -18,6 +18,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
       - name: Parse PowerShell and extract synthetic sample
         shell: pwsh
         run: |
@@ -56,3 +59,54 @@ jobs:
             if(-not(Test-Path (Join-Path $out $rel))){throw "Unpacked SDK layout incomplete: $rel"}
           }
           Write-Host 'PASS: syntactic and isolated NVIDIA Optical Flow SDK ZIP layout checks'
+
+      - name: Validate native GPU staging without vendor binaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'synthetic-native-staging'
+          $build=Join-Path $root 'build'
+          $nova=Join-Path $root 'nova'
+          $source=Join-Path $root 'source'
+          $portable=Join-Path $root 'veyra-portable'
+          $out=Join-Path $root 'output'
+          $shaders=Join-Path $build 'veyra-original/shaders'
+          foreach($folder in @($build,$nova,$source,$portable,$shaders)){
+            New-Item -ItemType Directory -Path $folder -Force | Out-Null
+          }
+          $cpp=Join-Path $root 'synthetic.cpp'
+          @'
+          #include <windows.h>
+          extern "C" __declspec(dllexport) unsigned int __cdecl nova_veyra_abi(void) {
+            return GetCurrentProcessId() != 0 ? 3u : 0u;
+          }
+          '@ | Set-Content -LiteralPath $cpp
+          $dll=Join-Path $build 'nova_veyra_native.dll'
+          & cl.exe /nologo /LD /MT "/Fe:$dll" $cpp
+          if($LASTEXITCODE -ne 0){throw 'Synthetic DLL compile failed'}
+          'Synthetic Nova EXE (not executable)' | Set-Content -LiteralPath (Join-Path $nova 'XuperTVNovaQt.exe')
+          'Synthetic Veyra EXE (not executable)' | Set-Content -LiteralPath (Join-Path $portable 'veyra_qml_ui.exe')
+          'Synthetic source license test data' | Set-Content -LiteralPath (Join-Path $source 'LICENSE')
+          'Synthetic third-party notice test data' | Set-Content -LiteralPath (Join-Path $source 'THIRD_PARTY_NOTICES.md')
+          for($i=0;$i -lt 15;$i++){
+            'Synthetic DXIL (not executable)' | Set-Content -LiteralPath (Join-Path $shaders ('Dummy'+$i+'.dxil'))
+          }
+          'Synthetic DXIL (not executable)' | Set-Content -LiteralPath (Join-Path $shaders 'ScaleBlit.dxil')
+          $parameters=@{
+            NovaDirectory=$nova; NativeBuildDirectory=$build; VeyraSource=$source;
+            PortableVeyraDirectory=$portable; FfmpegRoot=(Join-Path $root 'ffmpeg');
+            Output=$out
+          }
+          & ./tools/Stage-NovaVeyraNative.ps1 @parameters -CheckOnly
+          if(Test-Path -LiteralPath $out){throw 'Native stage CheckOnly unexpectedly wrote files'}
+          & ./tools/Stage-NovaVeyraNative.ps1 @parameters
+          foreach($name in @('nova_veyra_native.dll','XuperTVNovaQt.exe','Start-NovaVeyraNative.ps1','LICENSE','LICENSE.MIT-UPSTREAM','shaders/ScaleBlit.dxil')){
+            if(-not(Test-Path -LiteralPath (Join-Path $out $name) -PathType Leaf)){
+              throw ('Native stage output missing: '+$name)
+            }
+          }
+          $starter=Get-Content -LiteralPath (Join-Path $out 'Start-NovaVeyraNative.ps1') -Raw
+          if($starter -notmatch 'NOVA_VEYRA_NATIVE_STRICT'){
+            throw 'Native startup must not silently fall back to MPV during hardware test'
+          }
+          Write-Host 'PASS: synthetic stage manifest, GPL attribution and strict GPU test launcher.'
