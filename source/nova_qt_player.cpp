@@ -199,6 +199,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                         const bool readable=nativeVeyra_->snapshot(snap);
                         const bool broken=!readable||snap.failed||
                             snap.transport==NOVA_VEYRA_FAILED||
+                            (publicLiveBeta && snap.transport==NOVA_VEYRA_ENDED)||
                             (!nativeVeyraStarted_ && veyraClock_.elapsed()>25000);
                         if(broken){
                             const bool strict=!live &&
@@ -207,7 +208,9 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                                 ?QStringLiteral("No responde la API de estado de Veyra.")
                                 :snap.failed||snap.transport==NOVA_VEYRA_FAILED
                                     ?QStringLiteral("El motor Veyra informó un fallo GPU/decodificación.")
-                                    :QStringLiteral("Veyra no mostró fotogramas en 25 segundos.");
+                                    :publicLiveBeta && snap.transport==NOVA_VEYRA_ENDED
+                                        ?QStringLiteral("Veyra cerró el directo; recuperando TV con MPV.")
+                                        :QStringLiteral("Veyra no mostró fotogramas en 25 segundos.");
                             nativeVeyraPoll_.stop();
                             nativeVeyra_.reset();
                             veyraState_.clear();
