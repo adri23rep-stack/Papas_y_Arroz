@@ -319,8 +319,12 @@ HomeSnapshot loadHomePreviews(const std::shared_ptr<xs::ServiceSession>& session
     out.series=listFor(out.series_entries);
     out.movies=listFor(out.movie_entries);
     if(out.series.isEmpty()&&out.movies.isEmpty()){
-        if(out.service_status.isEmpty()||out.service_status.contains(QStringLiteral("Catalogo cargado")))
-            out.service_status=QStringLiteral("XuperTV autorizó la sesión, pero no devolvió títulos de series o películas.");
+        if(!out.status.isEmpty())
+            out.service_status=out.status; // preserve a real provider error
+        else
+            out.service_status=QStringLiteral(
+                "XuperTV autorizó la sesión, pero los avances VOD están vacíos. "
+                "Abre Series o Películas > Ver todo para consultar las categorías completas.");
         out.status=out.service_status;
     }else if(!public_channels.entries.empty())
         out.status=QStringLiteral("Catálogo de XuperTV y TV pública disponibles.");
