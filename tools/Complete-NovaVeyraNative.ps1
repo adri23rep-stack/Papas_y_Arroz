@@ -47,7 +47,7 @@ function SetupMSVC {
  $vswhere=Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Microsoft Visual Studio\Installer\vswhere.exe'
  Need $vswhere
  $vsroot=(& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1)
- if($LASTEXITCODE -ne 0 -or -not $vsroot){
+ if(-not $vsroot){
    $installed=(& $vswhere -latest -products '*' -property installationPath | Select-Object -First 1)
    if($installed){
      throw "Visual Studio found at $installed but C++ Desktop MSVC x64 tools are missing. Use Visual Studio Installer > Modify > Desktop development with C++."
