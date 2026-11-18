@@ -56,7 +56,9 @@ Item {
         text: rail.demo ? "No hay video de prueba en esta instalación." :
               rail.sectionId === -1
             ? "Tus episodios pendientes aparecerán aquí cuando tengas progreso guardado."
-            : novaHome.loading ? "Cargando catálogo..." : "No hay contenido en esta sección."
+            : novaHome.loading ? "Conectando al catálogo..."
+            : novaHome.previewsLoading ? "Cargando portadas en segundo plano. Pulsa Ver todo para navegar."
+            : "No hay contenido en esta sección."
         color: "#85848F"
         font.family: "Segoe UI"
         font.pixelSize: 14
