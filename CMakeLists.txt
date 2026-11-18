@@ -9,6 +9,23 @@ find_package(PkgConfig REQUIRED)
 find_package(SDL2 REQUIRED CONFIG COMPONENTS SDL2 SDL2main)
 pkg_check_modules(SDL2_TTF REQUIRED IMPORTED_TARGET SDL2_ttf)
 pkg_check_modules(MPV REQUIRED IMPORTED_TARGET mpv)
+# On newer MSYS2 libmpv builds, mpv.pc may reference an optional Lua 5.1
+# pkg-config dependency with a mismatched version. That makes the imported
+# pkg-config target silently lose its linker libraries even though mpv/client.h
+# and the actual Windows import library are installed. Never ship a Nova EXE
+# that cannot link the real mpv_* API calls.
+set(NOVA_MPV_LINK PkgConfig::MPV)
+if(WIN32 AND MINGW)
+  find_library(NOVA_MPV_IMPORT_LIBRARY
+    NAMES mpv mpv-2 libmpv-2
+    HINTS
+      "C:/msys64/ucrt64/lib"
+      "$ENV{MINGW_PREFIX}/lib"
+      "$ENV{MSYSTEM_PREFIX}/lib"
+    REQUIRED)
+  set(NOVA_MPV_LINK "${NOVA_MPV_IMPORT_LIBRARY}")
+  message(STATUS "Using native Windows libmpv import library: ${NOVA_MPV_IMPORT_LIBRARY}")
+endif()
 if(WIN32)
   # Native engine pilot: link FFmpeg directly, rather than depending on mpv's
   # audio/video playback and intermediate OpenGL-to-SDL image copies.
@@ -108,7 +125,7 @@ target_link_libraries(XuperTVDesktop PRIVATE
   $<$<TARGET_EXISTS:SDL2::SDL2main>:SDL2::SDL2main>
   SDL2::SDL2
   PkgConfig::SDL2_TTF
-  PkgConfig::MPV
+  ${NOVA_MPV_LINK}
   PkgConfig::CURL
   PkgConfig::WEBP
   PNG::PNG
@@ -337,7 +354,7 @@ if(WIN32)
   target_include_directories(XuperTVNovaQt PRIVATE include include/vendor)
   target_link_libraries(XuperTVNovaQt PRIVATE
     Qt6::Quick Qt6::Concurrent SDL2::SDL2
-    PkgConfig::CURL PkgConfig::MPV PkgConfig::QRENCODE
+    PkgConfig::CURL ${NOVA_MPV_LINK} PkgConfig::QRENCODE
     ${MBEDCRYPTO_LIBRARY}
     ws2_32 bcrypt crypt32 shell32 ole32 user32
   )
