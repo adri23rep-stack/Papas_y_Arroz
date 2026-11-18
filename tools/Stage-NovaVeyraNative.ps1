@@ -183,7 +183,9 @@ Copy-Item -LiteralPath (Join-Path $source 'THIRD_PARTY_NOTICES.md') -Destination
 # from the user's own licensed portable, never personal ini/json/cache data.
 $extensions=@('.dll','.bin','.dat','.model','.onnx','.pak','.weights')
 $runtimeCount=0
-foreach($relative in @('runtime\experimental','runtime_local\nvidia')){
+# VFG also searches runtime/nvidia-vfg (sibling of experimental).
+# Carry only the user's existing licensed binary runtime, preserving paths.
+foreach($relative in @('runtime\experimental','runtime\nvidia-vfg','runtime_local\nvidia')){
  $runtimeFolder=Join-Path $veyra $relative
  if(-not(Test-Path -LiteralPath $runtimeFolder -PathType Container)){continue}
  foreach($item in (Get-ChildItem -LiteralPath $runtimeFolder -File -Recurse)){
@@ -195,6 +197,34 @@ foreach($relative in @('runtime\experimental','runtime_local\nvidia')){
   Copy-Item -LiteralPath $item.FullName -Destination $dest
   ++$runtimeCount
  }
+}
+# VFG SDK runtime is separate from NGX/DLSS. Distinguish an actually
+# complete provider directory from arbitrary NVIDIA DLLs in the package.
+$runtimeRoot=if(Test-Path -LiteralPath (Join-Path $out 'runtime\experimental') -PathType Container){
+ Join-Path $out 'runtime\experimental'
+}else{
+ Join-Path $out 'runtime_local\nvidia'
+}
+$vfgCandidates=@(
+ (Join-Path $runtimeRoot 'vfg'),
+ (Join-Path (Split-Path -Parent $runtimeRoot) 'nvidia-vfg'),
+ $runtimeRoot
+)
+$vfgRequired=@('NVVideoEffects.dll','NVCVImage.dll','nvVFXVideoFrameGeneration.dll')
+$vfgReady=$false
+foreach($candidate in $vfgCandidates){
+ $found=0
+ foreach($name in $vfgRequired){
+   if(Test-Path -LiteralPath (Join-Path $candidate $name) -PathType Leaf){++$found}
+ }
+ if($found -eq $vfgRequired.Count){
+   Write-Output "NVIDIA VFX provider runtime complete: $candidate"
+   $vfgReady=$true
+   break
+ }
+}
+if(-not $vfgReady){
+ Write-Warning 'NVIDIA-VFG runtime not found. Official Video Effects SDK 1.3 provider binaries (NVVideoEffects.dll, NVCVImage.dll, nvVFXVideoFrameGeneration.dll) must exist together in the Veyra runtime folder. DLSS and Optical Flow SDK alone do not provide these.'
 }
 if($runtimeCount -eq 0){
  Write-Warning 'No user-provided NVIDIA runtime models staged; decoding may work but DLSS/NR/FG providers will be unavailable.'
