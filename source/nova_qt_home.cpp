@@ -11,6 +11,7 @@
 #include <QBuffer>
 #include <QDir>
 #include <QFileInfo>
+#include <QSaveFile>
 #include <curl/curl.h>
 #include <cstdio>
 #include <sstream>
@@ -137,8 +138,14 @@ PublicPlaylistResult publicSpanishPlaylist(){
         if(rc==CURLE_OK&&code==200){
             result.catalog=parsePublicPlaylist(data);
             if(!result.catalog.entries.empty()){
-                std::ofstream cache(kPublicPlaylistCache,std::ios::binary|std::ios::trunc);
-                if(cache)cache.write(data.data(),static_cast<std::streamsize>(data.size()));
+                // A partial download/write must never erase the previous
+                // known-good public IPTV playlist.
+                QSaveFile cache(QString::fromLatin1(kPublicPlaylistCache));
+                if(cache.open(QIODevice::WriteOnly)){
+                    const auto bytes=cache.write(data.data(),static_cast<qint64>(data.size()));
+                    if(bytes==static_cast<qint64>(data.size()))cache.commit();
+                    else cache.cancelWriting();
+                }
                 return result;
             }
         }
