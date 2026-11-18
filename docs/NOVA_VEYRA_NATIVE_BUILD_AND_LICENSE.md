@@ -166,6 +166,38 @@ con GPU Nvidia sobre archivo MP4 y medición de cuadros.
 Un `Nova` compilado por MinGW y los tests del extractor no certifican
 que el motor Veyra GPU esté funcionando.
 
+## Catalogo completo de XuperTV en la Alpha separada
+
+La Alpha Veyra deliberadamente NO incluye `service.json`,
+`device_state.json` ni sesiones privadas de la instalación original.
+`NovaQtHome::loadHome()` llama a `service_bootstrap("service.json")`
+y, si no hay sesión autorizada, muestra la lista pública IPTV-org:
+es normal que solo aparezca TV. Las secciones de series/películas
+dependen de `service_root()` y de permisos reales del proveedor.
+
+La rama incluye una herramienta de importación **local y opcional**
+para quienes ya tienen el catálogo completo configurado en otra
+instalación Windows de Nova. No se empaquetan secretos ni se toca main:
+
+```powershell
+$repo="$env:USERPROFILE\NovaVeyra-Alpha1-Fuente"
+git -C $repo pull --ff-only
+& "$repo\tools\Use-NovaVeyraCatalog.ps1"
+```
+
+El selector pide el archivo **service.json de la instalación existente**.
+La herramienta valida el formato sin imprimir credenciales, copia
+solo `service.json` y, si existe, `device_state.json` a la Alpha
+más reciente. Respalda los archivos previos de la Alpha antes de
+reemplazarlos. No cambia nada en el origen, no envía archivos, no
+necesita recompilar y puede usarse con `-CheckOnly` o `-WhatIf`.
+Después ejecuta `Start-NovaVeyraNative.ps1`.
+
+Importar configuración NO concede autorización: si el proveedor
+rechaza el registro o no ofrece secciones de películas/series,
+la prueba seguirá mostrando la TV pública. En ese caso se debe
+diagnosticar la respuesta de servicio sin publicar los identificadores.
+
 ## Nueva prueba sostenida NVIDIA-VFG (RTX 3060)
 
 La compilación con CUDA 13.5 ya consiguió activar la ruta experimental Ampere SM86
