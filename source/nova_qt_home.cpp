@@ -270,8 +270,13 @@ HomeSnapshot loadHomePreviews(const std::shared_ptr<xs::ServiceSession>& session
     HomeSnapshot out;
     out.session=session;
     out.root=root;
-    out.tv_entries=std::move(initial_tv);
     out.service_connected=true;
+    // Fetch provider channels first; a 1000-channel public fallback must not
+    // exhaust the provider rail's limit before we inspect its own categories.
+    xs::Catalog public_channels;
+    for(auto& e:initial_tv)
+        if(e.program_type=="public-live")
+            public_channels.entries.push_back(std::move(e));
     // Authorized M3U playlists can be returned directly as Media entries;
     // don't mistake them for an empty live service just because there are no
     // column/category entries.
@@ -309,7 +314,7 @@ HomeSnapshot loadHomePreviews(const std::shared_ptr<xs::ServiceSession>& session
             if(page.ok)addAssets(page.catalog,type,dest,60);
         }
     }
-    // Public channels were already inserted into this snapshot.
+    appendPublicChannels(out,public_channels);
     out.channels=tvPreview(out.tv_entries);
     out.series=listFor(out.series_entries);
     out.movies=listFor(out.movie_entries);
@@ -317,7 +322,7 @@ HomeSnapshot loadHomePreviews(const std::shared_ptr<xs::ServiceSession>& session
         if(out.service_status.isEmpty()||out.service_status.contains(QStringLiteral("Catalogo cargado")))
             out.service_status=QStringLiteral("XuperTV autorizó la sesión, pero no devolvió títulos de series o películas.");
         out.status=out.service_status;
-    }else if(!public_tv.catalog.entries.empty())
+    }else if(!public_channels.entries.empty())
         out.status=QStringLiteral("Catálogo de XuperTV y TV pública disponibles.");
     else out.status=QStringLiteral("Catálogo de XuperTV conectado.");
     return out;
