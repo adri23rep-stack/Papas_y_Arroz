@@ -10,6 +10,7 @@ import sys
 import tempfile
 import hashlib
 import threading
+import uuid
 from pathlib import Path
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -19,6 +20,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher,modes
 from cryptography.hazmat.primitives.padding import PKCS7
 from cryptography.hazmat.decrepit.ciphers.algorithms import TripleDES
 
+SYNTHETIC_CLIENT_META_SUFFIX='lab-synthetic-meta-suffix-not-real-12345'
 KEY=bytes(range(24))
 def prepared_password(password):
     pad=PKCS7(128).padder();raw=pad.update(password.encode())+pad.finalize()
@@ -45,6 +47,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             body=self.rfile.read(int(self.headers['Content-Length'])).decode()
             request=decrypt(body)
             assert self.headers['apk']=='test.app'
+            if self.mode.startswith('bootstrap'):
+                trace=self.headers.get('X-Request-Trace','')
+                meta=self.headers.get('X-Client-Meta','')
+                assert str(uuid.UUID(trace))==trace
+                assert uuid.UUID(trace).version==4
+                assert meta==hashlib.md5((trace+SYNTHETIC_CLIENT_META_SUFFIX).encode()).hexdigest()
+            else:
+                assert self.headers.get('X-Request-Trace') is None
+                assert self.headers.get('X-Client-Meta') is None
             if self.mode.startswith('bootstrap'):
                 assert 'password' not in request and 'userName' not in request
                 assert request['apkVersion']=='43404' and self.headers['apkVer']=='43404'
@@ -194,7 +205,9 @@ def main(binary,app=None):
                 assert Handler.posts==1,(mode,Handler.posts)
                 assert Handler.gets==(1 if mode=='success' else 0),(mode,Handler.gets)
                 print('local TLS test:',mode,'passed')
-            config['apk_version']='43404';path.write_text(json.dumps(config))
+            config['apk_version']='43404'
+            config['client_meta_suffix']=SYNTHETIC_CLIENT_META_SUFFIX
+            path.write_text(json.dumps(config))
             for mode in ['bootstrap_success','bootstrap_success','bootstrap_version','bootstrap_denied','bootstrap_incomplete','bootstrap_existing']:
                 Handler.mode=mode;Handler.posts=0;Handler.gets=0;Handler.failures=[]
                 subprocess.run([str(Path(binary).resolve()),str(path),mode],check=True,timeout=15)
