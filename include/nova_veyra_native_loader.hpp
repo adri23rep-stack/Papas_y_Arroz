@@ -94,6 +94,14 @@ public:
         requested_=next;
         return true;
     }
+    bool fgBackend(uint32_t backend) {
+        if(!ready() || backend>NOVA_VEYRA_FG_AMD_FRC)return false;
+        auto next=requested_;
+        next.fg_backend=backend;
+        if(settings_(engine_,&next)==0)return false;
+        requested_=next;
+        return true;
+    }
     bool multiplier(uint32_t value) {
         if(!ready())return false;
         auto next=requested_;
