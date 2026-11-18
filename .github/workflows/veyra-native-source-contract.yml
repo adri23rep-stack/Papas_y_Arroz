@@ -49,4 +49,9 @@ jobs:
           if (-not (Test-Path -LiteralPath $obj -PathType Leaf) -or (Get-Item -LiteralPath $obj).Length -lt 4096) {
             throw 'Native adapter object file not generated'
           }
-          Write-Host 'MSVC compiled real NovaVeyraNative.obj from original Veyra headers. Real engine linking requires SDKs; no GPU playback claim.'
+          $smokeObj = Join-Path $env:RUNNER_TEMP 'NovaVeyraNativeSmoke.obj'
+          & cl.exe /nologo /std:c++20 /c /Fo"$smokeObj" /EHsc /utf-8 /W3 /DNOMINMAX /DWIN32_LEAN_AND_MEAN integrations\veyra\native\NovaVeyraNativeSmoke.cpp
+          if ($LASTEXITCODE -ne 0 -or -not(Test-Path -LiteralPath $smokeObj -PathType Leaf)) {
+            throw 'Win32 GPU frame-count smoke probe does not compile against the native ABI'
+          }
+          Write-Host 'MSVC compiled native adapter and real frame-count smoke tester. GPU linking and hardware playback remain untested.'
