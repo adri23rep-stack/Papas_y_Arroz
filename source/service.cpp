@@ -432,7 +432,7 @@ static bool save_device_state_atomically(
     {
         std::ofstream saved(tmp,std::ios::binary|std::ios::trunc);
         if(!saved)return false;
-        saved<<state.dump(2)<<'\\n';
+        saved<<state.dump(2)<<'\n';
         saved.flush();
         if(!saved){saved.close();std::remove(tmp.c_str());return false;}
     }
