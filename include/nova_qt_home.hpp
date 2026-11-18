@@ -34,6 +34,7 @@ class NovaQtHome : public QObject {
     Q_PROPERTY(QString pageTitle READ pageTitle NOTIFY changed)
     Q_PROPERTY(QString status READ status NOTIFY changed)
     Q_PROPERTY(bool loading READ loading NOTIFY changed)
+    Q_PROPERTY(bool previewsLoading READ previewsLoading NOTIFY changed)
     Q_PROPERTY(bool browsing READ browsing NOTIFY changed)
     Q_PROPERTY(int selectedItem READ selectedItem NOTIFY changed)
     Q_PROPERTY(int selectedSection READ selectedSection NOTIFY changed)
@@ -78,6 +79,7 @@ public:
     QString pageTitle() const{return page_title_;}
     QString status() const{return status_;}
     bool loading() const{return loading_;}
+    bool previewsLoading() const{return previews_loading_;}
     bool browsing() const{return browsing_;}
     int selectedItem() const{return selected_item_;}
     int selectedSection() const{return selected_section_;}
@@ -167,6 +169,8 @@ private:
     QString page_title_,status_=QStringLiteral("Preparando catálogo...");
     QString address_,pin_,qr_;
     bool loading_=false,browsing_=false,remote_ready_=false,remote_connected_=false;
+    bool previews_loading_=false;
+    quint64 source_request_epoch_=0;
     bool catalog_connected_=false,service_connected_=false;
     QString service_status_;
     bool featured_info_visible_=false;
