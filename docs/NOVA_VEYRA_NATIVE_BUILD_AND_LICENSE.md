@@ -12,7 +12,7 @@ Actions `veyra-native-source-contract.yml`.
 
 - **Hecho:** licencia GPLv3 del proyecto experimental en `LICENSE`,
   licencia MIT upstream conservada en `LICENSE.MIT-UPSTREAM`.
-- **Hecho:** contrato C ABI versión 3; compilación de tipos contra
+- **Hecho:** contrato C ABI versión 4; compilación de tipos contra
   `EngineController.h`; controles de pausa/seek/velocidad/volumen,
   cambio de audio, NR/SR/FG/HDR y estado devuelto por el motor original.
 - **Hecho:** Nova compila SIN la DLL y conserva MPV; al proporcionar
@@ -81,7 +81,7 @@ $env:NOVA_VEYRA_NATIVE_DLL = "C:\RUTA_REAL\nova_veyra_native.dll"
 ```
 
 Eso **no funciona** con `veyra_qml_ui.exe`: no es la nueva DLL nativa.
-La DLL tiene que exportar `nova_veyra_abi() == 3` y todas las funciones
+La DLL tiene que exportar `nova_veyra_abi() == 4` y todas las funciones
 de `NovaVeyraApi.h`.
 
 ## Licencia
@@ -165,3 +165,40 @@ dependencias, generar `nova_veyra_native.dll`, y efectuar un smoke
 con GPU Nvidia sobre archivo MP4 y medición de cuadros.
 Un `Nova` compilado por MinGW y los tests del extractor no certifican
 que el motor Veyra GPU esté funcionando.
+
+## Primer smoke GPU Alpha 1 (solo en tu PC)
+
+El módulo nativo compila también `nova_veyra_native_smoke.exe`: NO es el
+antiguo fixture de mentira. Crea un HWND real y usa el
+`EngineController` original con un archivo local `test.mp4`.
+La prueba básica requiere que Veyra reporte motor activo y al menos
+10 cuadros de video reales; la opcional exige además que el backend
+NVIDIA-VFG reporte cuadros generados (no basta con pulsar 2x).
+
+Desde la carpeta de la Alpha empaquetada:
+
+```powershell
+.\Test-NovaVeyraNative.ps1
+.\Test-NovaVeyraNative.ps1 -Vfg2x
+```
+
+La RTX 3060 no debe tratarse como una GPU con **DLSS Frame Generation**
+compatible. Por eso se selecciona NVIDIA-VFG (ID 4) para esta Alpha,
+no DLSS FG. La compatibilidad de VFG depende de los modelos/runtime
+instalados; se confirma únicamente con `fg_active` y
+`generated_frames > 0`.
+
+### Shader paths
+
+`VeyraShaders.cmake` escribe a
+`CMAKE_CURRENT_BINARY_DIR/shaders`, dentro de
+`out/nova-native-gpu/veyra-original/shaders` cuando el código se
+compila como subproyecto. `EngineController` usa
+`CMAKE_BINARY_DIR/shaders`; la integración copia después de compilar
+los DXIL originales a `out/nova-native-gpu/shaders` y comprueba
+`ScaleBlit.dxil`, `PresentBlit_vs.dxil` y `PresentBlit_ps.dxil`.
+
+Una prueba de GitHub Actions solo valida el adaptador MSVC y el
+empaquetado con componentes sintéticos; no sustituye el render D3D12
+real en la tarjeta del usuario. No incluir SDK/modelos NVIDIA en
+artifacts públicos.
