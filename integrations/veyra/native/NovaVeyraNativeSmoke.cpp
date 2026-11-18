@@ -158,6 +158,10 @@ int wmain(int argc,wchar_t** argv){
                 if(submitted>prevSubmitted){
                     const double gap=asMilliseconds(now-lastPresent);
                     if(gap>maxPresentGapMs)maxPresentGapMs=gap;
+                    if(gap>asMilliseconds(kStall)){
+                        std::wcerr<<L"FAIL: A DXGI Present gap exceeded 1500ms.\n";
+                        failed=true;break;
+                    }
                     lastPresent=now;
                     prevSubmitted=submitted;
                 }else if(now-lastPresent>kStall){
