@@ -148,6 +148,7 @@ foreach($name in $allowedFolders){
 }
 Copy-Item -LiteralPath $dll -Destination (Join-Path $out 'nova_veyra_native.dll')
 Copy-Item -LiteralPath $smoke -Destination (Join-Path $out 'nova_veyra_native_smoke.exe')
+Copy-Item -LiteralPath (Join-Path $repo 'tools\Test-NovaVeyraNative.ps1') -Destination (Join-Path $out 'Test-NovaVeyraNative.ps1')
 $targetShaders=Join-Path $out 'shaders'
 if(-not(Test-Path -LiteralPath $targetShaders)){New-Item -ItemType Directory -Path $targetShaders | Out-Null}
 foreach($shader in $requiredShaders){
