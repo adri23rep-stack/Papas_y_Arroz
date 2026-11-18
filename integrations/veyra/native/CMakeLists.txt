@@ -51,7 +51,8 @@ add_custom_command(TARGET nova_veyra_native POST_BUILD
   VERBATIM)
 # A separate real-hardware check: unlike the previous fake-engine fixture,
 # this executable imports our Veyra MSVC DLL and calls its REAL native engine.
-# It only reports PASS after 10 actual frames, or verified VFG 2x frames.
+# It reports PASS after 10 decoded frames (basic), or after 6 seconds
+# of sustained NVIDIA-VFG generated DXGI Present submissions (not scanout).
 add_executable(nova_veyra_native_smoke NovaVeyraNativeSmoke.cpp)
 target_compile_features(nova_veyra_native_smoke PRIVATE cxx_std_20)
 target_include_directories(nova_veyra_native_smoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
