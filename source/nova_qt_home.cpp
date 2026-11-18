@@ -597,8 +597,40 @@ void NovaQtHome::refresh(){
         xs::RemoteServer::shared().index_assets(movie_entries_);
         status_=snap.status;
         loading_=false;
+        previews_loading_=bool(session_)&&!root_.entries.empty();
         emit changed();
         watcher->deleteLater();
+        if(!previews_loading_)return;
+        // The full section hierarchy is usable immediately. Only optional
+        // home-page tile previews are populated in this second worker.
+        const auto expected_session=session_;
+        const auto root=root_;
+        const auto initial_channels=channel_entries_;
+        auto* preview=new QFutureWatcher<HomeSnapshot>(this);
+        connect(preview,&QFutureWatcher<HomeSnapshot>::finished,this,
+                [this,preview,expected_session](){
+            const auto next=preview->result();
+            preview->deleteLater();
+            if(session_!=expected_session)return; // refresh superseded this result
+            previews_loading_=false;
+            channels_=next.channels;
+            series_=next.series;
+            movies_=next.movies;
+            channel_entries_=next.tv_entries;
+            series_entries_=next.series_entries;
+            movie_entries_=next.movie_entries;
+            updateFeatured();
+            refreshContinue();
+            xs::RemoteServer::shared().index_assets(series_entries_);
+            xs::RemoteServer::shared().index_assets(movie_entries_);
+            if(!browsing_ && !player_.playing() && !loading_)
+                status_=next.status;
+            emit changed();
+        });
+        preview->setFuture(QtConcurrent::run(
+            [expected_session,root,initial_channels](){
+                return loadHomePreviews(expected_session,root,initial_channels);
+            }));
     });
     watcher->setFuture(QtConcurrent::run(&loadHome));
 }
