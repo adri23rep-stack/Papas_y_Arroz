@@ -109,7 +109,7 @@ New-Item -ItemType Directory -Path $out -ErrorAction Stop | Out-Null
 $allowedFiles=@(
  'XuperTVNovaQt.exe','XuperTVDesktop.exe','XuperNativeProbe.exe',
  'XuperNativePlayer.exe','qt.conf','test.mp4','font.ttf','cacert.pem',
- 'catalog.m3u','service.template.json','LICENSE','LICENSE.MIT-UPSTREAM',
+ 'service.template.json','LICENSE','LICENSE.MIT-UPSTREAM',
  'LICENSE.nlohmann-json','COPYRIGHT.mpv','DEPENDENCIAS.md'
 )
 foreach($name in $allowedFiles){
