@@ -65,7 +65,25 @@ jobs:
           & ./tools/Complete-NovaVeyraNative.ps1 -OpticalFlowZip $zip -Workspace (Join-Path $fixture 'check-only') -CheckOnly
           if($LASTEXITCODE -and $LASTEXITCODE -ne 0){ throw 'Native compiler preflight failed' }
           if(Test-Path (Join-Path $fixture 'check-only')){ throw 'CheckOnly unexpectedly wrote to disk' }
-          Write-Host 'PASS: Windows MSVC and native CMake preflight, with synthetic SDK ZIP'
+          # Catch regressions like --x-install-root=(Join-Path ...), which
+          # is passed to the native process incorrectly and produces
+          # almost_canonical("") without installing FFmpeg.
+          $complete=Get-Content -LiteralPath 'tools/Complete-NovaVeyraNative.ps1' -Raw
+          if($complete -match '--x-install-root=\\?\\?\\?\\?\\?') { throw 'Impossible option encoding' }
+          if($complete -match '--x-install-root=\\(' -or $complete -match '--x-install-root=\\(Join-Path'){
+            throw 'vcpkg install root must be fully evaluated before native process invocation'
+          }
+          if($complete -notmatch '\$vcpkgArgs=@\(' -or $complete -notmatch '--x-install-root=\$installRoot'){
+            throw 'vcpkg invocation does not use one evaluated install root argument'
+          }
+          $rootWithSpaces=Join-Path $env:RUNNER_TEMP 'Veyra dependency prefix with spaces'
+          $installRoot=Join-Path $rootWithSpaces 'installed'
+          $vcpkgArgs=@('install','ffmpeg[avcodec,avformat,swresample,swscale]:x64-windows',"--x-install-root=$installRoot")
+          if($vcpkgArgs.Count -ne 3 -or $vcpkgArgs[2] -ne "--x-install-root=$installRoot" -or
+             $vcpkgArgs[2] -match '[()]'){
+            throw 'Incorrect PowerShell argument expansion for a Windows dependency path'
+          }
+          Write-Host 'PASS: Windows MSVC, SDK preflight and FFmpeg vcpkg native argument building'
 
       - name: Validate native GPU staging without vendor binaries
         shell: pwsh
