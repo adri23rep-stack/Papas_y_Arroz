@@ -1,0 +1,113 @@
+name: Nova Focuz Blindado | Instalador Windows
+
+on:
+  push:
+    branches:
+      - fix/focuz-client-meta-lab
+    paths:
+      - ".github/workflows/nova-focuz-installer.yml"
+      - "source/**"
+      - "include/**"
+      - "tools/**"
+      - "ui/novaqt/**"
+      - "packaging/windows/NovaFocuzBlindado.iss"
+      - "CMakeLists.txt"
+      - "tests/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-installer:
+    name: Compilar, verificar y empaquetar Setup EXE
+    runs-on: windows-latest
+    timeout-minutes: 65
+    steps:
+      - name: Obtener rama aislada
+        uses: actions/checkout@v4
+
+      - name: Preparar MSYS2 UCRT64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-SDL2_ttf
+            mingw-w64-ucrt-x86_64-sdl3
+            mingw-w64-ucrt-x86_64-mpv
+            mingw-w64-ucrt-x86_64-ffmpeg
+            mingw-w64-ucrt-x86_64-curl
+            mingw-w64-ucrt-x86_64-mbedtls
+            mingw-w64-ucrt-x86_64-libpng
+            mingw-w64-ucrt-x86_64-libjpeg-turbo
+            mingw-w64-ucrt-x86_64-libwebp
+            mingw-w64-ucrt-x86_64-ntldd
+            mingw-w64-ucrt-x86_64-qrencode
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-declarative
+            mingw-w64-ucrt-x86_64-qt6-imageformats
+
+      - name: Compilar Nova y desplegar dependencias Qt
+        shell: msys2 {0}
+        env:
+          NOVA_CLEAN: "1"
+        run: |
+          set -euo pipefail
+          bash tools/compilar-nova-ucrt64.sh
+          test -s dist/Xuper-TV-NovaQt-Local/XuperTVNovaQt.exe
+          test -s dist/Xuper-TV-NovaQt-Local/cacert.pem
+          test -s dist/Xuper-TV-NovaQt-Local/qt.conf
+          test -s dist/Xuper-TV-NovaQt-Local/qml/QtQuick/qmldir
+          test ! -e dist/Xuper-TV-NovaQt-Local/service.json
+          test ! -e dist/Xuper-TV-NovaQt-Local/device_state.json
+          test ! -e dist/Xuper-TV-NovaQt-Local/pairing.dat
+          echo "Nova Qt portable lista. Sin configuracion privada."
+
+      - name: Compilar instalador de Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $iscc='C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if(-not (Test-Path -LiteralPath $iscc)){
+            choco install innosetup -y --no-progress --limit-output
+            if($LASTEXITCODE -ne 0){throw 'No se pudo instalar Inno Setup'}
+          }
+          if(-not(Test-Path -LiteralPath $iscc)){throw 'No se encontro ISCC.exe'}
+          $portable=Join-Path $env:GITHUB_WORKSPACE 'dist\Xuper-TV-NovaQt-Local'
+          $output=Join-Path $env:GITHUB_WORKSPACE 'dist\instalador'
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+          & $iscc "/DPortableDir=$portable" "/O$output" "packaging\windows\NovaFocuzBlindado.iss"
+          if($LASTEXITCODE -ne 0){throw 'Inno Setup no pudo crear el instalador'}
+          $setup=Join-Path $output 'Nova-Focuz-Blindado-Setup.exe'
+          if(-not(Test-Path -LiteralPath $setup)){throw 'Falta el Setup.exe'}
+          Get-FileHash -LiteralPath $setup -Algorithm SHA256 | Format-List
+
+      - name: Prueba de instalacion sin datos personales
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $setup=Join-Path $env:GITHUB_WORKSPACE 'dist\instalador\Nova-Focuz-Blindado-Setup.exe'
+          $dest=Join-Path $env:RUNNER_TEMP 'NovaBlindadoInstalled'
+          $args=@('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$dest")
+          $process=Start-Process -FilePath $setup -ArgumentList $args -Wait -PassThru -NoNewWindow
+          if($process.ExitCode -ne 0){throw "Error instalando Setup: $($process.ExitCode)"}
+          foreach($file in @('XuperTVNovaQt.exe','qt.conf','cacert.pem','Importar-ConfigNovaLocal.ps1')){
+            if(-not(Test-Path -LiteralPath (Join-Path $dest $file) -PathType Leaf)){throw "Falta archivo instalado: $file"}
+          }
+          foreach($private in @('service.json','device_state.json','pairing.dat')){
+            if(Test-Path -LiteralPath (Join-Path $dest $private)){throw "Archivo privado no permitido en instalador: $private"}
+          }
+          Write-Host 'Instalador validado en Windows limpio (sin catalogo privado ni sesiones).'
+
+      - name: Publicar instalador descargable
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nova-Focuz-Blindado-Instalador
+          path: dist/instalador/Nova-Focuz-Blindado-Setup.exe
+          if-no-files-found: error
+          retention-days: 14
