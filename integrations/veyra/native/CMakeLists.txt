@@ -37,6 +37,18 @@ set_property(TARGET nova_veyra_native PROPERTY
   MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 target_link_libraries(nova_veyra_native PRIVATE veyra_engine)
 set_target_properties(nova_veyra_native PROPERTIES OUTPUT_NAME "nova_veyra_native")
+# Original Veyra computes shader file paths against CMAKE_BINARY_DIR.
+# But because we add it as a subdirectory, its shader tool emits DXIL in
+# CMAKE_CURRENT_BINARY_DIR = ${CMAKE_BINARY_DIR}/veyra-original/shaders.
+# Without this copy a correctly linked DLL still cannot find its shaders.
+add_dependencies(nova_veyra_native veyra_shader_scale_blit veyra_shader_present_blit)
+add_custom_command(TARGET nova_veyra_native POST_BUILD
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/shaders"
+  COMMAND "${CMAKE_COMMAND}" -E copy_directory
+      "${CMAKE_BINARY_DIR}/veyra-original/shaders"
+      "${CMAKE_BINARY_DIR}/shaders"
+  COMMENT "Stage Veyra original GPU shaders to path compiled into EngineController"
+  VERBATIM)
 # A separate real-hardware check: unlike the previous fake-engine fixture,
 # this executable imports our Veyra MSVC DLL and calls its REAL native engine.
 # It only reports PASS after 10 actual frames, or verified VFG 2x frames.
