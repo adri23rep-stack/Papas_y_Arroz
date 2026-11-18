@@ -273,7 +273,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                             // Offer only the first Alpha goal. Selection is a
                             // request, not proof the GPU/runtime accepted FG.
                             multipliers.push_back(QVariantMap{{"id",QStringLiteral("2")},
-                                                               {"label",QStringLiteral("2x · probar")}});
+                                                               {"label",QStringLiteral("2x")}});
                         }else if(activeBackend==NOVA_VEYRA_FG_DLSS && snap.fg_max_generated>0){
                             for(unsigned n:{2u,3u,4u,6u})
                                 if(n<=snap.fg_max_generated+1)
