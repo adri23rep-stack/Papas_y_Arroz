@@ -69,8 +69,7 @@ jobs:
           # is passed to the native process incorrectly and produces
           # almost_canonical("") without installing FFmpeg.
           $complete=Get-Content -LiteralPath 'tools/Complete-NovaVeyraNative.ps1' -Raw
-          if($complete -match '--x-install-root=\\?\\?\\?\\?\\?') { throw 'Impossible option encoding' }
-          if($complete -match '--x-install-root=\\(' -or $complete -match '--x-install-root=\\(Join-Path'){
+          if($complete -match '--x-install-root=\('){
             throw 'vcpkg install root must be fully evaluated before native process invocation'
           }
           if($complete -notmatch '\$vcpkgArgs=@\(' -or $complete -notmatch '--x-install-root=\$installRoot'){
