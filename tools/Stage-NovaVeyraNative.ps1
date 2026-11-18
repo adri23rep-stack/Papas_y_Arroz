@@ -27,7 +27,7 @@ $source=[IO.Path]::GetFullPath($VeyraSource).TrimEnd('\')
 $ffmpeg=[IO.Path]::GetFullPath($FfmpegRoot).TrimEnd('\')
 $out=[IO.Path]::GetFullPath($Output).TrimEnd('\')
 $dll=Join-Path $build 'nova_veyra_native.dll'
-$shaders=Join-Path $build 'veyra-original\shaders'
+$shaders=Join-Path $build 'shaders'
 $expected=@(
  (Join-Path $nova 'XuperTVNovaQt.exe'), $dll,
  (Join-Path $shaders 'ScaleBlit.dxil'),
