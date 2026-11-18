@@ -770,10 +770,17 @@ void NovaQtHome::playEntry(const xs::Entry& e){
         xs::SourceResult source;
         source.ok=xs::valid_source(e.source);
         source.source=e.source;
-        if(source.ok)player_.play(source,QString::fromStdString(e.title),
-                                  e.program_type=="public-live",0.0,
-                                  e.program_type=="public-live");
-        else{status_=QStringLiteral("Esta lista local no contiene una fuente válida.");emit changed();}
+        if(source.ok){
+            player_.play(source,QString::fromStdString(e.title),
+                         e.program_type=="public-live",0.0,
+                         e.program_type=="public-live");
+            status_=player_.notice();
+            if(status_.isEmpty())
+                status_=player_.playing()
+                    ?QStringLiteral("Abriendo canal público...")
+                    :QStringLiteral("El reproductor no pudo abrir este canal.");
+            emit changed();
+        }else{status_=QStringLiteral("Esta lista local no contiene una fuente válida.");emit changed();}
         return;
     }
     if(!session_){status_=QStringLiteral("No existe una sesión de video.");emit changed();return;}
@@ -781,20 +788,46 @@ void NovaQtHome::playEntry(const xs::Entry& e){
     status_=QStringLiteral("Solicitando fuente de reproducción...");
     emit changed();
     const auto session=session_;
+    const quint64 request_epoch=++source_request_epoch_;
     auto* watcher=new QFutureWatcher<xs::SourceResult>(this);
-    connect(watcher,&QFutureWatcher<xs::SourceResult>::finished,this,[this,watcher,e](){
+    QPointer<QFutureWatcher<xs::SourceResult>> pending=watcher;
+    connect(watcher,&QFutureWatcher<xs::SourceResult>::finished,this,
+            [this,watcher,e,request_epoch](){
         const auto source=watcher->result();
+        watcher->deleteLater();
+        // An expired request cannot unexpectedly open a video after
+        // the user has already returned to the catalog or retried.
+        if(request_epoch!=source_request_epoch_)return;
         loading_=false;
-        if(source.ok&&xs::valid_source(source.source))
+        if(source.ok&&xs::valid_source(source.source)){
             player_.play(source,QString::fromStdString(e.title),
                 e.kind==xs::EntryKind::Channel,
                 e.kind==xs::EntryKind::Episode
                     ?playback_history_.position(e.content_id):0.0);
-        else
-            status_=QString::fromStdString(source.status.empty()?
-                "El servicio no devolvió un video reproducible.":source.status);
+            // Previously we kept displaying "Solicitando fuente..." even when
+            // the request had already returned successfully or MPV failed.
+            status_=player_.notice();
+            if(status_.isEmpty())
+                status_=player_.playing()
+                    ?QStringLiteral("Reproductor inicializando...")
+                    :QStringLiteral("La fuente llegó, pero el reproductor no inició.");
+        }else{
+            status_=QString::fromStdString(source.status.empty()
+                ?"XuperTV no entregó una fuente reproducible.":source.status);
+        }
         emit changed();
-        watcher->deleteLater();
+    });
+    // A provider source may require several chained HTTP requests. Do not
+    // freeze the home screen indefinitely; late answers are safely ignored.
+    QTimer::singleShot(45000,this,[this,pending,request_epoch](){
+        if(request_epoch!=source_request_epoch_ || !pending ||
+           pending->isFinished())return;
+        ++source_request_epoch_;
+        loading_=false;
+        status_=QStringLiteral(
+            "XuperTV no entregó la fuente en 45 s. Puedes reintentar; "
+            "esto ocurre ANTES de que MPV o Veyra reciban el video.");
+        emit changed();
     });
     watcher->setFuture(QtConcurrent::run([session,e](){
         return xs::service_source_remote(session,e,0);
