@@ -53,6 +53,23 @@ foreach($parent in @($nova,$veyra,$source,$build,$ffmpeg)){
     throw 'Output may not be inside, contain or overwrite any input folder.'
  }
 }
+# Do not stage a random DLL with a plausible filename. The source-linked
+# Veyra native module must export the whole stable ABI expected by Nova.
+$exportText=(& dumpbin.exe /EXPORTS $dll 2>&1 | Out-String)
+if($LASTEXITCODE -ne 0){throw "Unable to inspect native Veyra DLL exports: $dll"}
+$requiredExports=@(
+ 'nova_veyra_abi','nova_veyra_create','nova_veyra_destroy',
+ 'nova_veyra_open','nova_veyra_stop','nova_veyra_pause',
+ 'nova_veyra_seek','nova_veyra_volume','nova_veyra_rate',
+ 'nova_veyra_settings','nova_veyra_snapshot',
+ 'nova_veyra_audio_count','nova_veyra_audio_at','nova_veyra_select_audio'
+)
+foreach($name in $requiredExports){
+ $rx='(?m)^\s*\d+\s+[0-9a-fA-F]+\s+[0-9a-fA-F]+\s+'+[regex]::Escape($name)+'(?:\s|$)'
+ if($exportText -notmatch $rx){
+   throw "Native Veyra DLL missing required C ABI symbol: $name"
+ }
+}
 # Follow the entire PE import tree: FFmpeg DLLs themselves depend on more
 # FFmpeg/codec libraries. A direct-only check can produce a broken ZIP.
 $system='^(api-ms-win-|ext-ms-win-|kernel32\.dll$|user32\.dll$|gdi32\.dll$|advapi32\.dll$|shell32\.dll$|ole32\.dll$|oleaut32\.dll$|combase\.dll$|bcrypt\.dll$|crypt32\.dll$|version\.dll$|ntdll\.dll$|d3d11\.dll$|d3d12\.dll$|dxgi\.dll$|dxguid\.dll$|winmm\.dll$|ws2_32\.dll$|secur32\.dll$|cfgmgr32\.dll$|mfplat\.dll$|mf\.dll$|mfuuid\.dll$|mmdevapi\.dll$|avrt\.dll$|windowscodecs\.dll$|shlwapi\.dll$|setupapi\.dll$|rpcrt4\.dll$|comdlg32\.dll$)'
