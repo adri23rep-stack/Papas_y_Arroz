@@ -243,6 +243,22 @@ Set-Location $root
 & (Join-Path $root 'XuperTVNovaQt.exe')
 '@
 Set-Content -LiteralPath (Join-Path $out 'Start-NovaVeyraNative.ps1') -Value $launcher -Encoding UTF8
+# Optional live beta. Default Alpha launcher remains unchanged. The beta
+# only routes UNSIGNED public IPTV-org HTTP(S) sources through original Veyra;
+# XuperTV streams with authentication headers remain on MPV.
+$liveLauncher=@'
+$ErrorActionPreference='Stop'
+$root=$PSScriptRoot
+$env:NOVA_VEYRA_NATIVE_DLL=Join-Path $root 'nova_veyra_native.dll'
+$env:NOVA_VEYRA_NATIVE_STRICT='1'
+$env:NOVA_VEYRA_NATIVE_ALLOW_NETWORK='1'
+$env:NOVA_VEYRA_NATIVE_LIVE_BETA='1'
+Set-Location $root
+& (Join-Path $root 'XuperTVNovaQt.exe')
+'@
+Set-Content -LiteralPath (Join-Path $out 'Start-NovaVeyraLiveBeta.ps1') -Value $liveLauncher -Encoding UTF8
+Write-Output 'Optional public live stream VFG beta launcher: Start-NovaVeyraLiveBeta.ps1'
+Write-Output 'Only clean public HTTP(S) streams are attempted with Veyra. Unavailable sources use MPV.'
 Write-Output "Staged NEW experimental GPLv3 Nova + Veyra at $out"
 Write-Output 'Next run Start-NovaVeyraNative.ps1 with local test.mp4 and NVIDIA hardware; confirm real frame counts.'
 Write-Output 'Native engine and vendor asset versions MUST still be hardware-tested; staging is not GPU validation.'
