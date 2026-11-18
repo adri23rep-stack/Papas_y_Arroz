@@ -40,6 +40,40 @@ static size_t append(char* p,size_t size,size_t count,void* user) {
     if(buffer->data.size()+bytes>16*1024*1024){buffer->too_large=true;return 0;}
     buffer->data.append(p,bytes);return bytes;
 }
+// Optional compatibility metadata for a locally supplied, authorized APK.
+ // The fixed suffix belongs only in a private service.json, never in Git.
+ // A new UUID is generated per HTTP portal request; existing installations
+ // without client_meta_suffix retain their exact original headers.
+static bool client_meta_headers(const Json& config,std::string& trace_id,std::string& client_meta) {
+    const std::string suffix=text(config,"client_meta_suffix");
+    if(suffix.size()<16||suffix.size()>128||
+       std::any_of(suffix.begin(),suffix.end(),[](unsigned char ch){return ch<32||ch>126;}))
+        return false;
+    unsigned char bytes[16]{};
+#ifdef __SWITCH__
+    randomGet(bytes,sizeof(bytes));
+#else
+    std::random_device rd;
+    for(unsigned char& byte:bytes)byte=static_cast<unsigned char>(rd());
+#endif
+    bytes[6]=static_cast<unsigned char>((bytes[6]&0x0f)|0x40);
+    bytes[8]=static_cast<unsigned char>((bytes[8]&0x3f)|0x80);
+    char uuid[37]{};
+    const int length=std::snprintf(uuid,sizeof(uuid),
+        "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+        bytes[0],bytes[1],bytes[2],bytes[3],bytes[4],bytes[5],bytes[6],bytes[7],
+        bytes[8],bytes[9],bytes[10],bytes[11],bytes[12],bytes[13],bytes[14],bytes[15]);
+    if(length!=36)return false;
+    trace_id.assign(uuid,36);
+    const std::string message=trace_id+suffix;
+    unsigned char digest[16]{};
+    if(md5_digest(reinterpret_cast<const unsigned char*>(message.data()),message.size(),digest)!=0)
+        return false;
+    const char* digits="0123456789abcdef";
+    client_meta.clear();client_meta.reserve(32);
+    for(unsigned char byte:digest){client_meta+=digits[byte>>4];client_meta+=digits[byte&15];}
+    return true;
+}
 static bool request(const std::string& url,const std::string* post,const Json& config,std::string& body,std::string& error,bool follow_get=true,const std::string& ranger_id="") {
     // Only the API-selected Ranger resolver may explicitly use HTTP. Account
     // requests and subtitles retain HTTPS; resolver redirects remain disabled.
@@ -71,6 +105,16 @@ static bool request(const std::string& url,const std::string* post,const Json& c
                              {"apkVer",text(config,"apk_version")},{"spkgVer",service_device_profile(text(config,"_nova_device_profile")=="android-test",text(config,"_nova_device_profile")=="android-tv-test").http_package_version}}) {
             if(pair.second.find_first_of("\r\n")==std::string::npos)
                 headers=curl_slist_append(headers,(std::string(pair.first)+": "+pair.second).c_str());
+        }
+        // The Android portal interceptor also emits two request-local
+        // metadata headers. Keep them away from media/CDN, subtitle and
+        // unrelated HTTPS requests. Never write their values to diagnostics.
+        if(url.find("/api/portalCore/")!=std::string::npos) {
+            std::string request_trace,request_meta;
+            if(client_meta_headers(config,request_trace,request_meta)) {
+                headers=curl_slist_append(headers,("X-Request-Trace: "+request_trace).c_str());
+                headers=curl_slist_append(headers,("X-Client-Meta: "+request_meta).c_str());
+            }
         }
         curl_easy_setopt(curl,CURLOPT_POSTFIELDS,post->data());
         curl_easy_setopt(curl,CURLOPT_POSTFIELDSIZE_LARGE,static_cast<curl_off_t>(post->size()));
