@@ -149,6 +149,9 @@ foreach($name in $allowedFolders){
 Copy-Item -LiteralPath $dll -Destination (Join-Path $out 'nova_veyra_native.dll')
 Copy-Item -LiteralPath $smoke -Destination (Join-Path $out 'nova_veyra_native_smoke.exe')
 Copy-Item -LiteralPath (Join-Path $repo 'tools\Test-NovaVeyraNative.ps1') -Destination (Join-Path $out 'Test-NovaVeyraNative.ps1')
+# Users may explicitly import an existing catalog configuration locally.
+# Do NOT copy service.json or device_state.json automatically in staging.
+Copy-Item -LiteralPath (Join-Path $repo 'tools\Use-NovaVeyraCatalog.ps1') -Destination (Join-Path $out 'Use-NovaVeyraCatalog.ps1')
 $targetShaders=Join-Path $out 'shaders'
 if(-not(Test-Path -LiteralPath $targetShaders)){New-Item -ItemType Directory -Path $targetShaders | Out-Null}
 foreach($shader in $requiredShaders){
