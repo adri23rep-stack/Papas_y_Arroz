@@ -60,7 +60,12 @@ jobs:
           foreach ($rel in @('Common/NvOFBase/NvOF.h','NvOFInterface/nvOpticalFlowD3D12.h')){
             if(-not(Test-Path (Join-Path $out $rel))){throw "Unpacked SDK layout incomplete: $rel"}
           }
-          Write-Host 'PASS: syntactic and isolated NVIDIA Optical Flow SDK ZIP layout checks'
+          # Local CheckOnly must verify the real Visual Studio native tools as
+          # well as the SDK layout, before cloning/building anything.
+          & ./tools/Complete-NovaVeyraNative.ps1 -OpticalFlowZip $zip -Workspace (Join-Path $fixture 'check-only') -CheckOnly
+          if($LASTEXITCODE -and $LASTEXITCODE -ne 0){ throw 'Native compiler preflight failed' }
+          if(Test-Path (Join-Path $fixture 'check-only')){ throw 'CheckOnly unexpectedly wrote to disk' }
+          Write-Host 'PASS: Windows MSVC and native CMake preflight, with synthetic SDK ZIP'
 
       - name: Validate native GPU staging without vendor binaries
         shell: pwsh
