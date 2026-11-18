@@ -67,7 +67,7 @@ RequireFile $ff 'lib\avcodec.lib' 'FFmpeg avcodec import library'
 RequireFile $ngx 'include\nvsdk_ngx.h' 'NVIDIA DLSS SDK header'
 RequireFile $ngx 'lib\Windows_x86_64\x64\nvsdk_ngx_s.lib' 'NVIDIA DLSS SDK static library'
 RequireFile $of 'NvOFInterface\nvOpticalFlowCommon.h' 'NVIDIA Optical Flow header'
-RequireFile $of 'Common\NvOFBase\NvOFBase.h' 'NVIDIA Optical Flow base header'
+RequireFile $of 'Common\NvOFBase\NvOF.h' 'NVIDIA Optical Flow base header'
 RequireFile $nvenc 'include\ffnvcodec\nvEncodeAPI.h' 'NVENC SDK header'
 if (-not $DisableDeinterlace) {
   RequireFile $ff 'include\libavfilter\avfilter.h' 'FFmpeg deinterlace module'
