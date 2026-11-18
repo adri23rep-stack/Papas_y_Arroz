@@ -10,6 +10,7 @@ on:
       - 'tools/Build-NovaVeyraEngine.ps1'
       - 'tools/Stage-NovaVeyraNative.ps1'
       - 'tools/Test-NovaVeyraNative.ps1'
+      - 'tools/Enable-NovaVeyraLiveBeta.ps1'
       - '.github/workflows/veyra-sdk-zip-selftest.yml'
   workflow_dispatch:
 
@@ -34,7 +35,8 @@ jobs:
             'Build-NovaVeyraEngine.ps1',
             'Stage-NovaVeyraNative.ps1',
             'Test-NovaVeyraNative.ps1',
-            'Use-NovaVeyraCatalog.ps1'
+            'Use-NovaVeyraCatalog.ps1',
+            'Enable-NovaVeyraLiveBeta.ps1'
           )) {
             $tokens=$null;$errors=$null
             [System.Management.Automation.Language.Parser]::ParseFile(
