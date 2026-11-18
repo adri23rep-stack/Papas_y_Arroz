@@ -225,6 +225,36 @@ Window {
         z: 36
     }
 
+    // Keep XuperTV registration failures visible even when public TV loaded.
+    // A public playlist is not proof of a licensed XuperTV session.
+    Rectangle {
+        x: 52
+        y: 77
+        width: Math.max(300, Math.min(root.width - 104, 1050))
+        height: 66
+        radius: 11
+        color: "#D9241820"
+        border.width: 1
+        border.color: "#95515E"
+        visible: !novaHome.loading &&
+                 (!novaHome.serviceConnected ||
+                  (novaHome.series.length === 0 && novaHome.movies.length === 0))
+        z: 35
+        Text {
+            anchors.fill: parent
+            anchors.margins: 12
+            color: "#FFE4E7"
+            font.family: "Segoe UI"
+            font.pixelSize: 13
+            wrapMode: Text.WordWrap
+            elide: Text.ElideRight
+            maximumLineCount: 2
+            text: !novaHome.serviceConnected
+                  ? "XuperTV desconectado (los canales mostrados son TV pública). " + novaHome.serviceStatus
+                  : "XuperTV sin series ni películas. " + novaHome.serviceStatus
+        }
+    }
+
     // A real information view: never opens a random movie or reuses another
     // title's plot. Both actions reference the SAME featured catalog entry.
     Item {
