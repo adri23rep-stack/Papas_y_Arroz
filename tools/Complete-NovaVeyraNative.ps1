@@ -55,7 +55,9 @@ function SetupMSVC {
    }
  }
  $cmakeBin=Join-Path $vsroot 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin'
+ $ninjaBin=Join-Path $vsroot 'Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja'
  if(Test-Path (Join-Path $cmakeBin 'cmake.exe')){$env:Path="$cmakeBin;$env:Path"}
+ if(Test-Path (Join-Path $ninjaBin 'ninja.exe')){$env:Path="$ninjaBin;$env:Path"}
  foreach($name in @('cl.exe','cmake.exe','ninja.exe')){
    if(-not(Get-Command $name -ErrorAction SilentlyContinue)){throw ('Missing tool: '+$name)}
  }
