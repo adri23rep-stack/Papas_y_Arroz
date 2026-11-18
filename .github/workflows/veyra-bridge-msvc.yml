@@ -2,7 +2,7 @@ name: Veyra adapter | real API MSVC check
 on:
   push:
     branches: [feature/nova-veyra-engine]
-    paths: ['integrations/veyra/**', 'tools/Apply-VeyraNovaBridge.py', '.github/workflows/veyra-bridge-msvc.yml']
+    paths: ['source/nova_qt_player.cpp', 'include/nova_native_source_policy.hpp', 'integrations/veyra/**', 'tools/Apply-VeyraNovaBridge.py', '.github/workflows/veyra-bridge-msvc.yml']
   workflow_dispatch:
 permissions:
   contents: read

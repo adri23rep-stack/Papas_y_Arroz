@@ -1,5 +1,6 @@
 #pragma once
 #include "catalog.hpp"
+#include "service_request.hpp"
 #include <string>
 #include <memory>
 #include <vector>
@@ -28,8 +29,10 @@ BrowseResult service_search_all(const std::shared_ptr<ServiceSession>& session,c
 // Remote search uses a private session copy to avoid races with live playback.
 BrowseResult service_search_remote(const std::shared_ptr<ServiceSession>& session,const std::string& query);
 // Browse on an independent session copy so remote page loads cannot alter playback caches.
-BrowseResult service_browse_remote(const std::shared_ptr<ServiceSession>& session,const Entry& entry);
+BrowseResult service_browse_remote(const std::shared_ptr<ServiceSession>& session,const Entry& entry,
+                                   std::shared_ptr<ServiceRequest> request={});
 
 SourceResult service_source(const std::shared_ptr<ServiceSession>& session,const Entry& entry,int variant=0);
-SourceResult service_source_remote(const std::shared_ptr<ServiceSession>& session,const Entry& entry,int variant=0);
+SourceResult service_source_remote(const std::shared_ptr<ServiceSession>& session,const Entry& entry,int variant=0,
+                                   std::shared_ptr<ServiceRequest> request={});
 }

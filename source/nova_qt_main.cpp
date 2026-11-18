@@ -48,9 +48,10 @@ int main(int argc,char** argv){
         NovaQtPlayer player;
         const QString mode=qEnvironmentVariable("NOVA_VEYRA_FIXTURE_MODE");
         const bool expectEnd=mode=="ended";
-        const bool fallback=mode=="failure" || mode=="crash" || mode=="unpatched";
+        const bool fallback=mode=="failure" || mode=="crash" || mode=="unpatched" || mode=="native-strict-protected";
         xs::SourceResult source;
         source.ok=true; source.source="test.mp4";
+        if(mode=="native-strict-protected")source.headers={{"Content-Auth","synthetic-test-only"}};
         int stage=0;
         QObject::connect(&player,&NovaQtPlayer::finishedPlayback,&app,[&](double position,bool ended){
             if(expectEnd){app.exit(ended && position==120 ? 0 : 15);return;}

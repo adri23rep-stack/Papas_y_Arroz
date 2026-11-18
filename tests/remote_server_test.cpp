@@ -58,7 +58,7 @@ struct ServiceSession {};
 BrowseResult service_search_remote(const std::shared_ptr<ServiceSession>&,const std::string&){
     return {};
 }
-BrowseResult service_browse_remote(const std::shared_ptr<ServiceSession>&,const Entry& entry){
+BrowseResult service_browse_remote(const std::shared_ptr<ServiceSession>&,const Entry& entry,std::shared_ptr<ServiceRequest>){
     BrowseResult out;out.ok=true;out.catalog.title=entry.title;
     if(entry.kind==EntryKind::Category){
         Entry sample;sample.kind=EntryKind::Channel;
@@ -70,7 +70,7 @@ BrowseResult service_browse_remote(const std::shared_ptr<ServiceSession>&,const 
     return out;
 }
 SourceResult service_source_remote(const std::shared_ptr<ServiceSession>&,
-                                   const Entry& entry,int){
+                                   const Entry& entry,int,std::shared_ptr<ServiceRequest>){
     SourceResult out;out.ok=true;
     out.source="https://example.org/demo.m3u8";
     if(entry.channel_code=="locked")

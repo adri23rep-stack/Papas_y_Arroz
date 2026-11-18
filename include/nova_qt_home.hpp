@@ -171,6 +171,8 @@ private:
     bool loading_=false,browsing_=false,remote_ready_=false,remote_connected_=false;
     bool previews_loading_=false;
     quint64 source_request_epoch_=0;
+    quint64 refresh_epoch_=0;
+    std::shared_ptr<xs::ServiceRequest> source_request_,previews_request_;
     bool catalog_connected_=false,service_connected_=false;
     QString service_status_;
     bool featured_info_visible_=false;

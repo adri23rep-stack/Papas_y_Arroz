@@ -22,7 +22,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_response(status)
         if location:self.send_header('Location',location)
         if encoding:self.send_header('Content-Encoding',encoding)
-        self.end_headers();self.wfile.write(value if isinstance(value,bytes) else value.encode() if isinstance(value,str) else json.dumps(value).encode())
+        raw=value if isinstance(value,bytes) else value.encode() if isinstance(value,str) else json.dumps(value).encode()
+        self.send_header('Content-Length',str(len(raw)))
+        self.end_headers();self.wfile.write(raw)
     def do_POST(self):
         type(self).posts+=1
         try:

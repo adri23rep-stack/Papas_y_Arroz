@@ -1,4 +1,5 @@
 #include "service.hpp"
+#include "service_diagnostics.hpp"
 #include "codec.hpp"
 #include "ranger_codec.hpp"
 #include "trace.hpp"
@@ -17,6 +18,7 @@
 #include <ctime>
 #include <chrono>
 #include <map>
+#include <mutex>
 #include <set>
 #include "mbedtls_compat.hpp"
 #ifdef __SWITCH__
@@ -32,6 +34,15 @@ static std::string text(const Json& object,const char* key,const std::string& fa
     auto it=object.find(key);if(it==object.end())return fallback;
     return it->is_string()?it->get<std::string>():it->is_number()?it->dump():fallback;
 }
+static thread_local std::shared_ptr<ServiceRequest> active_request;
+struct RequestScope {
+    std::shared_ptr<ServiceRequest> previous=active_request;
+    explicit RequestScope(std::shared_ptr<ServiceRequest> request){active_request=std::move(request);}
+    ~RequestScope(){active_request=std::move(previous);}
+};
+static int request_progress(void* control,curl_off_t,curl_off_t,curl_off_t,curl_off_t){
+    return static_cast<ServiceRequest*>(control)->stopped()?1:0;
+}
 struct Buffer {std::string data;bool too_large=false;};
 static size_t append(char* p,size_t size,size_t count,void* user) {
     auto* buffer=static_cast<Buffer*>(user);
@@ -40,17 +51,29 @@ static size_t append(char* p,size_t size,size_t count,void* user) {
     if(buffer->data.size()+bytes>16*1024*1024){buffer->too_large=true;return 0;}
     buffer->data.append(p,bytes);return bytes;
 }
-static bool request(const std::string& url,const std::string* post,const Json& config,std::string& body,std::string& error,bool follow_get=true,const std::string& ranger_id="") {
+static bool request(const std::string& url,const std::string* post,const Json& config,std::string& body,std::string& error,bool follow_get=true,const std::string& ranger_id="",const char* stage="descarga",size_t attempt=1) {
     // Only the API-selected Ranger resolver may explicitly use HTTP. Account
     // requests and subtitles retain HTTPS; resolver redirects remain disabled.
     const bool resolver=!post&&!follow_get&&!ranger_id.empty();
     if(!valid_source(url)||(url.rfind("https://",0)!=0&&!(resolver&&url.rfind("http://",0)==0))){error="El adaptador requiere HTTPS valido.";return false;}
     if(resolver)trace(url.rfind("https://",0)==0?"ranger:transport_https":"ranger:transport_http");
+    if(active_request&&active_request->stopped()){
+        error=active_request->cancelled()?"Solicitud cancelada.":"Tiempo total de fuente agotado.";
+        return false;
+    }
     CURL* curl=curl_easy_init();if(!curl){error="No se pudo iniciar HTTP.";return false;}
     Buffer response;curl_slist* headers=nullptr;
     curl_easy_setopt(curl,CURLOPT_URL,url.c_str());
     curl_easy_setopt(curl,CURLOPT_ACCEPT_ENCODING,"");
-    curl_easy_setopt(curl,CURLOPT_CONNECTTIMEOUT,10L);curl_easy_setopt(curl,CURLOPT_TIMEOUT,25L);
+    curl_easy_setopt(curl,CURLOPT_NOSIGNAL,1L);
+    const long timeout=active_request?std::max(1L,active_request->remaining_ms()):25000L;
+    curl_easy_setopt(curl,CURLOPT_CONNECTTIMEOUT_MS,std::min(10000L,timeout));
+    curl_easy_setopt(curl,CURLOPT_TIMEOUT_MS,timeout);
+    if(active_request){
+        curl_easy_setopt(curl,CURLOPT_NOPROGRESS,0L);
+        curl_easy_setopt(curl,CURLOPT_XFERINFOFUNCTION,request_progress);
+        curl_easy_setopt(curl,CURLOPT_XFERINFODATA,active_request.get());
+    }
     curl_easy_setopt(curl,CURLOPT_SSL_VERIFYPEER,1L);curl_easy_setopt(curl,CURLOPT_SSL_VERIFYHOST,2L);
     // Never forward sign-in requests or credentials to a redirected host.
     curl_easy_setopt(curl,CURLOPT_FOLLOWLOCATION,post||!follow_get?0L:1L);
@@ -86,6 +109,10 @@ static bool request(const std::string& url,const std::string* post,const Json& c
         curl_easy_setopt(curl,CURLOPT_HTTP_VERSION,CURL_HTTP_VERSION_1_1);
     }
     if(headers)curl_easy_setopt(curl,CURLOPT_HTTPHEADER,headers);
+    static std::atomic<unsigned long long> sequence{0};
+    const auto request_id=++sequence;
+    char begin[240];std::snprintf(begin,sizeof(begin),"service:begin id=%llu stage=%s attempt=%zu budget_ms=%ld",request_id,stage,attempt,timeout);trace(begin);
+    const auto started=std::chrono::steady_clock::now();
     const CURLcode rc=curl_easy_perform(curl);long status=0;curl_easy_getinfo(curl,CURLINFO_RESPONSE_CODE,&status);
     if(!ranger_id.empty()){
         // Structural diagnostics only: never URLs, headers, identifiers or response text.
@@ -97,7 +124,16 @@ static bool request(const std::string& url,const std::string* post,const Json& c
         char stage[160];std::snprintf(stage,sizeof(stage),"ranger:http status=%ld curl=%d bytes=%zu shape=%s edge=%s",status,static_cast<int>(rc),response.data.size(),shape,edge);
         trace(stage);
     }
+    // Numeric transport facts only; never error buffers, URLs or response bodies.
+    const auto elapsed=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-started).count();
+    char diagnostic[160];
+    std::snprintf(diagnostic,sizeof(diagnostic),"service:http id=%llu status=%ld curl=%d elapsed_ms=%lld bytes=%zu",request_id,status,static_cast<int>(rc),static_cast<long long>(elapsed),response.data.size());
+    trace(diagnostic);
     curl_slist_free_all(headers);curl_easy_cleanup(curl);
+    if(active_request&&active_request->stopped()){
+        error=active_request->cancelled()?"Solicitud cancelada.":"Tiempo total de fuente agotado.";
+        return false;
+    }
     if(rc!=CURLE_OK){error=response.too_large?"Respuesta demasiado grande.":std::string("Conexion: ")+curl_easy_strerror(rc);return false;}
     if(status!=200){error="Servidor respondio HTTP "+std::to_string(status);return false;}
     body=std::move(response.data);return true;
@@ -147,8 +183,7 @@ LoginAttempt service_login(const std::string& path,const std::string& username,c
     Json response=Json::parse(body,nullptr,false);
     if(response.is_discarded()||!response.is_object()){out.status="Respuesta de login no reconocida.";return out;}
     if(text(response,"returnCode")!="0"){
-        std::string code=text(response,"returnCode","desconocido");
-        for(char& c:code)if(static_cast<unsigned char>(c)<32)c=' ';
+        const std::string code=service_return_code(text(response,"returnCode"));
         out.status=code=="portal200001"?"El servicio indica version fuera de servicio (portal200001).":
             "Acceso rechazado por el servicio. Codigo: "+code.substr(0,80);return out;
     }
@@ -168,7 +203,20 @@ LoginAttempt service_login(const std::string& path,const std::string& username,c
     else out.status="Acceso aceptado. Lista cargada; reproduccion pendiente de comprobar.";
     return out;
 }
-struct ServiceSession {Json config;Json common;Json identity;std::string playlist;std::map<int,Catalog> channels;std::vector<int> live_categories;};
+struct ServiceSession {
+    // Identity/configuration are immutable once the session is published.
+    Json config,common,identity;
+    std::string playlist;
+    mutable std::mutex cache_mutex;
+    std::map<int,Catalog> channels;
+    std::vector<int> live_categories;
+    ServiceSession()=default;
+    ServiceSession(const ServiceSession& other){
+        std::lock_guard<std::mutex> lock(other.cache_mutex);
+        config=other.config;common=other.common;identity=other.identity;
+        playlist=other.playlist;channels=other.channels;live_categories=other.live_categories;
+    }
+};
 struct CurlScope {
     bool ready=curl_global_init(CURL_GLOBAL_DEFAULT)==CURLE_OK;
     ~CurlScope(){if(ready)curl_global_cleanup();}
@@ -196,6 +244,7 @@ static bool api_post(const Json& config,const Json& common,const char* route,Jso
                  text(config,"_nova_device_profile")=="android-tv-test"?" [Android TV de prueba]":"")+": "+reason;
             return false;
         };
+        trace(service_stage(route));
         for(auto it=common.begin();it!=common.end();++it)payload[it.key()]=it.value();
         std::string encoded;if(!encode_request(payload.dump(),text(config,"key_base64"),encoded))return fail("No se pudo preparar la solicitud.");
         std::string body,error;bool connected=false;size_t attempts=0;
@@ -203,13 +252,15 @@ static bool api_post(const Json& config,const Json& common,const char* route,Jso
             if(!h.is_string()||attempts++>=2)break;
             std::string base=h.get<std::string>();if(base.rfind("https://",0)!=0)base="https://"+base;
             while(!base.empty()&&base.back()=='/')base.pop_back();
-            if(request(base+route,&encoded,config,body,error)){connected=true;break;}
+            if(request(base+route,&encoded,config,body,error,true,"",service_stage(route),attempts)){connected=true;break;}
         }
         if(!connected)return fail(error.empty()?"Sin servidor configurado.":error);
         Json response=Json::parse(body,nullptr,false);
         if(!response.is_object())return fail("Respuesta del servicio no reconocida.");
         const std::string code=text(response,"returnCode","desconocido");
         if(code!="0"){
+            const std::string diagnostic=std::string("service:rejected stage=")+service_stage(route)+" code="+service_return_code(code);
+            trace(diagnostic.c_str());
             if(code=="portal100024")return fail("Restriccion regional del servicio (portal100024).");
             if(code=="portal200001"){
                 std::string version=text(config,"apk_version");
@@ -217,8 +268,7 @@ static bool api_post(const Json& config,const Json& common,const char* route,Jso
                     version="desconocida";
                 return fail("Registro rechazado (portal200001; motivo exacto sin confirmar). Version enviada: "+version+".");
             }
-            std::string safe=code.substr(0,80);
-            for(char& c:safe)if(static_cast<unsigned char>(c)<32)c=' ';
+            const std::string safe=service_return_code(code);
             return fail(std::string("Servicio")+": rechazo "+safe);
         }
         auto d=response.find("data");
@@ -309,7 +359,7 @@ static SourceResult resolve_ranger(const std::shared_ptr<ServiceSession>& s,Rang
             const auto id=ranger_request_id(static_cast<uint32_t>(std::strtoull(uid.c_str(),nullptr,10)),
                                             0,static_cast<uint32_t>(std::time(nullptr)),nonce);
             if(id.empty()){out.status="Ranger: no se pudo preparar el identificador de solicitud.";return out;}
-            if(!request(endpoint,nullptr,s->config,body,error,false,id)){out.status="Ranger/CDN: "+error;return out;}
+            if(!request(endpoint,nullptr,s->config,body,error,false,id,"Ranger/CDN")){out.status="Ranger/CDN: "+error;return out;}
             if(!ranger_decode(text(s->config,"key_base64"),mode,body,true,plain)){
                 const std::string chars="jWB7YtC3n9iXbEkUcJl1VxF4STpQoOIaRmh2M-efAgLwPqGr6uyD5vNsdH_Kz0Z8=\r\n";
                 size_t invalid=0;for(char c:body)if(chars.find(c)==std::string::npos)++invalid;
@@ -379,6 +429,7 @@ LoginAttempt service_bootstrap(const std::string& path) {
 #endif
         return true;
     };
+    {std::ifstream existing_config(path);trace(existing_config.good()?"service:config_existing":"service:config_missing");}
     if(!load_installation(path,config,out.status,entropy))return out;
 #ifdef _WIN32
     // The public Switch template used sdmc:/switch/.../cacert.pem.
@@ -414,6 +465,8 @@ LoginAttempt service_bootstrap(const std::string& path) {
     Json state=Json::object();
     {std::ifstream previous(state_path);if(previous){std::string saved((std::istreambuf_iterator<char>(previous)),{});
         Json parsed=Json::parse(saved,nullptr,false);if(parsed.is_object())state=std::move(parsed);}}
+    trace(text(state,"sn").empty()?"service:device_state_without_serial":"service:device_state_with_serial");
+    trace("service:activation_session_not_reused; provider_authorization_required");
     unsigned open_count=0;
     auto counter=state.find("open_count");
     if(counter!=state.end()&&counter->is_number_unsigned())open_count=std::min(counter->get<unsigned>(),2147483646u)+1;
@@ -533,7 +586,7 @@ BrowseResult service_root(const std::shared_ptr<ServiceSession>& s) {
     if(!api_post(s->config,s->common,"/api/portalCore/v3/getColumnContents",payload,root,out.status))return out;
     auto children=root.find("childColumnList");
     if(children==root.end()||!children->is_array()){out.status="Catalogo: respuesta sin categorias reconocidas.";return out;}
-    s->live_categories.clear();
+    std::vector<int> live_categories;
     out.catalog.title="Inicio";
     int live=-1;const std::string live_code=text(s->common,"portalCode")+"_live";
     for(const auto& item:*children)if(text(item,"code")==live_code&&!protected_item(item)){live=column_id(item);break;}
@@ -547,7 +600,7 @@ BrowseResult service_root(const std::shared_ptr<ServiceSession>& s) {
             const int id=column_id(item);
             if(id<0||protected_item(item)){out.catalog.warnings.push_back("Categoria restringida o incompatible omitida.");continue;}
             if(out.catalog.entries.size()>=1000){out.catalog.warnings.push_back("Limite de categorias alcanzado.");break;}
-            Entry e;e.title=title(item);e.kind=EntryKind::Category;e.column_id=id;s->live_categories.push_back(id);out.catalog.entries.push_back(std::move(e));
+            Entry e;e.title=title(item);e.kind=EntryKind::Category;e.column_id=id;live_categories.push_back(id);out.catalog.entries.push_back(std::move(e));
         }
     }
     // Root codes are supplied by the service, not guessed column identifiers.
@@ -560,6 +613,7 @@ BrowseResult service_root(const std::shared_ptr<ServiceSession>& s) {
         Entry e;e.title=code==prefix+"_movies"?"Peliculas":"Series";e.kind=EntryKind::Section;
         e.column_id=id;e.program_type=code==prefix+"_movies"?"1":"0";out.catalog.entries.push_back(std::move(e));
     }
+    {std::lock_guard<std::mutex> lock(s->cache_mutex);s->live_categories=std::move(live_categories);}
     std::stable_partition(out.catalog.entries.begin(),out.catalog.entries.end(),[](const Entry& e){return e.kind==EntryKind::Section;});
     if(out.catalog.entries.empty()){out.status="Activacion aceptada; no hay seccion TV, peliculas o series accesible.";return out;}
     out.ok=true;out.status="Catalogo cargado. A: abrir; X: buscar peliculas y series.";
@@ -568,7 +622,8 @@ BrowseResult service_root(const std::shared_ptr<ServiceSession>& s) {
 BrowseResult service_channels(const std::shared_ptr<ServiceSession>& s,int id) {
     BrowseResult out;if(!s||id<0){out.status="Categoria sin sesion valida.";return out;}
     CurlScope curl;if(!curl.ready){out.status="No se pudo iniciar cURL.";return out;}
-    const auto cached=s->channels.find(id);if(cached!=s->channels.end()){out.ok=true;out.catalog=cached->second;out.status="Canales cargados.";return out;}
+    {std::lock_guard<std::mutex> lock(s->cache_mutex);
+    const auto cached=s->channels.find(id);if(cached!=s->channels.end()){out.ok=true;out.catalog=cached->second;out.status="Canales cargados.";return out;}}
     Json payload=identity(*s);
     payload.update({{"columnId",id},{"dataVersion",""},{"pageSize",3000},{"pageNum",1},{"expireTimeStr",""}});
     Json data;if(!api_post(s->config,s->common,"/api/portalCore/v6/getLiveData",payload,data,out.status))return out;
@@ -594,10 +649,12 @@ BrowseResult service_channels(const std::shared_ptr<ServiceSession>& s,int id) {
         }
         out.catalog.entries.push_back(std::move(e));
     }
+    {std::lock_guard<std::mutex> lock(s->cache_mutex);
     s->channels[id]=out.catalog;
     size_t cached_count=0;for(const auto& c:s->channels)cached_count+=c.second.entries.size();
     while(s->channels.size()>1&&(cached_count>12000||s->channels.size()>64)){
         auto old=s->channels.begin();if(old->first==id)++old;cached_count-=old->second.entries.size();s->channels.erase(old);
+    }
     }
     out.ok=true;out.status=std::to_string(out.catalog.entries.size())+" canales. A: solicitar reproduccion; B: categorias.";
     return out;
@@ -671,8 +728,10 @@ BrowseResult service_search_all(const std::shared_ptr<ServiceSession>& s,const s
     if(!s||query.empty()||query.size()>240){out.status="Escribe un nombre para buscar.";return out;}
     const auto key=search_key(query);if(key.empty()){out.status="Escribe letras o numeros para buscar.";return out;}
     std::set<std::string> codes;size_t done=0,failed=0;
-    for(int id:s->live_categories){
-        if(progress&&!progress(done,s->live_categories.size())){out.catalog.warnings.push_back("Busqueda de TV cancelada: resultados parciales.");break;}
+    std::vector<int> categories;
+    {std::lock_guard<std::mutex> lock(s->cache_mutex);categories=s->live_categories;}
+    for(int id:categories){
+        if(progress&&!progress(done,categories.size())){out.catalog.warnings.push_back("Busqueda de TV cancelada: resultados parciales.");break;}
         auto channels=service_channels(s,id);++done;if(!channels.ok){++failed;continue;}
         for(const auto& e:channels.catalog.entries)if(search_key(e.title).find(key)!=std::string::npos&&codes.insert(e.channel_code).second){
             out.catalog.entries.push_back(e);if(out.catalog.entries.size()>=3000)break;
@@ -681,7 +740,7 @@ BrowseResult service_search_all(const std::shared_ptr<ServiceSession>& s,const s
     auto vod=service_search(s,query);if(vod.ok){out.catalog.entries.insert(out.catalog.entries.end(),vod.catalog.entries.begin(),vod.catalog.entries.end());}
     else out.catalog.warnings.push_back("No se pudo consultar peliculas y series; reintenta la busqueda.");
     if(failed)out.catalog.warnings.push_back("Algunas categorias de TV no respondieron; reintenta para completar.");
-    out.ok=vod.ok||!out.catalog.entries.empty()||(!s->live_categories.empty()&&!failed);
+    out.ok=vod.ok||!out.catalog.entries.empty()||(!categories.empty()&&!failed);
     out.status=std::to_string(out.catalog.entries.size())+" resultados: canales, peliculas y series.";
     if(!out.catalog.warnings.empty())out.status+=" Resultados parciales: "+out.catalog.warnings.front();
     return out;
@@ -815,7 +874,9 @@ bool service_subtitle(const std::shared_ptr<ServiceSession>& s,const SubtitleSou
     }
     data=std::move(received);return true;
 }
-BrowseResult service_browse_remote(const std::shared_ptr<ServiceSession>& session,const Entry& entry){
+BrowseResult service_browse_remote(const std::shared_ptr<ServiceSession>& session,const Entry& entry,
+                                   std::shared_ptr<ServiceRequest> request){
+    RequestScope scope(std::move(request));
     BrowseResult out;
     if(!session){out.status="Conecta XuperTV en Windows primero.";return out;}
     // The service interface already verifies access, filters protected items
@@ -826,7 +887,8 @@ BrowseResult service_browse_remote(const std::shared_ptr<ServiceSession>& sessio
 }
 
 SourceResult service_source_remote(const std::shared_ptr<ServiceSession>& session,
-                                  const Entry& entry,int variant){
+                                  const Entry& entry,int variant,std::shared_ptr<ServiceRequest> request){
+    RequestScope scope(request?std::move(request):std::make_shared<ServiceRequest>());
     SourceResult out;
     if(!session){out.status="No hay una sesión conectada en Windows.";return out;}
     if(entry.kind!=EntryKind::Channel&&entry.kind!=EntryKind::Episode){

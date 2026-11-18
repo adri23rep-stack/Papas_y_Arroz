@@ -6,6 +6,8 @@ on:
     paths:
       - 'integrations/veyra/native/**'
       - 'include/nova_veyra_native_loader.hpp'
+      - 'source/nova_qt_player.cpp'
+      - 'include/nova_native_source_policy.hpp'
       - '.github/workflows/veyra-native-source-contract.yml'
   workflow_dispatch:
 

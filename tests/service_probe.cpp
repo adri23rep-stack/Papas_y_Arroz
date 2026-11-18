@@ -1,10 +1,16 @@
 #include "service.hpp"
 #include <iostream>
 #include <string>
+#include <thread>
+#include <atomic>
+#include <chrono>
+#include "trace.hpp"
 int main(int argc,char** argv) {
     if(argc!=3)return 2;
     const std::string mode=argv[2];
+    xs::trace_reset();
     auto result=mode.rfind("bootstrap",0)==0?xs::service_bootstrap(argv[1]):xs::service_login(argv[1],"demo@example.invalid","test-password");
+    if(!result.authenticated)std::cerr<<result.status<<"\n";
     if(mode=="bootstrap_http_forbidden")return !result.authenticated?0:1;
     if(mode.rfind("bootstrap_ranger_",0)==0){
         if(mode=="bootstrap_ranger_region")return !result.authenticated&&result.status.find("Restriccion regional")!=std::string::npos?0:1;
@@ -40,6 +46,56 @@ int main(int argc,char** argv) {
         }
         if(mode=="bootstrap_ranger_cdn_bad_request")return !source.ok&&source.source.empty()&&source.status.find("HTTP 400")!=std::string::npos?0:1;
         return !source.ok&&source.source.empty()?0:1;
+    }
+    if(mode=="bootstrap_catalog_browse_deadline"){
+        if(!result.session)return 1;
+        xs::Entry e;e.kind=xs::EntryKind::Category;e.column_id=200;
+        auto control=std::make_shared<xs::ServiceRequest>(std::chrono::milliseconds(100));
+        const auto page=xs::service_browse_remote(result.session,e,control);
+        return !page.ok&&page.status.find("agotado")!=std::string::npos?0:1;
+    }
+    if(mode=="bootstrap_catalog_concurrent"){
+        if(!result.session)return 1;
+        std::atomic<bool> good{true};
+        std::vector<std::thread> workers;
+        for(int i=0;i<8;++i)workers.emplace_back([&,i]{
+            xs::Entry e;e.kind=xs::EntryKind::Category;e.column_id=200;
+            for(int j=0;j<12;++j){
+                const auto page=i%3==0?xs::service_root(result.session):
+                    i%3==1?xs::service_channels(result.session,200):
+                    xs::service_browse_remote(result.session,e);
+                if(!page.ok||page.catalog.entries.size()!=1)good=false;
+                xs::Entry channel;channel.kind=xs::EntryKind::Channel;channel.channel_code="channel-test";
+                if(!xs::service_source_remote(result.session,channel).ok)good=false;
+            }
+        });
+        for(auto& worker:workers)worker.join();
+        return good?0:1;
+    }
+    if(mode=="bootstrap_catalog_deadline"||mode=="bootstrap_catalog_cancel"||
+       mode=="bootstrap_catalog_precancel"||mode=="bootstrap_catalog_chain"||
+       mode=="bootstrap_catalog_retrybudget"||mode=="bootstrap_catalog_private_error"||
+       mode=="bootstrap_catalog_queued"){
+        if(!result.session)return 1;
+        xs::Entry e;e.kind=xs::EntryKind::Channel;e.channel_code="channel-test";
+        const bool cancel=mode=="bootstrap_catalog_cancel";
+        auto control=std::make_shared<xs::ServiceRequest>(std::chrono::milliseconds(
+            cancel?5000:mode=="bootstrap_catalog_chain"?300:mode=="bootstrap_catalog_retrybudget"?200:100));
+        if(mode=="bootstrap_catalog_precancel")control->cancel();
+        if(mode=="bootstrap_catalog_queued")std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        std::thread canceller;
+        if(cancel)canceller=std::thread([control]{std::this_thread::sleep_for(std::chrono::milliseconds(100));control->cancel();});
+        const auto start=std::chrono::steady_clock::now();
+        auto source=xs::service_source_remote(result.session,e,0,control);
+        if(canceller.joinable())canceller.join();
+        if(source.ok||!source.source.empty()||std::chrono::steady_clock::now()-start>std::chrono::seconds(3))return 1;
+        if(mode=="bootstrap_catalog_private_error"){
+            std::cout<<source.status;
+            return source.status.find("no reconocido")!=std::string::npos?0:1;
+        }
+        const auto expected=cancel||mode=="bootstrap_catalog_precancel"?"cancelada":"agotado";
+        if(source.status.find(expected)==std::string::npos){std::cerr<<source.status;return 1;}
+        return 0;
     }
     if(mode=="bootstrap_vod"){
         if(!result.authenticated||!result.session||result.catalog.entries.size()!=3)return 1;
@@ -92,7 +148,7 @@ int main(int argc,char** argv) {
         return again.ok&&again.catalog.entries.size()==1?0:1;
     }
     if(mode=="bootstrap_success"||mode=="bootstrap_existing")return result.authenticated&&result.catalog.entries.size()==1?0:1;
-    if(mode=="bootstrap_version")return !result.authenticated&&result.status.find("version fuera")!=std::string::npos?0:1;
+    if(mode=="bootstrap_version")return !result.authenticated&&result.status.find("motivo exacto sin confirmar")!=std::string::npos?0:1;
     if(mode=="bootstrap_denied")return !result.authenticated&&result.status.find("rechazo")!=std::string::npos?0:1;
     if(mode=="bootstrap_incomplete")return !result.authenticated&&result.status.find("sesion completa")!=std::string::npos?0:1;
     if(mode=="success")return result.authenticated&&result.catalog.entries.size()==1?0:1;

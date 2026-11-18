@@ -46,3 +46,11 @@ test-installation:
 	@mkdir -p build-host
 	$(CXX) $(CXXFLAGS) tests/installation_test.cpp -o build-host/installation_test
 	./build-host/installation_test
+
+# Offline source lifecycle and native/MPV policy checks. No GPU is required.
+test-nova-service:
+	@mkdir -p build-host
+	$(CXX) $(CXXFLAGS) tests/nova_native_source_policy_test.cpp -o build-host/nova_native_source_policy_test
+	./build-host/nova_native_source_policy_test
+	$(CXX) $(CXXFLAGS) -pthread tests/service_request_test.cpp -o build-host/service_request_test
+	./build-host/service_request_test

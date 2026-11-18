@@ -20,6 +20,7 @@
 #include <QProcess>
 #include <QUrl>
 #include <mpv/client.h>
+#include "nova_native_source_policy.hpp"
 #include <QMetaObject>
 #include <QMutexLocker>
 #include <algorithm>
@@ -132,25 +133,25 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
     // Never allow a network URL with arbitrary auth headers into this test.
     const QString nativeDll=qEnvironmentVariable("NOVA_VEYRA_NATIVE_DLL");
     // Live experimental failure must never leave the user without television.
-    const bool nativeStrict=!live && !nativeDll.isEmpty() &&
-        qEnvironmentVariableIntValue("NOVA_VEYRA_NATIVE_STRICT")==1;
     // Only public IPTV-org entries are tagged for this opt-in. Never send
     // privileged XuperTV streams, signed URLs, or custom auth headers.
     const bool publicLiveBeta=live && publicLiveNativeCandidate &&
         qEnvironmentVariableIntValue("NOVA_VEYRA_NATIVE_LIVE_BETA")==1;
+    const QString nativeSource=QString::fromStdString(result.source);
+    const QUrl nativeUrl(nativeSource);
+    const bool safeHttp=nativeUrl.isValid() &&
+        (nativeUrl.scheme()=="http"||nativeUrl.scheme()=="https") &&
+        qEnvironmentVariableIntValue("NOVA_VEYRA_NATIVE_ALLOW_NETWORK")==1 &&
+        nativeUrl.userInfo().isEmpty()&&!nativeUrl.hasFragment()&&!nativeUrl.hasQuery();
+    const xs::NovaNativeSourcePolicy nativePolicy{QFileInfo(nativeSource).isFile(),safeHttp,
+        live,publicLiveBeta,!result.headers.empty(),!result.subtitles.empty()};
+    const bool nativeStrict=!nativeDll.isEmpty()&&nativePolicy.strict(
+        qEnvironmentVariableIntValue("NOVA_VEYRA_NATIVE_STRICT")==1);
     QString nativeLoadFailure;
     if(!skipVeyraOnce_ && !nativeDll.isEmpty() &&
-       QFileInfo(nativeDll).isAbsolute() && QFileInfo(nativeDll).isFile() &&
-       (!live || publicLiveBeta) &&
-       result.headers.empty() && result.subtitles.empty()){
-        const QString source=QString::fromStdString(result.source);
-        const QUrl url(source);
-        const bool safeHttp=url.isValid() &&
-            (url.scheme()=="http"||url.scheme()=="https") &&
-            qEnvironmentVariableIntValue("NOVA_VEYRA_NATIVE_ALLOW_NETWORK")==1 &&
-            url.userInfo().isEmpty()&&!url.hasFragment()&&!url.hasQuery();
-        const bool local=QFileInfo(source).isFile();
-        if(local||safeHttp){
+       QFileInfo(nativeDll).isAbsolute() && QFileInfo(nativeDll).isFile() && nativePolicy.eligible()){
+        const QString source=nativeSource;
+        {
             auto candidate=std::make_unique<NovaVeyraNativeLoader>();
             if(candidate->load(nativeDll)){
                 if(!videoWindow_){

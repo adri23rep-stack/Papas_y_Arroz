@@ -1,0 +1,31 @@
+name: Nova catalog | offline TLS and concurrency regressions
+on:
+  push:
+    branches: [feature/nova-veyra-engine]
+    paths: ['source/**', 'include/**', 'tests/**', 'Makefile.host', '.github/workflows/nova-service-offline.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-service:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libmbedtls-dev libcurl4-openssl-dev
+          python -m pip install 'cryptography>=43,<47'
+      - name: Compile and exercise protocol, cancellation, privacy and concurrent snapshots
+        run: |
+          make -f Makefile.host test test-ranger test-state test-errors test-installation test-saved test-nova-service
+          make -f Makefile.host test-service
+      - name: Verify Veyra proxy isolation and installation rollback
+        run: |
+          python -m unittest discover -s tests -p 'test_veyra_bridge_installer.py' -v
+          python -m unittest discover -s tests -p 'test_veyra_qml_proxy.py' -v
+          python -m unittest discover -s tests -p 'test_veyra_win32_proxy.py' -v

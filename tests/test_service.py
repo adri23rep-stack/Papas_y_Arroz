@@ -10,6 +10,7 @@ import sys
 import tempfile
 import hashlib
 import threading
+import time
 from pathlib import Path
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -37,7 +38,7 @@ def decrypt(value):
 
 class Handler(http.server.BaseHTTPRequestHandler):
     mode='success';posts=0;gets=0;failures=[]
-    serials=[];open_counts=[]
+    serials=[];open_counts=[];source_posts=0;slb_posts=0
     def log_message(self,*args):pass
     def do_POST(self):
         type(self).posts+=1
@@ -73,6 +74,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     assert request['userId']=='test-user' and request['userToken']=='test-session'
                     assert request['portalCode']=='test-portal'
                     if self.path=='/api/portalCore/v15/getSlbInfo':
+                        type(self).slb_posts+=1
+                        if self.mode=='bootstrap_catalog_chain':time.sleep(.4)
                         response={'returnCode':'0','data':encrypt({'error_code':0,'cdn_list':[]})}
                     elif self.mode=='bootstrap_vod' and self.path not in ['/api/portalCore/v3/getColumnContents','/api/portalCore/v6/getLiveData']:
                         if self.path=='/api/portalCore/v3/getShelveData':
@@ -135,6 +138,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                 {'id':'bad-id','name':'Invalid category'}]}
                         response={'returnCode':'0','data':encrypt(data)}
                     elif self.path=='/api/portalCore/v6/getLiveData':
+                        if self.mode=='bootstrap_catalog_browse_deadline':time.sleep(.6)
                         assert request['columnId']==200 and request['pageNum']==1 and request['pageSize']==3000
                         assert request['dataVersion']=='' and request['expireTimeStr']==''
                         data={'channelList':[{'channelCode':'channel-test','name':'Canal de Prueba ñ',
@@ -143,12 +147,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             {'channelCode':'locked','name':'Locked','isLock':True}]}
                         response={'returnCode':'0','data':encrypt(data)}
                     elif self.path=='/api/portalCore/v4/startPlayLive':
+                        type(self).source_posts+=1
+                        if self.mode in ['bootstrap_catalog_deadline','bootstrap_catalog_cancel']:time.sleep(.6)
+                        if self.mode=='bootstrap_catalog_chain':time.sleep(.15)
+                        if self.mode=='bootstrap_catalog_retrybudget':
+                            time.sleep(.13)
+                            self.send_response(503);self.send_header('Content-Length','0');self.end_headers();return
                         assert request['type']=='1' and request['columnId'] is None and request['channelCode']=='channel-test'
                         url='ranger:opaque-id' if self.mode=='bootstrap_catalog_opaque' else 'https://media.example.invalid/live.m3u8?sig=a%2Fb&expires=123'
-                        data={'liveAddressList':[{'playCode':url,'license':'test-license' if self.mode=='bootstrap_catalog_license' else ''}]}
+                        data={'liveAddressList':[{'playCode':url,'license':'test-license' if self.mode in ['bootstrap_catalog_license','bootstrap_catalog_chain'] else ''}]}
                         response={'returnCode':'permission-denied'} if self.mode=='bootstrap_catalog_denied' else {'returnCode':'0','data':encrypt(data)}
+                        if self.mode=='bootstrap_catalog_private_error':response={'returnCode':'secret-test-token-123:https://private.invalid/?token=private'}
                     else:raise AssertionError('unexpected catalog route')
-                raw=json.dumps(response).encode();self.send_response(200);self.end_headers();self.wfile.write(raw);return
+                raw=json.dumps(response).encode();self.send_response(200);self.send_header("Content-Length",str(len(raw)));self.end_headers();self.wfile.write(raw);return
             assert self.path=='/api/portalCore/v8/login'
             assert request['userName']=='demo@example.invalid'
             assert request['password']==prepared_password('test-password')
@@ -158,14 +169,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if self.mode=='denied':response={'returnCode':'denied','errorMessage':'test rejection'}
             elif self.mode=='malformed':response={'returnCode':'0','data':'not-a-ciphertext'}
             else:response={'returnCode':'0','data':encrypt({'playlistUrl':f'https://localhost:{self.server.server_port}/playlist.m3u'})}
-            raw=json.dumps(response).encode();self.send_response(200);self.end_headers();self.wfile.write(raw)
+            raw=json.dumps(response).encode();self.send_response(200);self.send_header("Content-Length",str(len(raw)));self.end_headers();self.wfile.write(raw)
+        except (BrokenPipeError,ConnectionResetError,ssl.SSLEOFError):
+            pass # Cancellation/deadline deliberately closes the client first.
         except Exception as exc:
             type(self).failures.append(type(exc).__name__);self.send_error(500)
     def do_GET(self):
         type(self).gets+=1
         if self.path!='/playlist.m3u':self.send_error(404);return
-        self.send_response(200);self.end_headers()
-        self.wfile.write(b'#EXTM3U\n#EXTINF:-1,Offline test channel\nhttps://example.invalid/video.m3u8\n')
+        raw=b'#EXTM3U\n#EXTINF:-1,Offline test channel\nhttps://example.invalid/video.m3u8\n'
+        self.send_response(200);self.send_header('Content-Length',str(len(raw)));self.end_headers()
+        self.wfile.write(raw)
 
 def main(binary,app=None):
     with tempfile.TemporaryDirectory() as tmp:
@@ -218,6 +232,30 @@ def main(binary,app=None):
             assert Handler.posts==18,Handler.posts
             assert Handler.gets==0
             print('local TLS test: bootstrap_vod passed (movies, series, episodes, search, pagination, denied source)')
+            for mode,expected_sources,expected_slb in [
+                ('bootstrap_catalog_deadline',1,0),('bootstrap_catalog_cancel',1,0),
+                ('bootstrap_catalog_precancel',0,0),('bootstrap_catalog_chain',1,1),
+                ('bootstrap_catalog_retrybudget',2,0),('bootstrap_catalog_private_error',1,0),
+                ('bootstrap_catalog_queued',0,0),('bootstrap_catalog_browse_deadline',0,0),
+                ('bootstrap_catalog_concurrent',96,0)]:
+                Handler.mode=mode;Handler.failures=[];Handler.source_posts=0;Handler.slb_posts=0
+                before=path.read_bytes()
+                run=subprocess.run([str(Path(binary).resolve()),str(path),mode],cwd=folder,
+                    capture_output=True,text=True,timeout=30)
+                assert run.returncode==0,(mode,run.stdout,run.stderr)
+                time.sleep(.7) # let deliberately cancelled mock responses finish before changing modes
+                assert not Handler.failures,(mode,Handler.failures)
+                assert Handler.source_posts==expected_sources,(mode,Handler.source_posts)
+                assert Handler.slb_posts==expected_slb,(mode,Handler.slb_posts)
+                assert path.read_bytes()==before,'Existing configuration was modified'
+                diagnostic=(folder/'diagnostico.log').read_text()
+                for secret in ['test-session','test-user','channel-test','device-test-token',
+                               'secret-test-token-123','private.invalid','key_base64','test-license']:
+                    assert secret not in diagnostic+run.stdout+run.stderr,(mode,'private data exposed')
+                if mode=='bootstrap_catalog_concurrent':
+                    numbers=[int(line.split()[0]) for line in diagnostic.splitlines()[1:]]
+                    assert numbers==list(range(1,len(numbers)+1)),'interleaved or duplicate trace sequence'
+                print('local TLS regression:',mode,'passed')
             assert len(set(Handler.serials))==1
             if app:
                 import os

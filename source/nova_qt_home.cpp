@@ -266,7 +266,8 @@ HomeSnapshot loadHome(){
 // The entry points to the FULL provider catalog are already ready in root.
 HomeSnapshot loadHomePreviews(const std::shared_ptr<xs::ServiceSession>& session,
                                const xs::Catalog& root,
-                               std::vector<xs::Entry> initial_tv){
+                               std::vector<xs::Entry> initial_tv,
+                               const std::shared_ptr<xs::ServiceRequest>& request){
     HomeSnapshot out;
     out.session=session;
     out.root=root;
@@ -288,41 +289,47 @@ HomeSnapshot loadHomePreviews(const std::shared_ptr<xs::ServiceSession>& session
         // service_root puts VOD sections first, before live categories.
         // Skip those sections rather than ending the live-channel scan.
         if(category.kind!=xs::EntryKind::Category)continue;
-        if(checkedLive++>=6||out.tv_entries.size()>=72)break;
-        const auto response=xs::service_browse_remote(out.session,category);
+        if(request->stopped()||checkedLive++>=6||out.tv_entries.size()>=72)break;
+        const auto response=xs::service_browse_remote(out.session,category,request);
         if(response.ok){
             for(const auto& e:response.catalog.entries)
                 if(e.kind==xs::EntryKind::Channel)addEntry(out.tv_entries,e,72);
         }else if(out.status.isEmpty())out.status=QString::fromStdString(response.status);
     }
     for(const char* type:{"0","1"}){
+        if(request->stopped())break;
         auto& dest=std::string(type)=="0"?out.series_entries:out.movie_entries;
         const auto section=std::find_if(out.root.entries.begin(),out.root.entries.end(),
             [&](const xs::Entry& e){
                 return e.kind==xs::EntryKind::Section&&e.program_type==type;
             });
         if(section==out.root.entries.end())continue;
-        const auto response=xs::service_browse_remote(out.session,*section);
-        if(!response.ok)continue;
+        const auto response=xs::service_browse_remote(out.session,*section,request);
+        if(!response.ok){
+            if(out.status.isEmpty())out.status=QString::fromStdString(response.status);
+            continue;
+        }
         addAssets(response.catalog,type,dest,60);
         int visited=0;
         for(const auto& e:response.catalog.entries){
-            if(dest.size()>=60||visited>=5)break;
+            if(request->stopped()||dest.size()>=60||visited>=5)break;
             if(e.kind!=xs::EntryKind::VodCategory)continue;
             ++visited;
-            const auto page=xs::service_browse_remote(out.session,e);
+            const auto page=xs::service_browse_remote(out.session,e,request);
             if(page.ok)addAssets(page.catalog,type,dest,60);
+            else if(out.status.isEmpty())out.status=QString::fromStdString(page.status);
         }
     }
+    if(request->stopped()&&out.status.isEmpty())
+        out.status=QStringLiteral("Carga de avances interrumpida por tiempo de espera; abre las categorías completas o actualiza.");
     appendPublicChannels(out,public_channels);
     out.channels=tvPreview(out.tv_entries);
     out.series=listFor(out.series_entries);
     out.movies=listFor(out.movie_entries);
-    if(out.series.isEmpty()&&out.movies.isEmpty()){
-        if(!out.status.isEmpty())
-            out.service_status=out.status; // preserve a real provider error
-        else
-            out.service_status=QStringLiteral(
+    if(!out.status.isEmpty()){
+        out.service_status=out.status;
+    }else if(out.series.isEmpty()&&out.movies.isEmpty()){
+        out.service_status=QStringLiteral(
                 "XuperTV autorizó la sesión, pero los avances VOD están vacíos. "
                 "Abre Series o Películas > Ver todo para consultar las categorías completas.");
         out.status=out.service_status;
@@ -430,6 +437,8 @@ void NovaQtHome::setMotionMode(int value){
     emit changed();
 }
 NovaQtHome::~NovaQtHome(){
+    if(source_request_)source_request_->cancel();
+    if(previews_request_)previews_request_->cancel();
     remote_timer_.stop();
     player_.stop();
     if(sdl_started_){
@@ -582,11 +591,14 @@ void NovaQtHome::openContinue(int index){
 
 void NovaQtHome::refresh(){
     if(loading_)return;
+    const quint64 refresh_epoch=++refresh_epoch_;
+    if(previews_request_)previews_request_->cancel();
+    previews_request_.reset();
     loading_=true;
     status_=QStringLiteral("Cargando canales, series y películas...");
     emit changed();
     auto* watcher=new QFutureWatcher<HomeSnapshot>(this);
-    connect(watcher,&QFutureWatcher<HomeSnapshot>::finished,this,[this,watcher](){
+    connect(watcher,&QFutureWatcher<HomeSnapshot>::finished,this,[this,watcher,refresh_epoch](){
         const auto snap=watcher->result();
         channels_=snap.channels;series_=snap.series;movies_=snap.movies;
         service_connected_=snap.service_connected;
@@ -615,13 +627,17 @@ void NovaQtHome::refresh(){
         const auto expected_session=session_;
         const auto root=root_;
         const auto initial_channels=channel_entries_;
+        const auto request=std::make_shared<xs::ServiceRequest>(std::chrono::seconds(90));
+        previews_request_=request;
         auto* preview=new QFutureWatcher<HomeSnapshot>(this);
         connect(preview,&QFutureWatcher<HomeSnapshot>::finished,this,
-                [this,preview,expected_session](){
+                [this,preview,expected_session,refresh_epoch](){
             const auto next=preview->result();
             preview->deleteLater();
-            if(session_!=expected_session)return; // refresh superseded this result
+            if(refresh_epoch!=refresh_epoch_ || session_!=expected_session)return; // refresh superseded this result
             previews_loading_=false;
+            previews_request_.reset();
+            if(!next.service_status.isEmpty())service_status_=next.service_status;
             channels_=next.channels;
             series_=next.series;
             movies_=next.movies;
@@ -637,8 +653,8 @@ void NovaQtHome::refresh(){
             emit changed();
         });
         preview->setFuture(QtConcurrent::run(
-            [expected_session,root,initial_channels](){
-                return loadHomePreviews(expected_session,root,initial_channels);
+            [expected_session,root,initial_channels,request](){
+                return loadHomePreviews(expected_session,root,initial_channels,request);
             }));
     });
     watcher->setFuture(QtConcurrent::run(&loadHome));
@@ -759,9 +775,7 @@ void NovaQtHome::browseEntry(const xs::Entry& e){
         watcher->deleteLater();
     });
     watcher->setFuture(QtConcurrent::run([session,e](){
-        return e.kind==xs::EntryKind::Category
-            ?xs::service_channels(session,e.column_id)
-            :xs::service_browse_remote(session,e);
+        return xs::service_browse_remote(session,e);
     }));
 }
 void NovaQtHome::playEntry(const xs::Entry& e){
@@ -793,6 +807,8 @@ void NovaQtHome::playEntry(const xs::Entry& e){
     emit changed();
     const auto session=session_;
     const quint64 request_epoch=++source_request_epoch_;
+    const auto request=std::make_shared<xs::ServiceRequest>();
+    source_request_=request;
     auto* watcher=new QFutureWatcher<xs::SourceResult>(this);
     QPointer<QFutureWatcher<xs::SourceResult>> pending=watcher;
     connect(watcher,&QFutureWatcher<xs::SourceResult>::finished,this,
@@ -802,6 +818,7 @@ void NovaQtHome::playEntry(const xs::Entry& e){
         // An expired request cannot unexpectedly open a video after
         // the user has already returned to the catalog or retried.
         if(request_epoch!=source_request_epoch_)return;
+        source_request_.reset();
         loading_=false;
         if(source.ok&&xs::valid_source(source.source)){
             player_.play(source,QString::fromStdString(e.title),
@@ -827,18 +844,26 @@ void NovaQtHome::playEntry(const xs::Entry& e){
         if(request_epoch!=source_request_epoch_ || !pending ||
            pending->isFinished())return;
         ++source_request_epoch_;
+        if(source_request_)source_request_->cancel();
+        source_request_.reset();
         loading_=false;
         status_=QStringLiteral(
             "XuperTV no entregó la fuente en 45 s. Puedes reintentar; "
             "esto ocurre ANTES de que MPV o Veyra reciban el video.");
         emit changed();
     });
-    watcher->setFuture(QtConcurrent::run([session,e](){
-        return xs::service_source_remote(session,e,0);
+    watcher->setFuture(QtConcurrent::run([session,e,request](){
+        return xs::service_source_remote(session,e,0,request);
     }));
 }
 
 void NovaQtHome::back(){
+    if(source_request_){
+        source_request_->cancel();source_request_.reset();
+        ++source_request_epoch_;loading_=false;
+        status_=QStringLiteral("Solicitud de reproducción cancelada.");
+        emit changed();return;
+    }
     if(player_.playing()){player_.stop();return;}
     if(loading_)return;
     if(!history_.empty()){
@@ -850,6 +875,10 @@ void NovaQtHome::back(){
     }else home();
 }
 void NovaQtHome::home(){
+    if(source_request_){
+        source_request_->cancel();source_request_.reset();
+        ++source_request_epoch_;loading_=false;
+    }
     if(player_.playing())player_.stop();
     browsing_=false;history_.clear();selected_item_=0;selected_section_=0;
     status_=QStringLiteral("Inicio");
