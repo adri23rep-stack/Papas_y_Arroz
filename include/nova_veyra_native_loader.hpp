@@ -44,6 +44,9 @@ public:
         rate_=reinterpret_cast<decltype(&nova_veyra_rate)>(lib_.resolve("nova_veyra_rate"));
         settings_=reinterpret_cast<decltype(&nova_veyra_settings)>(lib_.resolve("nova_veyra_settings"));
         snapshot_=reinterpret_cast<decltype(&nova_veyra_snapshot)>(lib_.resolve("nova_veyra_snapshot"));
+        // Added after ABI 4. Optional for existing DLLs; no synthetic FPS.
+        flowSnapshot_=reinterpret_cast<decltype(&nova_veyra_flow_snapshot)>(
+            lib_.resolve("nova_veyra_flow_snapshot"));
         audioCount_=reinterpret_cast<decltype(&nova_veyra_audio_count)>(lib_.resolve("nova_veyra_audio_count"));
         audioAt_=reinterpret_cast<decltype(&nova_veyra_audio_at)>(lib_.resolve("nova_veyra_audio_at"));
         selectAudio_=reinterpret_cast<decltype(&nova_veyra_select_audio)>(lib_.resolve("nova_veyra_select_audio"));
@@ -115,6 +118,11 @@ public:
         state={};state.size=sizeof(state);
         return snapshot_(engine_,&state)!=0;
     }
+    bool flowSnapshot(NovaVeyraFlowStats& flow) const {
+        if(!ready()||!flowSnapshot_)return false;
+        flow={};flow.size=sizeof(flow);
+        return flowSnapshot_(engine_,&flow)!=0;
+    }
     std::vector<NovaVeyraAudioTrack> audioTracks()const {
         std::vector<NovaVeyraAudioTrack> tracks;
         if(!ready())return tracks;
@@ -133,7 +141,7 @@ public:
         if(lib_.isLoaded())lib_.unload();
         abi_=nullptr;create_=nullptr;destroy_=nullptr;open_=nullptr;
         stop_=nullptr;pause_=nullptr;seek_=nullptr;volume_=nullptr;
-        settings_=nullptr;snapshot_=nullptr;rate_=nullptr;
+        settings_=nullptr;snapshot_=nullptr;flowSnapshot_=nullptr;rate_=nullptr;
         audioCount_=nullptr;audioAt_=nullptr;selectAudio_=nullptr;
     }
 private:
@@ -152,6 +160,7 @@ private:
     decltype(&nova_veyra_rate) rate_=nullptr;
     decltype(&nova_veyra_settings) settings_=nullptr;
     decltype(&nova_veyra_snapshot) snapshot_=nullptr;
+    decltype(&nova_veyra_flow_snapshot) flowSnapshot_=nullptr;
     decltype(&nova_veyra_audio_count) audioCount_=nullptr;
     decltype(&nova_veyra_audio_at) audioAt_=nullptr;
     decltype(&nova_veyra_select_audio) selectAudio_=nullptr;
