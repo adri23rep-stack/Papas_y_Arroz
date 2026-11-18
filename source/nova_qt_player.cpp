@@ -87,6 +87,8 @@ bool NovaQtPlayer::setVeyraSetting(const QString& key,int value){
         bool accepted=false;
         if(key=="veyra_multiplier" && value>=2 && value<=6)
             accepted=nativeVeyra_->multiplier(unsigned(value));
+        else if(key=="veyra_fg_backend" && value>=0 && value<=int(NOVA_VEYRA_FG_AMD_FRC))
+            accepted=nativeVeyra_->fgBackend(unsigned(value));
         else if(key=="veyra_sr_quality" && value>=0)
             accepted=nativeVeyra_->srQuality(unsigned(value));
         else if((value==0||value==1) && key=="veyra_fg")
@@ -161,7 +163,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                 videoWindowId_=static_cast<std::int64_t>(videoWindow_->winId());
                 NovaVeyraSettings options{};
                 options.size=sizeof(options);
-                options.fg_backend=NOVA_VEYRA_FG_DLSS;
+                options.fg_backend=NOVA_VEYRA_FG_VFG; // Original NVIDIA-VFG backend for RTX 30-series; DLSS FG needs newer hardware.
                 options.fg_multiplier=2;
                 options.sr_quality=2;
                 options.features=0; // First establish real decode before GPU features.
@@ -238,7 +240,25 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                         state.insert("nativeEngine",true);
                         state.insert("srQuality",int(snap.applied_sr_quality));
                         state.insert("requestedSrQuality",int(snap.desired_sr_quality));
-                        state.insert("fgBackend",QStringLiteral("DLSS"));
+                        const unsigned activeBackend=snap.fg_active
+                            ?snap.applied_fg_backend:snap.desired_fg_backend;
+                        QString backendName;
+                        switch(activeBackend){
+                        case NOVA_VEYRA_FG_DLSS:backendName=QStringLiteral("DLSS FG");break;
+                        case NOVA_VEYRA_FG_XESS:backendName=QStringLiteral("XeSS FG");break;
+                        case NOVA_VEYRA_FG_FSR:backendName=QStringLiteral("FSR FG");break;
+                        case NOVA_VEYRA_FG_FSR4:backendName=QStringLiteral("FSR4 FG");break;
+                        case NOVA_VEYRA_FG_VFG:backendName=QStringLiteral("NVIDIA-VFG");break;
+                        case NOVA_VEYRA_FG_ANR:backendName=QStringLiteral("ANR-FG");break;
+                        case NOVA_VEYRA_FG_AMD_FRC:backendName=QStringLiteral("AMD-FRC");break;
+                        default:backendName=QStringLiteral("Proveedor no identificado");break;
+                        }
+                        state.insert("fgBackend",backendName);
+                        state.insert("fgBackendId",int(activeBackend));
+                        state.insert("fgBackendApplied",int(snap.applied_fg_backend));
+                        state.insert("fgBackendRequested",int(snap.desired_fg_backend));
+                        state.insert("sourceFrames",QString::number(snap.source_frames));
+                        state.insert("generatedFrames",QString::number(snap.generated_frames));
                         state.insert("fgEnabled",bool(snap.fg_active));
                         state.insert("srEnabled",bool(snap.sr_active));
                         state.insert("nrEnabled",bool(snap.nr_active));
@@ -249,7 +269,12 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                         state.insert("submitFps",snap.submit_fps);
                         state.insert("submitFpsKnown",bool(snap.submit_fps_known));
                         QVariantList multipliers;
-                        if(snap.fg_max_generated>0){
+                        if(activeBackend==NOVA_VEYRA_FG_VFG){
+                            // Offer only the first Alpha goal. Selection is a
+                            // request, not proof the GPU/runtime accepted FG.
+                            multipliers.push_back(QVariantMap{{"id",QStringLiteral("2")},
+                                                               {"label",QStringLiteral("2x · probar")}});
+                        }else if(activeBackend==NOVA_VEYRA_FG_DLSS && snap.fg_max_generated>0){
                             for(unsigned n:{2u,3u,4u,6u})
                                 if(n<=snap.fg_max_generated+1)
                                     multipliers.push_back(QVariantMap{
