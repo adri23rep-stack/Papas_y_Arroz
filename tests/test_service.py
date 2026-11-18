@@ -59,6 +59,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if self.mode.startswith('bootstrap'):
                 assert 'password' not in request and 'userName' not in request
                 assert request['apkVersion']=='43404' and self.headers['apkVer']=='43404'
+                assert self.headers['spkgVer']=='synthetic-spkg-version-only'
                 if self.path=='/api/portalCore/v3/snToken':
                     type(self).serials.append(request['serialNumber'])
                     if self.mode=='bootstrap_version':response={'returnCode':'portal200001'}
@@ -207,6 +208,7 @@ def main(binary,app=None):
                 print('local TLS test:',mode,'passed')
             config['apk_version']='43404'
             config['client_meta_suffix']=SYNTHETIC_CLIENT_META_SUFFIX
+            config['http_package_version']='synthetic-spkg-version-only'
             path.write_text(json.dumps(config))
             for mode in ['bootstrap_success','bootstrap_success','bootstrap_version','bootstrap_denied','bootstrap_incomplete','bootstrap_existing']:
                 Handler.mode=mode;Handler.posts=0;Handler.gets=0;Handler.failures=[]
