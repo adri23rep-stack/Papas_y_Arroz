@@ -56,7 +56,10 @@ function SetupMSVC {
  }
  $vcvars=Join-Path $vsroot 'VC\Auxiliary\Build\vcvars64.bat'
  Need $vcvars
- $lines=(& cmd.exe /d /s /c ('""'+$vcvars+'" >nul && set"'))
+ # Pass one properly quoted command to CMD: the VS install path has spaces.
+ # /s was stripping the quote pair and breaking "C:\Program Files\...".
+ $cmdLine='call "'+$vcvars+'" >nul && set'
+ $lines=(& cmd.exe /d /c $cmdLine)
  if($LASTEXITCODE -ne 0){throw 'MSVC x64 environment initialization failed'}
  foreach($line in $lines){
    if($line -match '^([^=][^=]*)=(.*)$'){
