@@ -77,9 +77,22 @@ jobs:
           $cpp=Join-Path $root 'synthetic.cpp'
           @'
           #include <windows.h>
-          extern "C" __declspec(dllexport) unsigned int __cdecl nova_veyra_abi(void) {
-            return GetCurrentProcessId() != 0 ? 3u : 0u;
-          }
+          // Synthetic export table only, not GPU code or a valid Veyra runtime.
+          #define STUB(fn) extern "C" __declspec(dllexport) unsigned int __cdecl fn(void) { return GetCurrentProcessId() != 0 ? 3u : 0u; }
+          STUB(nova_veyra_abi)
+          STUB(nova_veyra_create)
+          STUB(nova_veyra_destroy)
+          STUB(nova_veyra_open)
+          STUB(nova_veyra_stop)
+          STUB(nova_veyra_pause)
+          STUB(nova_veyra_seek)
+          STUB(nova_veyra_volume)
+          STUB(nova_veyra_rate)
+          STUB(nova_veyra_settings)
+          STUB(nova_veyra_snapshot)
+          STUB(nova_veyra_audio_count)
+          STUB(nova_veyra_audio_at)
+          STUB(nova_veyra_select_audio)
           '@ | Set-Content -LiteralPath $cpp
           $dll=Join-Path $build 'nova_veyra_native.dll'
           & cl.exe /nologo /LD /MT "/Fe:$dll" $cpp
