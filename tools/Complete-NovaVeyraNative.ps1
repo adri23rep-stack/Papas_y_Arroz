@@ -118,6 +118,28 @@ try{
  $dll=Join-Path $build 'nova_veyra_native.dll'
  Need $dll
  Write-Host ('Veyra original GPU DLL compiled: '+$dll)
+ # Prefer the exact pilot folders used in the user's previous Windows tests.
+ # The defaults do not search documents, credentials, caches or user profiles.
+ $downloads=Join-Path $env:USERPROFILE 'Downloads'
+ if(-not $VeyraPortableDirectory){
+   $defaultPortable=Join-Path $downloads 'Veyra-2.1.9-NVIDIA-win64-portable'
+   if(Test-Path -LiteralPath (Join-Path $defaultPortable 'veyra_qml_ui.exe') -PathType Leaf){
+      $VeyraPortableDirectory=$defaultPortable
+      Write-Host ('Veyra portable found: '+$defaultPortable)
+   }
+ }
+ if(-not $NovaDirectory){
+   $defaultPilot=Join-Path $downloads 'Nova-Veyra-Windows-Pilot'
+   if(Test-Path -LiteralPath $defaultPilot -PathType Container){
+     $novaCandidates=@(Get-ChildItem -LiteralPath $defaultPilot -Recurse -File -Filter 'XuperTVNovaQt.exe' -ErrorAction SilentlyContinue)
+     if($novaCandidates.Count -eq 1){
+        $NovaDirectory=$novaCandidates[0].DirectoryName
+        Write-Host ('Nova executable found: '+$novaCandidates[0].FullName)
+     }elseif($novaCandidates.Count -gt 1){
+        Write-Warning 'More than one Nova EXE found; specify NovaDirectory to avoid staging the wrong build.'
+     }
+   }
+ }
  if($NovaDirectory -and $VeyraPortableDirectory){
    $stage=Join-Path $root ('NovaVeyraNative-'+(Get-Date -Format 'yyyyMMdd-HHmmss'))
    $staging=@{
@@ -129,7 +151,7 @@ try{
    & (Join-Path $repo 'tools\Stage-NovaVeyraNative.ps1') @staging
    Write-Host ('Native Nova launcher: '+(Join-Path $stage 'Start-NovaVeyraNative.ps1'))
  }else{
-   Write-Host 'DLL compiled. Supply NovaDirectory and VeyraPortableDirectory to stage into Nova.'
+   Write-Host 'GPU DLL compiled but Nova packaging not run: supply -NovaDirectory and -VeyraPortableDirectory if their locations differ from the Downloads pilot folders.'
  }
  Write-Host 'Real RTX 3060 playback and actual FPS still need a hardware test on this PC.'
 }finally{if($logging){Stop-Transcript | Out-Null}}
