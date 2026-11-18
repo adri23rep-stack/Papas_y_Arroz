@@ -94,9 +94,9 @@ try{
      if($LASTEXITCODE -ne 0){throw 'vcpkg bootstrap failed'}
    }
    $features=if($DisableDeinterlace){
-     'ffmpeg[avcodec,avformat,swresample,swscale,network]:x64-windows'
+     'ffmpeg[avcodec,avformat,swresample,swscale]:x64-windows'
    }else{
-     'ffmpeg[avcodec,avformat,avfilter,swresample,swscale,network]:x64-windows'
+     'ffmpeg[avcodec,avformat,avfilter,swresample,swscale]:x64-windows'
    }
    Push-Location $root
    try{
