@@ -215,7 +215,7 @@ static bool api_post(const Json& config,const Json& common,const char* route,Jso
                 std::string version=text(config,"apk_version");
                 if(version.empty()||version.size()>16||version.find_first_not_of("0123456789.")!=std::string::npos)
                     version="desconocida";
-                return fail("El servicio indica version fuera de servicio (portal200001). Version enviada: "+version+".");
+                return fail("Registro rechazado (portal200001; motivo exacto sin confirmar). Version enviada: "+version+".");
             }
             std::string safe=code.substr(0,80);
             for(char& c:safe)if(static_cast<unsigned char>(c)<32)c=' ';
