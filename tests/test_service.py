@@ -211,13 +211,24 @@ def main(binary,app=None):
             config['http_package_version']='synthetic-spkg-version-only'
             path.write_text(json.dumps(config))
             for mode in ['bootstrap_success','bootstrap_success','bootstrap_version','bootstrap_denied','bootstrap_incomplete','bootstrap_existing']:
+                saved_state=folder/'device_state.json'
+                previous_state=saved_state.read_bytes() if saved_state.exists() else None
                 Handler.mode=mode;Handler.posts=0;Handler.gets=0;Handler.failures=[]
                 subprocess.run([str(Path(binary).resolve()),str(path),mode],check=True,timeout=15)
                 assert not Handler.failures,Handler.failures
                 assert Handler.posts==(1 if mode=='bootstrap_version' else 2),(mode,Handler.posts)
                 assert Handler.gets==(1 if mode in ['bootstrap_success','bootstrap_existing'] else 0),(mode,Handler.gets)
+                if mode in ['bootstrap_version','bootstrap_denied','bootstrap_incomplete']:
+                    # A denied or incomplete activation cannot overwrite the
+                    # last successfully authorized device state.
+                    assert saved_state.read_bytes()==previous_state,mode
+                else:
+                    assert saved_state.exists(),mode
+                    assert set(json.loads(saved_state.read_text()))=={'sn','open_count'},mode
                 print('local TLS test:',mode,'passed')
-            assert Handler.open_counts==[0,1,2,3,4],Handler.open_counts
+            # Both denied and incomplete activations repeat openNum=2, rather
+            # than consuming an authorized open count or changing identity.
+            assert Handler.open_counts==[0,1,2,2,2],Handler.open_counts
             for mode in ['bootstrap_catalog','bootstrap_catalog_missing','bootstrap_catalog_denied','bootstrap_catalog_opaque','bootstrap_catalog_license']:
                 Handler.mode=mode;Handler.posts=0;Handler.gets=0;Handler.failures=[]
                 subprocess.run([str(Path(binary).resolve()),str(path),mode],check=True,timeout=15)
