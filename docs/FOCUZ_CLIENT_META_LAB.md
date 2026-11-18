@@ -33,3 +33,27 @@ Copia `service.json` privado a la carpeta del **ejecutable compilado de laborato
 - Este entorno no dispone del toolchain MSYS2/Qt de Windows y no se ha ejecutado la compilación completa aquí. Las pruebas TLS del repositorio deben pasarse al compilar.
 - El servidor puede rechazar el registro por otras razones: permisos, identidad local, perfiles, reglas regionales o cambios de protocolo. No intentes eludir una denegación de acceso.
 - Los campos privados nunca deben subirse a GitHub, pegarse en un chat o imprimirse en registros de diagnóstico.
+
+## Blindaje de estado y fallback (2026-11-18)
+
+**Objetivo:** evitar que una interrupción de red o un rechazo transitorio deje la aplicación en peor estado que antes. Esto no concede permisos ni garantiza la continuidad del catálogo privado.
+
+- `service_bootstrap` ya no sobrescribe `device_state.json` al recibir solo `snToken`. La identidad/contador se conservan si `active` es rechazado o no entrega una sesión válida.
+- Tras la autorización completa, el nuevo estado se escribe en un archivo temporal, se valida el resultado de escritura y se reemplaza de forma atómica. Esto protege contra archivos cortados por cierre inesperado.
+- La caché **pública** `iptv_es_cache.m3u` se guarda con `QSaveFile`: una descarga o escritura fallida no destruye la copia previa.
+- `tests/test_service.py` agrega regresión: rechazo, versión denegada y activación incompleta no alteran el último estado autorizado.
+- `tools/Backup-NovaLocalState.ps1` crea un respaldo privado con hashes SHA-256 en `%LOCALAPPDATA%\Nova-Focuz\Backups`. No sube archivos a ningún servidor ni imprime identidad o tokens.
+
+**Respaldo antes de actualizar el ejecutable:** en PowerShell, desde la rama ya descargada:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\Backup-NovaLocalState.ps1
+```
+
+Si la instalación funcional está en otra carpeta:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\Backup-NovaLocalState.ps1 -SourceDirectory "C:\ruta\a\Nova"
+```
+
+**No hagas pruebas de conexión agresivas contra un servidor que esté rechazando la autorización.** Si un proveedor deniega `snToken` o `active`, Nova debe indicarlo y conservar los datos locales sin intentar eludir la decisión. La TV pública puede seguir disponible por separado, pero nunca debe presentarse como el catálogo autorizado. El respaldo es para recuperación local, no para renovar o transferir licencias.
