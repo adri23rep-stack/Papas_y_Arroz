@@ -17,6 +17,8 @@ param(
  # Alpha 1 targets progressive local MP4 playback. The optional FFmpeg
  # avfilter/deinterlace module can be enabled later with -DisableDeinterlace:$false.
  [switch]$DisableDeinterlace=$true,
+ [switch]$BuildOnly,
+ [string]$BuildDirectory,
  [switch]$SkipFfmpegInstall
 )
 Set-StrictMode -Version Latest
@@ -31,7 +33,7 @@ $dlss=Join-Path $public 'DLSS_SDK_310.7.0'
 $nvenc=Join-Path $public 'nv-codec-headers-13.0'
 $vcpkg=Join-Path $deps 'vcpkg'
 $ff=Join-Path $deps 'installed\x64-windows'
-$build=Join-Path $root 'out\nova-native-gpu'
+$build=if($BuildDirectory){$BuildDirectory}else{Join-Path $root 'out\nova-native-gpu'}
 function Need([string]$p) {
  if(-not(Test-Path -LiteralPath $p -PathType Leaf)){throw ('Missing file: '+$p)}
 }
@@ -211,6 +213,7 @@ try{
  $dll=Join-Path $build 'nova_veyra_native.dll'
  Need $dll
  Write-Host ('Veyra original GPU DLL compiled: '+$dll)
+ if($BuildOnly){return}
  # Prefer the exact pilot folders used in the user's previous Windows tests.
  # The defaults do not search documents, credentials, caches or user profiles.
  $downloads=Join-Path $env:USERPROFILE 'Downloads'

@@ -15,13 +15,23 @@
 #include <cstring>
 #include <string>
 
+int quietNetworkDecoder();
+void restoreNetworkDecoderLog(int previous);
+
 namespace {
 using veyra::engine::EnhancementSettings;
 using veyra::engine::EngineController;
 using veyra::engine::FrameGenerationBackend;
 using veyra::engine::PlayerOptions;
 
+struct DecoderLog {
+    bool quiet=false;
+    int previous=0;
+    ~DecoderLog(){if(quiet)restoreNetworkDecoderLog(previous);}
+};
+
 struct Session {
+    DecoderLog log; // Restore after the engine (and its workers) has shut down.
     EngineController engine;
 };
 
@@ -77,6 +87,13 @@ int NOVA_VEYRA_CALL nova_veyra_open(
         static_cast<Session*>(ptr)->engine.open(static_cast<HWND>(target),source,playback);
         return 1; // queued; do NOT misreport success before snapshot reports Playing
     } catch (...) {return 0;}
+}
+int NOVA_VEYRA_CALL nova_veyra_open_https_query(
+    void* ptr,void* target,const wchar_t* source,const NovaVeyraSettings* options){
+    if(!ptr||!source||_wcsnicmp(source,L"https://",8)!=0)return 0;
+    auto& log=static_cast<Session*>(ptr)->log;
+    if(!log.quiet){log.previous=quietNetworkDecoder(); log.quiet=true;}
+    return nova_veyra_open(ptr,target,source,options);
 }
 void NOVA_VEYRA_CALL nova_veyra_stop(void* ptr){
     if(ptr)try{static_cast<Session*>(ptr)->engine.stop();}catch(...){}

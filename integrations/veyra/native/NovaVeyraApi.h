@@ -120,6 +120,9 @@ NOVA_VEYRA_EXPORT void* NOVA_VEYRA_CALL nova_veyra_create(void);
 NOVA_VEYRA_EXPORT void NOVA_VEYRA_CALL nova_veyra_destroy(void* engine);
 NOVA_VEYRA_EXPORT int NOVA_VEYRA_CALL nova_veyra_open(
     void* engine, void* hwnd, const wchar_t* source, const NovaVeyraSettings* settings);
+// Optional ABI 4 extension for verified HTTPS and quiet decoder diagnostics.
+NOVA_VEYRA_EXPORT int NOVA_VEYRA_CALL nova_veyra_open_https_query(
+    void* engine, void* hwnd, const wchar_t* source, const NovaVeyraSettings* settings);
 NOVA_VEYRA_EXPORT void NOVA_VEYRA_CALL nova_veyra_stop(void* engine);
 NOVA_VEYRA_EXPORT void NOVA_VEYRA_CALL nova_veyra_pause(void* engine, uint32_t paused);
 NOVA_VEYRA_EXPORT void NOVA_VEYRA_CALL nova_veyra_seek(void* engine, double seconds);

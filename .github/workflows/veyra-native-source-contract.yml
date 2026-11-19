@@ -57,3 +57,23 @@ jobs:
             throw 'Win32 GPU frame-count smoke probe does not compile against the native ABI'
           }
           Write-Host 'MSVC compiled native adapter and real frame-count smoke tester. GPU linking and hardware playback remain untested.'
+      - uses: msys2/setup-msys2@v2
+        id: ffmpeg
+        with:
+          msystem: UCRT64
+          install: mingw-w64-ucrt-x86_64-ffmpeg
+      - name: Compile private HTTPS decoder against pinned upstream source
+        shell: pwsh
+        env:
+          MSYS_ROOT: ${{ steps.ffmpeg.outputs.msys2-location }}
+        run: |
+          $generated = Join-Path $env:RUNNER_TEMP 'NovaDemuxSession.cpp'
+          cmake "-DINPUT=$env:VEYRA_SOURCE_ROOT/src/media/DemuxSession.cpp" "-DOUTPUT=$generated" -P integrations/veyra/native/PrepareNetworkDemux.cmake
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $headers = Join-Path $env:MSYS_ROOT 'ucrt64/include'
+          # Isolate FFmpeg headers from MinGW's CRT headers for MSVC.
+          $includes = Join-Path $env:RUNNER_TEMP 'ffmpeg-headers'
+          New-Item $includes -ItemType Directory | Out-Null
+          Get-ChildItem $headers -Directory -Filter 'libav*' | Copy-Item -Destination $includes -Recurse
+          cl /nologo /std:c++20 /Zc:__cplusplus /EHsc /utf-8 /DNOMINMAX /DWIN32_LEAN_AND_MEAN "/I$includes" "/I$env:VEYRA_SOURCE_ROOT/include" /c $generated integrations/veyra/native/PrivateNetworkLog.cpp
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }

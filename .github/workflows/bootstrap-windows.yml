@@ -475,6 +475,11 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist/Xuper-TV-Desktop/tools, dist/Xuper-TV-Desktop/integrations/veyra | Out-Null
+          Copy-Item -Recurse integrations/veyra/native dist/Xuper-TV-Desktop/integrations/veyra/
+          Copy-Item tools/Actualizar-Veyra.ps1 dist/Xuper-TV-Desktop/
+          foreach($file in @('Complete-NovaVeyraNative.ps1','Prepare-NovaVeyraOpticalFlow.ps1','Build-NovaVeyraNative.ps1','Enable-NovaVeyraLiveBeta.ps1')){
+            Copy-Item "tools/$file" dist/Xuper-TV-Desktop/tools/
+          }
           Copy-Item tools/Run-NovaVeyraSmoke.ps1 dist/Xuper-TV-Desktop/
           Copy-Item tools/Apply-VeyraNovaBridge.py dist/Xuper-TV-Desktop/tools/
           Copy-Item tools/Build-NovaVeyraEngine.ps1 dist/Xuper-TV-Desktop/tools/

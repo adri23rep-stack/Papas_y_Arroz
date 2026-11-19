@@ -3,6 +3,12 @@
 #include <initializer_list>
 int main(){
     using xs::NovaNativeSourcePolicy;
+    assert(xs::nativeHttpsQuery(true,false,true,true,false));
+    assert(!xs::nativeHttpsQuery(true,true,true,true,false));
+    assert(!xs::nativeHttpsQuery(true,false,false,true,false));
+    assert(!xs::nativeHttpsQuery(true,false,true,false,false));
+    assert(!xs::nativeHttpsQuery(true,false,true,true,true));
+    assert(!xs::nativeHttpsQuery(false,false,true,true,false));
     for(bool local:{false,true})for(bool http:{false,true})
     for(bool live:{false,true})for(bool beta:{false,true})
     for(bool headers:{false,true})for(bool subtitles:{false,true}){

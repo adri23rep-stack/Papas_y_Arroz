@@ -79,4 +79,4 @@ try{
 }
 Write-Host 'Alpha updated. Old EXE backed up; existing catalog and Veyra DLL unchanged.' -ForegroundColor Green
 Write-Host ('Run beta with: & "'+(Join-Path $dest 'Start-NovaVeyraLiveBeta.ps1')+'"') -ForegroundColor Cyan
-Write-Host 'Not all public HLS channels are supported; protected or signed channels remain in MPV.'
+Write-Host 'Network sources requiring custom headers or external subtitles use MPV.'

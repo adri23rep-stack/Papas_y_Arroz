@@ -165,15 +165,17 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
     const QString nativeDll=qEnvironmentVariable("NOVA_VEYRA_NATIVE_DLL");
     // Live experimental failure must never leave the user without television.
     // Resolved channels also participate in the opt-in. Never send
-    // privileged XuperTV streams, signed URLs, or custom auth headers.
+    // custom auth headers to the native engine. Query URLs require its verified HTTPS path.
     const bool catalogLiveBeta=live && catalogLiveCandidate &&
         qEnvironmentVariableIntValue("NOVA_VEYRA_NATIVE_LIVE_BETA")==1;
     const QString nativeSource=QString::fromStdString(result.source);
     const QUrl nativeUrl(nativeSource);
+    const bool privateNetwork=xs::nativeHttpsQuery(nativeUrl.hasQuery(),live,nativeUrl.scheme()=="https",
+        !nativeUrl.host().isEmpty(),nativeUrl.authority().contains('@'));
     const bool safeHttp=nativeUrl.isValid() &&
         (nativeUrl.scheme()=="http"||nativeUrl.scheme()=="https") &&
         qEnvironmentVariableIntValue("NOVA_VEYRA_NATIVE_ALLOW_NETWORK")==1 &&
-        nativeUrl.userInfo().isEmpty()&&!nativeUrl.hasFragment()&&!nativeUrl.hasQuery();
+        nativeUrl.userInfo().isEmpty()&&!nativeUrl.hasFragment()&&(!nativeUrl.hasQuery()||privateNetwork);
     const xs::NovaNativeSourcePolicy nativePolicy{QFileInfo(nativeSource).isFile(),safeHttp,
         live,catalogLiveBeta,!result.headers.empty(),!result.subtitles.empty()};
     const bool nativeStrict=!nativeDll.isEmpty()&&nativePolicy.strict(
@@ -185,7 +187,8 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
         const QString source=nativeSource;
         {
             auto candidate=std::make_unique<NovaVeyraNativeLoader>();
-            if(candidate->load(nativeDll)){
+            const bool loaded=candidate->load(nativeDll);
+            if(loaded && (!privateNetwork || candidate->hasPrivateNetwork())){
                 if(!videoWindow_){
                     videoWindow_=std::make_unique<QWindow>();
                     videoWindow_->installEventFilter(this);
@@ -209,7 +212,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                 options.features=(defaults_.value("veyra_sr").toBool()?NOVA_VEYRA_FEATURE_SR:0u) |
                     (defaults_.value("veyra_nr").toBool()?NOVA_VEYRA_FEATURE_NR:0u) |
                     (defaults_.value("veyra_hdr").toBool()?NOVA_VEYRA_FEATURE_HDR:0u);
-                if(candidate->open(reinterpret_cast<void*>(videoWindow_->winId()),source,options)){
+                if(candidate->open(reinterpret_cast<void*>(videoWindow_->winId()),source,options,privateNetwork)){
                     nativeVeyra_=std::move(candidate);
                     nativeVeyraStarted_=false;
                     nativeVeyraPaused_=false;
@@ -394,7 +397,8 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                 candidate->close();
                 nativeLoadFailure=QStringLiteral("Veyra no aceptó abrir el video en la ventana D3D12 de Nova.");
             }else{
-                nativeLoadFailure=candidate->lastError();
+                if(loaded)playbackRoute_=QStringLiteral("MPV · actualiza el motor nativo para enlaces HTTPS con parámetros");
+                nativeLoadFailure=loaded?playbackRoute_:candidate->lastError();
             }
         }
     }
@@ -656,7 +660,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
             reasons << QStringLiteral("biblioteca de Veyra no disponible");
         if(nativePolicy.has_headers)reasons << QStringLiteral("la fuente requiere cabeceras");
         if(nativePolicy.has_subtitles)reasons << QStringLiteral("subtítulos externos");
-        if(nativeUrl.hasQuery())reasons << QStringLiteral("enlace con parámetros");
+        if(nativeUrl.hasQuery() && !privateNetwork)reasons << QStringLiteral("enlace con parámetros");
         if(!nativeUrl.userInfo().isEmpty() || nativeUrl.hasFragment())
             reasons << QStringLiteral("formato de enlace no admitido");
         if(!nativePolicy.local && qEnvironmentVariableIntValue("NOVA_VEYRA_NATIVE_ALLOW_NETWORK")!=1)

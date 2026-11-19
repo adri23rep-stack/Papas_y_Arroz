@@ -37,6 +37,7 @@ public:
         create_=reinterpret_cast<decltype(&nova_veyra_create)>(lib_.resolve("nova_veyra_create"));
         destroy_=reinterpret_cast<decltype(&nova_veyra_destroy)>(lib_.resolve("nova_veyra_destroy"));
         open_=reinterpret_cast<decltype(&nova_veyra_open)>(lib_.resolve("nova_veyra_open"));
+        httpsOpen_=reinterpret_cast<decltype(httpsOpen_)>(lib_.resolve("nova_veyra_open_https_query"));
         stop_=reinterpret_cast<decltype(&nova_veyra_stop)>(lib_.resolve("nova_veyra_stop"));
         pause_=reinterpret_cast<decltype(&nova_veyra_pause)>(lib_.resolve("nova_veyra_pause"));
         seek_=reinterpret_cast<decltype(&nova_veyra_seek)>(lib_.resolve("nova_veyra_seek"));
@@ -65,11 +66,13 @@ public:
 
     bool ready()const{return engine_!=nullptr;}
     QString lastError()const{return error_;}
-    bool open(void* hwnd,const QString& source,const NovaVeyraSettings& options){
+    bool hasPrivateNetwork()const{return httpsOpen_!=nullptr;}
+    bool open(void* hwnd,const QString& source,const NovaVeyraSettings& options,bool privateNetwork=false){
         if(!ready())return false;
         requested_=options;
         const auto wide=source.toStdWString();
-        return open_(engine_,hwnd,wide.c_str(),&options)!=0;
+        const auto fn=privateNetwork?httpsOpen_:open_;
+        return fn && fn(engine_,hwnd,wide.c_str(),&options)!=0;
     }
     void stop(){if(ready())stop_(engine_);}
     void pause(bool p){if(ready())pause_(engine_,p?1u:0u);}
@@ -139,7 +142,7 @@ public:
         if(engine_ && destroy_)destroy_(engine_);
         engine_=nullptr;
         if(lib_.isLoaded())lib_.unload();
-        abi_=nullptr;create_=nullptr;destroy_=nullptr;open_=nullptr;
+        abi_=nullptr;create_=nullptr;destroy_=nullptr;open_=nullptr;httpsOpen_=nullptr;
         stop_=nullptr;pause_=nullptr;seek_=nullptr;volume_=nullptr;
         settings_=nullptr;snapshot_=nullptr;flowSnapshot_=nullptr;rate_=nullptr;
         audioCount_=nullptr;audioAt_=nullptr;selectAudio_=nullptr;
@@ -153,6 +156,7 @@ private:
     decltype(&nova_veyra_create) create_=nullptr;
     decltype(&nova_veyra_destroy) destroy_=nullptr;
     decltype(&nova_veyra_open) open_=nullptr;
+    decltype(&nova_veyra_open_https_query) httpsOpen_=nullptr;
     decltype(&nova_veyra_stop) stop_=nullptr;
     decltype(&nova_veyra_pause) pause_=nullptr;
     decltype(&nova_veyra_seek) seek_=nullptr;
