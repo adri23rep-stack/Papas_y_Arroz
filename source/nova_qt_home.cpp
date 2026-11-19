@@ -526,6 +526,7 @@ void NovaQtHome::playFeatured(){
         const auto result=watcher->result();
         loading_=false;
         if(result.ok){
+            nova_cache::save(cache_scope_,nova_cache::pageKey(chosen),result.catalog);
             const auto it=std::find_if(result.catalog.entries.begin(),
                 result.catalog.entries.end(),[](const xs::Entry& e){
                     return e.kind==xs::EntryKind::Episode||
@@ -585,7 +586,14 @@ void NovaQtHome::refresh(){
     const quint64 refresh_epoch=++refresh_epoch_;
     if(previews_request_)previews_request_->cancel();
     previews_request_.reset();
-    cache_scope_=nova_cache::scope();
+    const auto new_scope=nova_cache::scope();
+    if(new_scope!=cache_scope_){
+        session_.reset();root_={};page_={};items_.clear();history_.clear();browsing_=false;
+        channel_entries_.clear();series_entries_.clear();movie_entries_.clear();series_.clear();movies_.clear();
+        mergePublicChannels();updateFeatured();
+        xs::RemoteServer::shared().set_session({},root_);
+    }
+    cache_scope_=new_scope;
     QString stamp;
     if(auto cached=nova_cache::read(cache_scope_,"root",&stamp)){
         root_=*cached;
@@ -680,6 +688,7 @@ void NovaQtHome::refresh(){
 
 void NovaQtHome::showCatalog(xs::Catalog catalog,bool pushHistory){
     if(pushHistory&&browsing_)history_.push_back({page_,selected_item_});
+    ++page_epoch_;
     page_=std::move(catalog);
     xs::RemoteServer::shared().index_assets(page_.entries);
     items_=listFor(page_.entries);
@@ -713,7 +722,12 @@ void NovaQtHome::openSection(int row){
     if(section==root_.entries.end()){
         history_.clear();showCatalog(std::move(page),false);return;
     }
-    if(!session_){browseEntry(*section);return;}
+    if(!session_||nova_cache::read(cache_scope_,nova_cache::pageKey(*section))){
+        if(!session_&&!nova_cache::read(cache_scope_,nova_cache::pageKey(*section))){
+            history_.clear();showCatalog(std::move(page),false);return;
+        }
+        history_.clear();browsing_=false;browseEntry(*section);return;
+    }
     loading_=true;status_=QStringLiteral("Abriendo catálogo completo...");emit changed();
     const auto session=session_;const auto target=*section;
     auto* watcher=new QFutureWatcher<xs::BrowseResult>(this);
@@ -776,37 +790,48 @@ void NovaQtHome::activate(const xs::Entry& e){
     else{status_=QStringLiteral("Este elemento no tiene reproducción directa.");emit changed();}
 }
 void NovaQtHome::browseEntry(const xs::Entry& e){
+    if(loading_)return;
+    const auto key=nova_cache::pageKey(e);
+    const auto scope=cache_scope_;
+    auto cached=nova_cache::read(scope,key);
+    if(cached)showCatalog(*cached,true);
     if(!session_){
-        auto cached=nova_cache::read(cache_scope_,nova_cache::pageKey(e));
-        if(cached)showCatalog(*cached,true);
         status_=cached?QStringLiteral("Mostrando la copia guardada."):QStringLiteral("Esta sección aún no tiene copia guardada.");
         emit changed();return;
     }
-    if(loading_)return;
-    loading_=true;status_=QStringLiteral("Cargando contenido...");
+    loading_=!cached.has_value();
+    status_=cached?QStringLiteral("Mostrando copia guardada. Actualizando…"):QStringLiteral("Cargando contenido…");
+    const auto view=++page_epoch_;
     emit changed();
     const auto session=session_;
     auto* watcher=new QFutureWatcher<xs::BrowseResult>(this);
     connect(watcher,&QFutureWatcher<xs::BrowseResult>::finished,this,
-            [this,watcher,e](){
+            [this,watcher,e,scope,key,view,was_cached=cached.has_value()](){
         const auto response=watcher->result();
+        watcher->deleteLater();
+        if(scope!=cache_scope_)return;
+        if(response.ok)nova_cache::save(scope,key,response.catalog);
+        if(view!=page_epoch_||(was_cached&&loading_))return;
         loading_=false;
         if(response.ok){
-            nova_cache::save(cache_scope_,nova_cache::pageKey(e),response.catalog);
+
             xs::Catalog catalog=response.catalog;
             if(catalog.title.empty())catalog.title=e.title;
             // Keep movie behavior from the existing desktop: a movie page
             // containing a single playable part starts that part.
-            if(e.kind==xs::EntryKind::Asset&&e.program_type=="1"&&
+            if(!was_cached&&e.kind==xs::EntryKind::Asset&&e.program_type=="1"&&
                catalog.entries.size()==1&&catalog.entries[0].kind==xs::EntryKind::Episode){
                 playEntry(catalog.entries[0]);
-            }else showCatalog(std::move(catalog),true);
+            }else{
+                const auto index=selected_item_;
+                showCatalog(std::move(catalog),!was_cached);
+                if(was_cached&&!page_.entries.empty())selectGridItem(index);
+            }
         }else{
-            if(auto cached=nova_cache::read(cache_scope_,nova_cache::pageKey(e)))showCatalog(*cached,true);
+
             status_=QString::fromStdString(response.status);
         }
         emit changed();
-        watcher->deleteLater();
     });
     watcher->setFuture(QtConcurrent::run([session,e](){
         return xs::service_browse_remote(session,e);
@@ -814,6 +839,7 @@ void NovaQtHome::browseEntry(const xs::Entry& e){
 }
 void NovaQtHome::playEntry(const xs::Entry& e){
     if(player_.playing()||loading_)return;
+    ++page_epoch_;
     next_episode_=xs::nova_next_episode(e,page_.entries,playback_history_.auto_next);
     active_entry_=e;
     saved_.remember(e);
@@ -919,6 +945,7 @@ void NovaQtHome::back(){
     }else home();
 }
 void NovaQtHome::home(){
+    if(!loading_||source_request_)++page_epoch_;
     if(source_request_){
         source_request_->cancel();source_request_.reset();
         ++source_request_epoch_;loading_=false;
