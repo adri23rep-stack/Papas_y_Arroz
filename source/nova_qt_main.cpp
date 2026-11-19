@@ -82,6 +82,12 @@ int main(int argc,char** argv){
             if(expectEnd)return;
             if(fallback){
                 if(player.videoWindow() && !player.veyraActive()){
+                    if(mode=="native-strict-protected" &&
+                       (!player.playbackRoute().contains("cabeceras") ||
+                        player.playbackRoute().contains("synthetic-test-only"))){
+                        app.exit(24);
+                        return;
+                    }
                     player.stop();
                     app.quit();
                 }

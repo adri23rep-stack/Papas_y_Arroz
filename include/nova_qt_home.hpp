@@ -48,6 +48,7 @@ class NovaQtHome : public QObject {
     Q_PROPERTY(bool playing READ playing NOTIFY changed)
     Q_PROPERTY(QString playbackTitle READ playbackTitle NOTIFY changed)
     Q_PROPERTY(QString playbackNotice READ playbackNotice NOTIFY changed)
+    Q_PROPERTY(QString playbackRoute READ playbackRoute NOTIFY changed)
     Q_PROPERTY(QString playbackDiagnostics READ playbackDiagnostics NOTIFY changed)
     Q_PROPERTY(int videoPreset READ videoPreset NOTIFY changed)
     Q_PROPERTY(QString videoPresetLabel READ videoPresetLabel NOTIFY changed)
@@ -94,6 +95,7 @@ public:
     bool playing() const{return player_.playing();}
     QString playbackTitle() const{return player_.title();}
     QString playbackNotice() const{return player_.notice();}
+    QString playbackRoute() const{return player_.playbackRoute();}
     QString playbackDiagnostics() const{return player_.diagnostics();}
     int videoPreset() const;
     QString videoPresetLabel() const;

@@ -31,6 +31,7 @@ public:
     bool playing() const {return playing_.load();}
     QString title() const {return title_;}
     QString notice() const {return notice_;}
+    QString playbackRoute() const {return playbackRoute_;}
     QString diagnostics() const {return diagnostics_;}
     bool veyraActive() const {return (veyraBridgeReady_ || (nativeVeyra_ && nativeVeyra_->ready())) && !veyraState_.isEmpty();}
     QVariantMap veyraState() const {return veyraState_;}
@@ -100,5 +101,5 @@ private:
     std::atomic<bool> playing_{false},stop_{false};
     std::atomic<int> requested_quality_{1}, requested_motion_{0};
     std::atomic<std::uint64_t> restart_revision_{0};
-    QString title_,notice_,diagnostics_;
+    QString title_,notice_,diagnostics_,playbackRoute_;
 };

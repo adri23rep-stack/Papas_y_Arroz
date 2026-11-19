@@ -280,7 +280,7 @@ Item {
             Text {
                 x: 26; y: 443
                 width: parent.width - 52
-                text: novaHome.gpuRifeReady
+                text: novaHome.playing && novaHome.playbackRoute ? novaHome.playbackRoute : novaHome.gpuRifeReady
                     ? "GPU RIFE preparado. 24→48 / 30→60 FPS; monitorea la sincronización."
                     : "RIFE GPU no instalado. Extrae el ZIP GPU RIFE adicional; el video normal sigue disponible."
                 color: "#E9BC89"
@@ -444,7 +444,7 @@ Item {
                 }
                 Text {
                     width: parent.width; wrapMode: Text.WordWrap
-                    text: !novaHome.veyraActive ? "Se guardan para los videos compatibles con Veyra. Los demás usan MPV." : "El estado lo confirma Veyra. Activar una mejora no garantiza más FPS; depende del video y la GPU."
+                    text: !novaHome.veyraActive && novaHome.playing && novaHome.playbackRoute ? novaHome.playbackRoute : !novaHome.veyraActive ? "Se guardan para los videos compatibles con Veyra. Los demás usan MPV." : "El estado lo confirma Veyra. Activar una mejora no garantiza más FPS; depende del video y la GPU."
                     color: "#B9B4C5"; font.pixelSize: 12
                 }
             }

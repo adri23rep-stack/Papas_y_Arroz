@@ -178,6 +178,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
         live,catalogLiveBeta,!result.headers.empty(),!result.subtitles.empty()};
     const bool nativeStrict=!nativeDll.isEmpty()&&nativePolicy.strict(
         qEnvironmentVariableIntValue("NOVA_VEYRA_NATIVE_STRICT")==1);
+    if(!skipVeyraOnce_)playbackRoute_.clear();
     QString nativeLoadFailure;
     if(!skipVeyraOnce_ && !nativeDll.isEmpty() &&
        QFileInfo(nativeDll).isAbsolute() && QFileInfo(nativeDll).isFile() && nativePolicy.eligible()){
@@ -257,6 +258,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                                 emit changed();
                                 return;
                             }
+                            playbackRoute_=QStringLiteral("MPV · ")+reason;
                             skipVeyraOnce_=true; // the failed native path is never retried
                             play(result,title,live,resumeSeconds,catalogLiveCandidate);
                             notice_=QStringLiteral("Veyra nativo falló; recuperado con MPV.");
@@ -485,6 +487,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                     veyraOutput_.clear();
                     xs::RemoteServer::shared().end_playback();
                     playing_.store(false);
+                    playbackRoute_=QStringLiteral("MPV · Veyra inició, pero interrumpió la reproducción.");
                     skipVeyraOnce_=true;
                     play(result,title,live,resume);
                     notice_=QStringLiteral("Veyra no pudo continuar; video recuperado con MPV.");
@@ -646,10 +649,23 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
     }
     veyraState_.clear();
     diagnostics_.clear();
-    if(live)
-        diagnostics_=catalogLiveBeta
-            ?QStringLiteral("TV: Veyra no pudo abrir esta fuente; usando MPV sin NVIDIA-VFG.")
-            :QStringLiteral("TV: MPV (NVIDIA-VFG nativo requiere canal público simple y modo beta).");
+    if(playbackRoute_.isEmpty()){
+        QStringList reasons;
+        if(nativeDll.isEmpty())reasons << QStringLiteral("motor nativo sin habilitar");
+        else if(!QFileInfo(nativeDll).isAbsolute() || !QFileInfo(nativeDll).isFile())
+            reasons << QStringLiteral("biblioteca de Veyra no disponible");
+        if(nativePolicy.has_headers)reasons << QStringLiteral("la fuente requiere cabeceras");
+        if(nativePolicy.has_subtitles)reasons << QStringLiteral("subtítulos externos");
+        if(nativeUrl.hasQuery())reasons << QStringLiteral("enlace con parámetros");
+        if(!nativeUrl.userInfo().isEmpty() || nativeUrl.hasFragment())
+            reasons << QStringLiteral("formato de enlace no admitido");
+        if(!nativePolicy.local && qEnvironmentVariableIntValue("NOVA_VEYRA_NATIVE_ALLOW_NETWORK")!=1)
+            reasons << QStringLiteral("red de Veyra deshabilitada");
+        if(live && !catalogLiveBeta)reasons << QStringLiteral("directo fuera del modo beta");
+        if(!nativeLoadFailure.isEmpty())reasons << QStringLiteral("Veyra no pudo cargar o abrir el video");
+        if(reasons.isEmpty())reasons << QStringLiteral("fuente no compatible con Veyra");
+        playbackRoute_=QStringLiteral("MPV · ")+reasons.join(QStringLiteral(" · "));
+    }
     if(thread_.joinable())thread_.join();
     stop_.store(false);
     if(!videoWindow_){
