@@ -153,137 +153,205 @@ Item {
         Rectangle {
             id: qualityPanel
             anchors.centerIn: parent
-            width: Math.min(520,overlay.width - 70)
-            height: Math.min(600,overlay.height - 24)
+            width: Math.min(560, overlay.width - 40)
+            height: Math.min(780, overlay.height - 24)
             radius: 20
             color: "#191821"
             border.color: "#595067"
             border.width: 1
-            Text {
-                x: 26; y: 18
-                text: "Calidad de video"
-                color: "white"
-                font.family: "Segoe UI"
-                font.pixelSize: 24
-                font.weight: Font.DemiBold
-            }
-            Text {
-                x: parent.width - 40
-                y: 12
-                text: "×"
-                color: "white"
-                font.pixelSize: 27
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: overlay.qualityVisible = false
-                }
-            }
-            Repeater {
-                model: ["Compatible (CPU)", "Equilibrado", "Nitidez alta (Lanczos)",
-                        "Detalle extra (CAS)", "GPU FSRCNNX"]
-                delegate: Rectangle {
-                    required property int index
-                    required property string modelData
-                    x: 24; y: 67 + index * 43
-                    width: qualityPanel.width - 48
-                    height: 39
-                    radius: 10
-                    color: novaHome.videoPreset === index ? "#463366" :
-                           qualityMouse.containsMouse ? "#302B3D" : "#24222D"
-                    border.color: novaHome.videoPreset === index ? "#A78BFA" : "#403A4D"
-                    Accessible.role: Accessible.RadioButton
-                    Accessible.name: modelData
-                    Accessible.onPressAction: novaHome.setVideoPreset(index)
+
+            Flickable {
+                anchors.fill: parent
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                contentWidth: width
+                contentHeight: settingsColumn.implicitHeight + 32
+
+                Column {
+                    id: settingsColumn
+                    x: 20
+                    y: 16
+                    width: parent.width - 40
+                    spacing: 10
+
+                    Item {
+                        width: settingsColumn.width
+                        height: 42
+                        Text {
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Calidad de video"
+                            color: "white"
+                            font.family: "Segoe UI"
+                            font.pixelSize: 24
+                            font.weight: Font.DemiBold
+                        }
+                        Text {
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "×"
+                            color: "white"
+                            font.pixelSize: 27
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: overlay.qualityVisible = false
+                            }
+                        }
+                    }
+
+                    Repeater {
+                        model: ["Compatible (CPU)", "Equilibrado", "Nitidez alta (Lanczos)",
+                                "Detalle extra (CAS)", "GPU FSRCNNX", "RTX AI Super Resolution"]
+                        delegate: Rectangle {
+                            required property int index
+                            required property string modelData
+                            width: settingsColumn.width
+                            height: 38
+                            radius: 10
+                            color: novaHome.videoPreset === index ? "#463366" :
+                                   qualityMouse.containsMouse ? "#302B3D" : "#24222D"
+                            border.color: novaHome.videoPreset === index ? "#A78BFA" : "#403A4D"
+                            Accessible.role: Accessible.RadioButton
+                            Accessible.name: modelData
+                            Accessible.onPressAction: novaHome.setVideoPreset(index)
+                            Text {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 14
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: (novaHome.videoPreset === index ? "◉  " : "○  ") + modelData
+                                color: "white"
+                                font.family: "Segoe UI"
+                                font.pixelSize: 14
+                            }
+                            MouseArea {
+                                id: qualityMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: novaHome.setVideoPreset(index)
+                            }
+                        }
+                    }
+
                     Text {
-                        x: 15
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: (novaHome.videoPreset === index ? "◉  " : "○  ") + modelData
+                        text: "RTX AI · Fuerza de escalado"
+                        color: "#CBB8FF"
+                        font.family: "Segoe UI"
+                        font.pixelSize: 16
+                        font.weight: Font.DemiBold
+                    }
+                    Flow {
+                        width: settingsColumn.width
+                        spacing: 6
+                        Repeater {
+                            model: ["Auto 2x", "1.5x", "2x", "3x", "4x MAX"]
+                            delegate: Rectangle {
+                                required property int index
+                                required property string modelData
+                                width: Math.max(52, (settingsColumn.width - 24) / 5)
+                                height: 34
+                                radius: 9
+                                color: novaHome.rtxScaleMode === index ? "#463366" :
+                                       scaleMouse.containsMouse ? "#302B3D" : "#24222D"
+                                border.color: novaHome.rtxScaleMode === index ? "#B7A2FF" : "#403A4D"
+                                Accessible.role: Accessible.RadioButton
+                                Accessible.name: "RTX " + modelData
+                                Accessible.onPressAction: novaHome.setRtxScaleMode(index)
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData
+                                    font.family: "Segoe UI"
+                                    font.pixelSize: 11
+                                    font.weight: Font.DemiBold
+                                    color: "white"
+                                }
+                                MouseArea {
+                                    id: scaleMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: novaHome.setRtxScaleMode(index)
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        width: settingsColumn.width
+                        text: "Calidad de IA NVIDIA: configura Manual · Nivel 4 en NVIDIA App > Sistema > Video. " +
+                              "Estos botones controlan la ampliación hasta el tamaño de tu pantalla, no el nivel del driver."
+                        wrapMode: Text.WordWrap
+                        color: "#B9B4C5"
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                    }
+                    Text {
+                        text: "MotionBoost · FPS"
                         color: "white"
                         font.family: "Segoe UI"
-                        font.pixelSize: 15
+                        font.pixelSize: 17
+                        font.weight: Font.DemiBold
                     }
-                    MouseArea {
-                        id: qualityMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: novaHome.setVideoPreset(index)
+                    Repeater {
+                        model: ["Desactivado", "Suavizado ligero (MPV)",
+                                "RIFE GPU Vulkan · 2x (experimental)"]
+                        delegate: Rectangle {
+                            required property int index
+                            required property string modelData
+                            width: settingsColumn.width
+                            height: 35
+                            radius: 9
+                            color: novaHome.motionMode === index ? "#463366" :
+                                   motionMouse.containsMouse ? "#302B3D" : "#24222D"
+                            border.color: novaHome.motionMode === index ? "#A78BFA" : "#403A4D"
+                            Accessible.role: Accessible.RadioButton
+                            Accessible.name: modelData
+                            Accessible.onPressAction: novaHome.setMotionMode(index)
+                            Text {
+                                x: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: (novaHome.motionMode === index ? "◉  " : "○  ") + modelData
+                                color: "white"
+                                font.family: "Segoe UI"
+                                font.pixelSize: 13
+                            }
+                            MouseArea {
+                                id: motionMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: novaHome.setMotionMode(index)
+                            }
+                        }
                     }
-                }
-            }
-            Text {
-                x: 26; y: 287
-                text: "MotionBoost · FPS"
-                color: "white"
-                font.family: "Segoe UI"
-                font.pixelSize: 17
-                font.weight: Font.DemiBold
-            }
-            Repeater {
-                model: ["Desactivado", "Suavizado ligero (MPV)",
-                        "RIFE GPU Vulkan · 2x (experimental)"]
-                delegate: Rectangle {
-                    required property int index
-                    required property string modelData
-                    x: 24; y: 316 + index * 40
-                    width: qualityPanel.width - 48
-                    height: 35
-                    radius: 9
-                    color: novaHome.motionMode === index ? "#463366" :
-                           motionMouse.containsMouse ? "#302B3D" : "#24222D"
-                    border.color: novaHome.motionMode === index ? "#A78BFA" : "#403A4D"
-                    Accessible.role: Accessible.RadioButton
-                    Accessible.name: modelData
-                    Accessible.onPressAction: novaHome.setMotionMode(index)
                     Text {
-                        x: 12
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: (novaHome.motionMode === index ? "◉  " : "○  ") + modelData
-                        color: "white"
+                        width: settingsColumn.width
+                        text: novaHome.gpuRifeReady
+                            ? "RIFE GPU preparado. 24→48 / 30→60 FPS; revisa la sincronización."
+                            : "RIFE GPU no instalado. Añade el complemento Vulkan; video normal disponible."
+                        color: "#E9BC89"
                         font.family: "Segoe UI"
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        width: settingsColumn.width
+                        text: novaHome.playbackNotice.length > 0 ? novaHome.playbackNotice :
+                              "Se guardará para el próximo video."
+                        color: "#C4B4F8"
                         font.pixelSize: 13
+                        font.family: "Segoe UI"
+                        wrapMode: Text.WordWrap
                     }
-                    MouseArea {
-                        id: motionMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: novaHome.setMotionMode(index)
+                    Text {
+                        width: settingsColumn.width
+                        text: novaHome.playing ? novaHome.playbackDiagnostics :
+                              "Al cambiar de modo, Nova reinicia solo MPV, recupera la posición y conserva los ajustes."
+                        color: "#B9B4C5"
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
                     }
                 }
-            }
-            Text {
-                x: 26; y: 443
-                width: parent.width - 52
-                text: novaHome.gpuRifeReady
-                    ? "GPU RIFE preparado. 24→48 / 30→60 FPS; monitorea la sincronización."
-                    : "RIFE GPU no instalado. Extrae el ZIP GPU RIFE adicional; el video normal sigue disponible."
-                color: "#E9BC89"
-                font.family: "Segoe UI"
-                font.pixelSize: 12
-                wrapMode: Text.WordWrap
-            }
-            Text {
-                x: 26; y: 487
-                width: parent.width - 52
-                color: "#C4B4F8"
-                font.pixelSize: 13
-                font.family: "Segoe UI"
-                text: novaHome.playbackNotice.length > 0 ? novaHome.playbackNotice :
-                    "Se guardará para el próximo video."
-                wrapMode: Text.WordWrap
-            }
-            Text {
-                x: 26; y: 526
-                width: parent.width - 52
-                height: Math.max(45,qualityPanel.height - 533)
-                color: "#B9B4C5"
-                font.family: "Segoe UI"
-                font.pixelSize: 12
-                wrapMode: Text.WordWrap
-                text: novaHome.playing ? novaHome.playbackDiagnostics :
-                    "Al cambiar de modo, Nova reinicia solo MPV y recupera la posición. " +
-                    "En TV en vivo se reconecta al canal."
             }
         }
     }

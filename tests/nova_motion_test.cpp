@@ -19,7 +19,13 @@ int main(){
     gate.observe(2,now+std::chrono::milliseconds(300));
     assert(!gate.ready(4,2,1,0,now+std::chrono::milliseconds(700)));
     assert(gate.ready(4,2,1,0,now+std::chrono::milliseconds(750)));
+    assert(gate.ready(5,2,1,0,now+std::chrono::milliseconds(750)));
+    assert(!gate.ready(6,2,1,0,now+std::chrono::milliseconds(750)));
     assert(!gate.ready(1,0,1,0,now+std::chrono::seconds(2)));
     assert(!gate.ready(1,3,1,0,now+std::chrono::seconds(2)));
+    assert(gate.ready(5,2,4,5,2,0,now+std::chrono::seconds(2)));
+    assert(!gate.ready(5,2,0,5,2,0,now+std::chrono::seconds(2)));
+    assert(!gate.ready(1,2,4,1,2,0,now+std::chrono::seconds(2))); // RTX setting ignored outside RTX
+    assert(!gate.ready(5,2,5,5,2,0,now+std::chrono::seconds(2)));
     return 0;
 }

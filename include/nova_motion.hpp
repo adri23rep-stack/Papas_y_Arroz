@@ -35,9 +35,14 @@ public:
     }
     bool ready(int quality,int motion,int activeQuality,int activeMotion,
                Clock::time_point now)const {
-        return revision_>0 && quality>=0 && quality<=4 &&
-               motion>=0 && motion<=2 &&
-               (quality!=activeQuality || motion!=activeMotion) &&
+        return ready(quality,motion,0,activeQuality,activeMotion,0,now);
+    }
+    bool ready(int quality,int motion,int rtxScale,int activeQuality,
+               int activeMotion,int activeRtxScale,Clock::time_point now)const {
+        return revision_>0 && quality>=0 && quality<=5 &&
+               motion>=0 && motion<=2 && rtxScale>=0 && rtxScale<=4 &&
+               (quality!=activeQuality || motion!=activeMotion ||
+                (quality==5 && rtxScale!=activeRtxScale)) &&
                now-last_change_>=std::chrono::milliseconds(450);
     }
 private:

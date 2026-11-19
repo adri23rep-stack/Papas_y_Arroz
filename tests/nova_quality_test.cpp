@@ -19,6 +19,16 @@ int main() {
     assert(!gate.ready(3,3,now+std::chrono::seconds(3)));
     assert(!gate.ready(-1,1,now+std::chrono::seconds(3)));
     assert(!gate.ready(9,1,now+std::chrono::seconds(3)));
+    assert(gate.ready(5,1,now+std::chrono::seconds(3)));
+    assert(kNovaLiveCacheOptions.size()==7);
+    assert(std::string(kNovaLiveCacheOptions[0].first)=="cache-pause");
+    assert(std::string(kNovaLiveCacheOptions[1].second)=="yes");
+    assert(std::string(kNovaLiveCacheOptions[2].first)=="cache-pause-wait");
+    assert(std::string(kNovaLiveCacheOptions[2].second)=="15");
+    assert(std::string(kNovaLiveCacheOptions[3].second)=="30");
+    assert(std::string(kNovaLiveCacheOptions[4].second)=="30");
+    assert(std::string(kNovaLiveCacheOptions[5].second)=="128MiB");
+    assert(std::string(kNovaLiveCacheOptions[6].second)=="4MiB");
     assert(nova_can_resume(false,5041.25));
     assert(!nova_can_resume(true,5041.25));
     assert(!nova_can_resume(false,-1));
@@ -26,6 +36,23 @@ int main() {
     assert(!nova_can_resume(false,std::numeric_limits<double>::infinity()));
     assert(nova_video_preset(-5)==VideoPreset::Balanced);
     assert(nova_video_preset(4)==VideoPreset::GpuFsrcnnx);
+    assert(nova_video_preset(5)==VideoPreset::RtxAiSuperResolution);
+    assert(nova_rtx_vsr(VideoPreset::RtxAiSuperResolution));
+    assert(!nova_rtx_vsr(VideoPreset::GpuFsrcnnx));
+    assert(nova_rtx_vsr_scale(1280,720,1920,1080)==1.5);
+    assert(nova_rtx_vsr_scale(640,360,3840,2160,0)==2.0); // legacy default
+    assert(nova_rtx_vsr_scale(640,360,3840,2160,1)==1.5);
+    assert(nova_rtx_vsr_scale(640,360,3840,2160,2)==2.0);
+    assert(nova_rtx_vsr_scale(640,360,3840,2160,3)==3.0);
+    assert(nova_rtx_vsr_scale(640,360,3840,2160,4)==4.0);
+    assert(nova_rtx_vsr_scale(640,360,1280,720,4)==2.0); // avoid oversampling
+    assert(nova_rtx_vsr_scale(1920,1080,1920,1080,4)==1.0);
+    assert(nova_rtx_vsr_scale(720,480,3840,2160,4)==4.0);
+    assert(nova_rtx_vsr_scale(640,360,3840,2160,9)==2.0); // reject unknown mode
+    assert(std::string(nova_rtx_scale_label(4)).find("4x")!=std::string::npos);
+    assert(nova_rtx_vsr_scale(640,360,3840,2160)==2.0);
+    assert(nova_rtx_vsr_scale(1920,1080,1920,1080)==1.0);
+    assert(nova_rtx_vsr_scale(0,1080,1920,1080)==1.0);
     assert(nova_needs_shader(VideoPreset::GpuFsrcnnx));
     assert(!nova_needs_shader(VideoPreset::Sharp));
     return 0;

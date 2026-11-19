@@ -120,6 +120,18 @@ jobs:
           cmake -S . -B build/windows -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build/windows --parallel 2
           ctest --test-dir build/windows --output-on-failure
+      - name: Validate Nova live TV 15-second MPV buffer options
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          # Real mpv invocation: catches unsupported settings or startup hangs.
+          timeout 45s /ucrt64/bin/mpv.exe --no-config --no-audio --vo=null --frames=2 \
+            --cache=yes --cache-pause=yes --cache-pause-initial=yes \
+            --cache-pause-wait=15 --cache-secs=30 \
+            --demuxer-readahead-secs=30 --demuxer-max-bytes=128MiB \
+            --demuxer-max-back-bytes=4MiB \
+            packaging/runtime/switch/xuperswitch/test.mp4
+          echo "Nova live buffer options and startup smoke passed."
       - name: Validate FFmpeg CAS/Lanczos filter graph
         shell: msys2 {0}
         run: |

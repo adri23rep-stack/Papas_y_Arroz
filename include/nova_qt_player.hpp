@@ -32,6 +32,7 @@ public:
     void applySetting(int id,int value);
     // Quality requests are picked up and debounced by the running mpv worker.
     void requestQuality(int value);
+    void requestRtxScale(int value);
     bool requestMotion(int value);
     static bool gpuRifeReady();
     void toggleFullscreen();
@@ -45,6 +46,7 @@ private:
     std::unique_ptr<QWindow> videoWindow_;
     bool restoreMaximized_=false;
     std::int64_t videoWindowId_=0;
+    int displayWidth_=1920,displayHeight_=1080; // sampled before playback worker starts
     void command(const char* name,const char* argument);
     void finish(const QString& message);
     void playWorker(xs::SourceResult result,QString title,bool live,double resumeSeconds);
@@ -52,7 +54,7 @@ private:
     mutable QMutex mutex_;
     mpv_handle* handle_=nullptr;
     std::atomic<bool> playing_{false},stop_{false};
-    std::atomic<int> requested_quality_{1}, requested_motion_{0};
+    std::atomic<int> requested_quality_{1}, requested_motion_{0}, requested_rtx_scale_{0};
     std::atomic<std::uint64_t> restart_revision_{0};
     QString title_,notice_,diagnostics_;
 };
