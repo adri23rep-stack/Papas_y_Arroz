@@ -1,4 +1,5 @@
 #include "nova_qt_home.hpp"
+#include "nova_mpv_window_effects.hpp"
 #include <QCoreApplication>
 #include <QDir>
 #include <QTemporaryDir>
@@ -42,6 +43,23 @@ int main(int argc,char** argv){
     // Existing Windows/SDL player remains an untouched separate EXE.
     QDir::setCurrent(QCoreApplication::applicationDirPath());
 
+    if(argc>1 && std::strcmp(argv[1],"--mpv-window-effects")==0)return novaMpvWindowEffects(app);
+#ifdef Q_OS_WIN
+    if(app.arguments().contains("--smoke-window-effects")){
+        QWindow source;
+        source.show();
+        auto hwnd=reinterpret_cast<HWND>(source.winId());
+        if(!SetPropW(hwnd,L"NovaMpvEffects",reinterpret_cast<HANDLE>(quintptr(7))))return 25;
+        auto probe=[&](int mark){
+            return QProcess::execute(app.applicationFilePath(),{"--mpv-window-effects",
+                QString::number(quintptr(hwnd)),QString::number(app.applicationPid()),QString::number(mark),
+                "24","4","2"});
+        };
+        qunsetenv("NOVA_VEYRA_NATIVE_DLL");
+        // Reject any other window; the marked one reaches DLL loading.
+        return probe(8)==3 && probe(7)==4 ? 0 : 26;
+    }
+#endif
     checkpoint("application_ready");
     if(smoke){
         static QTemporaryDir smokeSettings;

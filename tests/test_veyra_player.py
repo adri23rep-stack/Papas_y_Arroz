@@ -14,3 +14,7 @@ for mode in ('controls','failure','crash','unpatched','ended','native-strict-pro
     if result.returncode:
         raise SystemExit(f'Nova IPC scenario {mode} failed: {result.returncode}')
     print(f'Nova IPC scenario {mode}: PASS',flush=True)
+
+if os.name == "nt":
+    subprocess.run([nova, "--smoke-window-effects"], check=True, timeout=25,
+                   env={**os.environ, "QT_QPA_PLATFORM":"windows"})

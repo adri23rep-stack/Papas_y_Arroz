@@ -5,6 +5,10 @@
 #include "nova_motion.hpp"
 #include "nova_gpu.hpp"
 #include <QCoreApplication>
+#include <QRandomGenerator>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
 #include <QDir>
 #include <QGuiApplication>
 #include <QKeyEvent>
@@ -52,6 +56,7 @@ NovaQtPlayer::NovaQtPlayer(QObject* parent):QObject(parent){
     }
 }
 NovaQtPlayer::~NovaQtPlayer(){
+    stopWindowEffects();
     veyraWatchdog_.stop();
     nativeVeyraPoll_.stop();
     // Ensure the original GPU engine releases its D3D12 swap chain before
@@ -75,6 +80,7 @@ NovaQtPlayer::~NovaQtPlayer(){
 
 void NovaQtPlayer::finish(const QString& message){
     QMetaObject::invokeMethod(this,[this,message]{
+        stopWindowEffects();
         if(videoWindow_)videoWindow_->hide();
         playing_.store(false);
         notice_=message;
@@ -693,6 +699,68 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
     thread_=std::thread([this,result,title,live,resumeSeconds](){
         playWorker(result,title,live,resumeSeconds);
     });
+}
+
+void NovaQtPlayer::startWindowEffects(double fps){
+#ifdef Q_OS_WIN
+    if(effectsProcess_ || !playing() || stop_.load() || !videoWindow_ ||
+       !QFileInfo(qEnvironmentVariable("NOVA_VEYRA_NATIVE_DLL")).isFile())return;
+    unsigned flags=0;
+    if(defaults_.value("veyra_fg").toBool())flags|=NOVA_VEYRA_FEATURE_FG;
+    if(defaults_.value("veyra_sr").toBool())flags|=NOVA_VEYRA_FEATURE_SR;
+    if(defaults_.value("veyra_nr").toBool())flags|=NOVA_VEYRA_FEATURE_NR;
+    if(defaults_.value("veyra_hdr").toBool())flags|=NOVA_VEYRA_FEATURE_HDR;
+    if(!flags || !std::isfinite(fps) || fps<1 || fps>240)return;
+    auto hwnd=reinterpret_cast<HWND>(videoWindow_->winId());
+    const quint32 mark=QRandomGenerator::global()->generate()|1u;
+    if(!SetPropW(hwnd,L"NovaMpvEffects",reinterpret_cast<HANDLE>(quintptr(mark))))return;
+    auto* process=new QProcess(this);
+    effectsProcess_=process;
+    process->setStandardErrorFile(QProcess::nullDevice());
+    connect(process,&QProcess::readyReadStandardOutput,this,[this,process]{
+        while(process->canReadLine()){
+            const auto line=process->readLine().trimmed();
+            if(line=="pause"){togglePause();continue;}
+            if(line=="back" || line=="forward"){seek(line=="back"?-5:5);continue;}
+            const auto fields=line.split(' ');
+            if(fields.size()!=4 || fields[0]!="flow")continue;
+            playbackRoute_=QStringLiteral("MPV + Veyra · %1 FPS DXGI · %2 generados · SR %3")
+                .arg(fields[1].toDouble(),0,'f',1).arg(fields[2].toULongLong())
+                .arg(fields[3]=="1"?"activo":"inactivo");
+            emit changed();
+        }
+    });
+    auto ended=[this,process]{
+        if(effectsProcess_!=process)return;
+        stopWindowEffects();
+        playbackRoute_=QStringLiteral("MPV · terminó la ventana de efectos Veyra");
+        emit changed();
+    };
+    connect(process,&QProcess::finished,this,ended);
+    connect(process,&QProcess::errorOccurred,this,[ended](QProcess::ProcessError e){
+        if(e==QProcess::FailedToStart)ended();
+    });
+    process->start(QCoreApplication::applicationFilePath(),{"--mpv-window-effects",
+        QString::number(quintptr(hwnd)),QString::number(QCoreApplication::applicationPid()),
+        QString::number(mark),QString::number(qRound(fps)),QString::number(flags),
+        QString::number(defaults_.value("veyra_sr_quality").toInt())});
+#endif
+}
+
+void NovaQtPlayer::stopWindowEffects(){
+    if(!effectsProcess_)return;
+#ifdef Q_OS_WIN
+    if(videoWindow_)RemovePropW(reinterpret_cast<HWND>(videoWindow_->winId()),L"NovaMpvEffects");
+#endif
+    auto* process=effectsProcess_;
+    effectsProcess_=nullptr;
+    process->disconnect(this);
+    if(process->state()==QProcess::NotRunning)process->deleteLater();
+    else{
+        connect(process,&QProcess::finished,process,&QObject::deleteLater);
+        process->terminate();
+        QTimer::singleShot(2000,process,[process]{if(process->state()!=QProcess::NotRunning)process->kill();});
+    }
 }
 
 void NovaQtPlayer::command(const char* name,const char* argument){
@@ -1333,6 +1401,9 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                         if(decoder)mpv_free(decoder);
                         double originalFps=0.0;
                         mpv_get_property(mpv,"container-fps",MPV_FORMAT_DOUBLE,&originalFps);
+                        if(!gpuRife)QMetaObject::invokeMethod(this,[this,originalFps]{
+                            startWindowEffects(originalFps);
+                        },Qt::QueuedConnection);
                         const QString motionStatus=QString::fromUtf8(xs::nova_motion_label(motion));
                         const QString details=QStringLiteral(
                             "Origen %1×%2 · Salida %3×%4 · Decodificador %5 · %6\n"

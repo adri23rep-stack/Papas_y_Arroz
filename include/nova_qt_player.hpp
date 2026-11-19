@@ -59,6 +59,9 @@ signals:
     void finishedPlayback(double seconds,bool ended);
 private:
     bool eventFilter(QObject* object,QEvent* event) override;
+    void startWindowEffects(double fps);
+    void stopWindowEffects();
+    QProcess* effectsProcess_=nullptr;
     std::unique_ptr<QWindow> videoWindow_;
     std::unique_ptr<QProcess> veyraProcess_;
     // Optional original GPLv3 Veyra engine in Nova's OWN process. No subprocess.
