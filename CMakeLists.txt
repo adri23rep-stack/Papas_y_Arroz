@@ -377,6 +377,10 @@ if(WIN32)
     ws2_32 bcrypt crypt32 shell32 ole32 user32
   )
   if(BUILD_TESTING)
+    add_executable(nova_catalog_cache_test tests/nova_catalog_cache_test.cpp)
+    target_include_directories(nova_catalog_cache_test PRIVATE include)
+    target_link_libraries(nova_catalog_cache_test PRIVATE Qt6::Core)
+    add_test(NAME nova_catalog_cache_test COMMAND nova_catalog_cache_test)
     add_executable(nova_veyra_bridge_fixture tests/veyra_fixture/main.cpp)
     target_include_directories(nova_veyra_bridge_fixture PRIVATE
       tests/veyra_fixture/include integrations/veyra)

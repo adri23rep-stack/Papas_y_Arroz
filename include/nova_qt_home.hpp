@@ -158,7 +158,10 @@ private:
     std::optional<xs::Entry> next_episode_; // Only from the current series page
     QString featured_backdrop_;
     std::vector<xs::Entry> channel_entries_,series_entries_,movie_entries_,demo_entries_;
-    xs::Catalog page_,root_;
+    xs::Catalog page_,root_,public_channels_;
+    QString cache_scope_;
+    bool refreshing_=false;
+    void mergePublicChannels();
     std::vector<History> history_;
     std::shared_ptr<xs::ServiceSession> session_;
     QTimer remote_timer_;

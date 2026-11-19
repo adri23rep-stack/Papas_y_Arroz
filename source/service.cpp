@@ -324,6 +324,7 @@ static SourceResult resolve_ranger(const std::shared_ptr<ServiceSession>& s,Rang
         {"encMediaSupported",1},{"liveCodeList",Json::array({text(s->common,"portalCode")+"_live"})},
         {"appParams",""},{"pipFlag","0"}});
     Json metadata;
+    if(active_request)active_request->resolving_server();
     if(!api_post(s->config,s->common,"/api/portalCore/v15/getSlbInfo",payload,metadata,out.status))return out;
     if(text(metadata,"error_code")!="0"){out.status="Ranger: el servicio rechazo la configuracion CDN.";return out;}
     const auto cdns=metadata.find("cdn_list");

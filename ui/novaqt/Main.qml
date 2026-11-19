@@ -251,7 +251,7 @@ Window {
             elide: Text.ElideRight
             maximumLineCount: 2
             text: !novaHome.serviceConnected
-                  ? "XuperTV desconectado (los canales mostrados son TV pública). " + novaHome.serviceStatus
+                  ? "Estado de XuperTV · " + novaHome.serviceStatus
                   : "XuperTV sin series ni películas. " + novaHome.serviceStatus
         }
     }

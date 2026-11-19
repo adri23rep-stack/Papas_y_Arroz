@@ -1,4 +1,5 @@
 #include "nova_qt_home.hpp"
+#include "nova_catalog_cache.hpp"
 #include "remote_server.hpp"
 #include "remote_pairing_qr.hpp"
 #include <SDL.h>
@@ -78,6 +79,7 @@ struct HomeSnapshot {
     QString status;
     QString service_status;
     bool service_connected=false;
+    bool previews_complete=false;
 };
 constexpr const char* kPublicSpanishPlaylist =
     "https://iptv-org.github.io/iptv/languages/spa.m3u";
@@ -218,7 +220,7 @@ HomeSnapshot loadHome(){
         }
         out.demo_items=listFor(out.demo_entries);
     }
-    const auto public_tv=publicSpanishPlaylist();
+
     auto login=xs::service_bootstrap("service.json");
     out.session=login.session;
     out.service_connected=(out.session!=nullptr);
@@ -227,33 +229,12 @@ HomeSnapshot loadHome(){
     if(!out.service_connected&&out.service_status.isEmpty())
         out.service_status=QStringLiteral("Sin sesión autorizada de XuperTV.");
     out.root=std::move(login.catalog);
-    if(out.session&&out.root.entries.empty()){
-        const auto response=xs::service_root(out.session);
-        if(response.ok)out.root=response.catalog;
-        else {
-            out.service_status=QString::fromStdString(response.status);
-            out.status=out.service_status;
-        }
-    }
-    if(!out.session){
-        appendPublicChannels(out,public_tv.catalog);
-        out.channels=tvPreview(out.tv_entries);
-        if(!out.channels.isEmpty()){
-            out.status=QStringLiteral("Solo TV pública (%1 canales%2). "
-                "XuperTV desconectado: %3")
-                .arg(static_cast<qulonglong>(out.tv_entries.size()))
-                .arg(public_tv.from_cache?QStringLiteral(", caché"):QString())
-                .arg(out.service_status);
-        }else{
-            out.status=out.service_status;
-        }
-        return out;
-    }
+    if(!out.session){out.status=out.service_status;return out;}
     // Publish the authorized catalog promptly; heavy rails are populated
     // independently after the user can already navigate all sections.
     for(const auto& e:out.root.entries)
         if(e.kind==xs::EntryKind::Media)addEntry(out.tv_entries,e,80);
-    appendPublicChannels(out,public_tv.catalog);
+
     out.channels=tvPreview(out.tv_entries);
     out.status=out.root.entries.empty()
         ?out.service_status
@@ -326,6 +307,7 @@ HomeSnapshot loadHomePreviews(const std::shared_ptr<xs::ServiceSession>& session
     out.channels=tvPreview(out.tv_entries);
     out.series=listFor(out.series_entries);
     out.movies=listFor(out.movie_entries);
+    out.previews_complete=out.status.isEmpty()&&!request->stopped();
     if(!out.status.isEmpty()){
         out.service_status=out.status;
     }else if(out.series.isEmpty()&&out.movies.isEmpty()){
@@ -589,36 +571,65 @@ void NovaQtHome::openContinue(int index){
     activate(continue_entries_[static_cast<size_t>(index)]);
 }
 
+void NovaQtHome::mergePublicChannels(){
+    HomeSnapshot merged;
+    for(const auto& e:channel_entries_)if(e.program_type!="public-live")merged.tv_entries.push_back(e);
+    appendPublicChannels(merged,public_channels_);
+    channel_entries_=std::move(merged.tv_entries);
+    channels_=tvPreview(channel_entries_);
+    catalog_connected_=!channel_entries_.empty()||!root_.entries.empty();
+}
 void NovaQtHome::refresh(){
-    if(loading_)return;
+    if(refreshing_||loading_)return;
+    refreshing_=true;
     const quint64 refresh_epoch=++refresh_epoch_;
     if(previews_request_)previews_request_->cancel();
     previews_request_.reset();
-    loading_=true;
-    status_=QStringLiteral("Cargando canales, series y películas...");
+    cache_scope_=nova_cache::scope();
+    QString stamp;
+    if(auto cached=nova_cache::read(cache_scope_,"root",&stamp)){
+        root_=*cached;
+        auto restore=[this](const QString& key,std::vector<xs::Entry>& entries){
+            if(auto page=nova_cache::read(cache_scope_,key))entries=std::move(page->entries);
+        };
+        restore("tv",channel_entries_);restore("movies",movie_entries_);restore("series",series_entries_);
+        series_=listFor(series_entries_);movies_=listFor(movie_entries_);
+        status_=QStringLiteral("Catálogo guardado el %1. Actualizando…").arg(stamp);
+        service_status_=status_;
+        mergePublicChannels();
+    }
     emit changed();
+    auto* iptv=new QFutureWatcher<PublicPlaylistResult>(this);
+    connect(iptv,&QFutureWatcher<PublicPlaylistResult>::finished,this,[this,iptv,refresh_epoch]{
+        auto result=iptv->result();iptv->deleteLater();
+        if(refresh_epoch!=refresh_epoch_)return;
+        public_channels_=std::move(result.catalog);mergePublicChannels();updateFeatured();emit changed();
+    });
+    iptv->setFuture(QtConcurrent::run(&publicSpanishPlaylist));
     auto* watcher=new QFutureWatcher<HomeSnapshot>(this);
     connect(watcher,&QFutureWatcher<HomeSnapshot>::finished,this,[this,watcher,refresh_epoch](){
         const auto snap=watcher->result();
-        channels_=snap.channels;series_=snap.series;movies_=snap.movies;
         service_connected_=snap.service_connected;
         service_status_=snap.service_status;
         demo_items_=snap.demo_items;demo_entries_=snap.demo_entries;
-        catalog_connected_=!snap.channels.isEmpty() ||
-            (snap.session!=nullptr && (!snap.root.entries.empty() ||
-             !snap.series.isEmpty() || !snap.movies.isEmpty()));
-        channel_entries_=snap.tv_entries;
-        series_entries_=snap.series_entries;
-        movie_entries_=snap.movie_entries;
-        session_=snap.session;root_=snap.root;
+        if(!snap.tv_entries.empty())channel_entries_=snap.tv_entries;
+        refreshing_=false;
+        session_=snap.session;
+        cache_scope_=nova_cache::scope();
+        if(!snap.root.entries.empty()){
+            root_=snap.root;
+            nova_cache::save(cache_scope_,"root",root_);
+        }else if(!root_.entries.empty()){
+            service_status_+=QStringLiteral(" · Mostrando catálogo guardado.");
+        }
+        mergePublicChannels();
         updateFeatured();
         refreshContinue();
         xs::RemoteServer::shared().set_session(session_,root_);
         xs::RemoteServer::shared().index_assets(series_entries_);
         xs::RemoteServer::shared().index_assets(movie_entries_);
-        status_=snap.status;
-        loading_=false;
-        previews_loading_=bool(session_)&&!root_.entries.empty();
+        if(!loading_&&!browsing_&&!player_.playing())status_=service_status_;
+        previews_loading_=bool(session_)&&!snap.root.entries.empty();
         emit changed();
         watcher->deleteLater();
         if(!previews_loading_)return;
@@ -638,12 +649,19 @@ void NovaQtHome::refresh(){
             previews_loading_=false;
             previews_request_.reset();
             if(!next.service_status.isEmpty())service_status_=next.service_status;
-            channels_=next.channels;
-            series_=next.series;
-            movies_=next.movies;
-            channel_entries_=next.tv_entries;
-            series_entries_=next.series_entries;
-            movie_entries_=next.movie_entries;
+            if(next.previews_complete){
+                auto save=[this](const QString& key,const std::vector<xs::Entry>& entries){
+                    xs::Catalog page;page.entries=entries;nova_cache::save(cache_scope_,key,page);
+                };
+                save("tv",next.tv_entries);save("series",next.series_entries);save("movies",next.movie_entries);
+            }
+            if(next.previews_complete||!next.channels.isEmpty())
+                channels_=next.channels;
+            if(next.previews_complete||!next.series.isEmpty()){series_=next.series;series_entries_=next.series_entries;}
+            if(next.previews_complete||!next.movies.isEmpty()){movies_=next.movies;movie_entries_=next.movie_entries;}
+            if(next.previews_complete||!next.tv_entries.empty())channel_entries_=next.tv_entries;
+            mergePublicChannels();
+
             updateFeatured();
             refreshContinue();
             xs::RemoteServer::shared().index_assets(series_entries_);
@@ -686,7 +704,7 @@ void NovaQtHome::openSection(int row){
         if(row==0&&e.kind==xs::EntryKind::Category)
             page.entries.push_back(e);
     }
-    if(row==0||!session_){history_.clear();showCatalog(std::move(page),false);return;}
+    if(row==0){history_.clear();showCatalog(std::move(page),false);return;}
     const std::string type=row==1?"0":"1";
     const auto section=std::find_if(root_.entries.begin(),root_.entries.end(),
         [&](const xs::Entry& e){
@@ -695,19 +713,22 @@ void NovaQtHome::openSection(int row){
     if(section==root_.entries.end()){
         history_.clear();showCatalog(std::move(page),false);return;
     }
+    if(!session_){browseEntry(*section);return;}
     loading_=true;status_=QStringLiteral("Abriendo catálogo completo...");emit changed();
     const auto session=session_;const auto target=*section;
     auto* watcher=new QFutureWatcher<xs::BrowseResult>(this);
     connect(watcher,&QFutureWatcher<xs::BrowseResult>::finished,this,
-            [this,watcher,page=std::move(page)]()mutable{
+            [this,watcher,target,page=std::move(page)]()mutable{
         const auto response=watcher->result();
         if(response.ok){
+            nova_cache::save(cache_scope_,nova_cache::pageKey(target),response.catalog);
             // Keep actual category folders first; posters remain available.
             xs::Catalog merged=std::move(page);
             for(const auto& e:response.catalog.entries)merged.entries.push_back(e);
             history_.clear();showCatalog(std::move(merged),false);
         }else{
-            history_.clear();showCatalog(std::move(page),false);
+            auto cached=nova_cache::read(cache_scope_,nova_cache::pageKey(target));
+            history_.clear();showCatalog(cached?*cached:std::move(page),false);
             status_=QString::fromStdString(response.status);
         }
         loading_=false;emit changed();
@@ -719,7 +740,7 @@ void NovaQtHome::openSection(int row){
 }
 
 void NovaQtHome::openHomeCard(int row,int index){
-    if(loading_||index<0)return;
+    if((loading_&&!source_request_)||index<0)return;
     const auto& entries=row==0?channel_entries_:
                         row==1?series_entries_:movie_entries_;
     if(static_cast<size_t>(index)>=entries.size())return;
@@ -733,13 +754,19 @@ void NovaQtHome::selectGridItem(int index){
     emit changed();
 }
 void NovaQtHome::openItem(int index){
-    if(loading_||!browsing_||index<0||
+    if((loading_&&!source_request_)||!browsing_||index<0||
        static_cast<size_t>(index)>=page_.entries.size())return;
     selected_item_=index;
     emit changed();
     activate(page_.entries[static_cast<size_t>(index)]);
 }
 void NovaQtHome::activate(const xs::Entry& e){
+    if(source_request_){
+        if(e.kind==active_entry_.kind&&e.content_id==active_entry_.content_id&&
+           e.channel_code==active_entry_.channel_code&&e.series_id==active_entry_.series_id)return;
+        source_request_->cancel();source_request_.reset();
+        ++source_request_epoch_;loading_=false;
+    }
     if(e.kind==xs::EntryKind::Media||e.kind==xs::EntryKind::Channel||
        e.kind==xs::EntryKind::Episode){playEntry(e);return;}
     if(e.kind==xs::EntryKind::Section||e.kind==xs::EntryKind::Asset||
@@ -749,7 +776,12 @@ void NovaQtHome::activate(const xs::Entry& e){
     else{status_=QStringLiteral("Este elemento no tiene reproducción directa.");emit changed();}
 }
 void NovaQtHome::browseEntry(const xs::Entry& e){
-    if(!session_){status_=QStringLiteral("No hay sesión para abrir esta sección.");emit changed();return;}
+    if(!session_){
+        auto cached=nova_cache::read(cache_scope_,nova_cache::pageKey(e));
+        if(cached)showCatalog(*cached,true);
+        status_=cached?QStringLiteral("Mostrando la copia guardada."):QStringLiteral("Esta sección aún no tiene copia guardada.");
+        emit changed();return;
+    }
     if(loading_)return;
     loading_=true;status_=QStringLiteral("Cargando contenido...");
     emit changed();
@@ -760,6 +792,7 @@ void NovaQtHome::browseEntry(const xs::Entry& e){
         const auto response=watcher->result();
         loading_=false;
         if(response.ok){
+            nova_cache::save(cache_scope_,nova_cache::pageKey(e),response.catalog);
             xs::Catalog catalog=response.catalog;
             if(catalog.title.empty())catalog.title=e.title;
             // Keep movie behavior from the existing desktop: a movie page
@@ -769,6 +802,7 @@ void NovaQtHome::browseEntry(const xs::Entry& e){
                 playEntry(catalog.entries[0]);
             }else showCatalog(std::move(catalog),true);
         }else{
+            if(auto cached=nova_cache::read(cache_scope_,nova_cache::pageKey(e)))showCatalog(*cached,true);
             status_=QString::fromStdString(response.status);
         }
         emit changed();
@@ -801,14 +835,23 @@ void NovaQtHome::playEntry(const xs::Entry& e){
         }else{status_=QStringLiteral("Esta lista local no contiene una fuente válida.");emit changed();}
         return;
     }
-    if(!session_){status_=QStringLiteral("No existe una sesión de video.");emit changed();return;}
+    if(!session_){status_=QStringLiteral("Para reproducir este título, actualiza la conexión con XuperTV.");emit changed();return;}
     loading_=true;
-    status_=QStringLiteral("Solicitando fuente de reproducción...");
+    status_=QStringLiteral("Pidiendo a XuperTV la fuente de video…");
     emit changed();
     const auto session=session_;
     const quint64 request_epoch=++source_request_epoch_;
     const auto request=std::make_shared<xs::ServiceRequest>();
     source_request_=request;
+    auto* progress=new QTimer(this);
+    connect(progress,&QTimer::timeout,this,[this,request,progress]{
+        if(source_request_!=request){progress->deleteLater();return;}
+        if(request->at_video_server()){
+            status_=QStringLiteral("Consultando el servidor de video…");
+            progress->deleteLater();emit changed();
+        }
+    });
+    progress->start(150);
     auto* watcher=new QFutureWatcher<xs::SourceResult>(this);
     QPointer<QFutureWatcher<xs::SourceResult>> pending=watcher;
     connect(watcher,&QFutureWatcher<xs::SourceResult>::finished,this,
@@ -821,6 +864,7 @@ void NovaQtHome::playEntry(const xs::Entry& e){
         source_request_.reset();
         loading_=false;
         if(source.ok&&xs::valid_source(source.source)){
+            status_=QStringLiteral("Fuente recibida. Abriendo reproductor…");emit changed();
             player_.play(source,QString::fromStdString(e.title),
                 e.kind==xs::EntryKind::Channel,
                 e.kind==xs::EntryKind::Episode

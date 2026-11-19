@@ -9,7 +9,10 @@ class ServiceRequest {
     using Clock=std::chrono::steady_clock;
     const Clock::time_point deadline_;
     std::atomic<bool> cancelled_{false};
+    std::atomic<bool> resolving_server_{false};
 public:
+    void resolving_server(){resolving_server_.store(true);}
+    bool at_video_server() const{return resolving_server_.load();}
     explicit ServiceRequest(std::chrono::milliseconds timeout=std::chrono::milliseconds(45000))
         :deadline_(Clock::now()+timeout){}
     void cancel(){cancelled_.store(true);}
