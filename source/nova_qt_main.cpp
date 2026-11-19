@@ -1,6 +1,7 @@
 #include "nova_qt_home.hpp"
 #include <QCoreApplication>
 #include <QDir>
+#include <QTemporaryDir>
 #include <QFile>
 #include <QQmlError>
 #include <QQmlEngine>
@@ -42,6 +43,23 @@ int main(int argc,char** argv){
     QDir::setCurrent(QCoreApplication::applicationDirPath());
 
     checkpoint("application_ready");
+    if(smoke){
+        static QTemporaryDir smokeSettings;
+        if(!smokeSettings.isValid())return 21;
+        QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,smokeSettings.path());
+        {
+            NovaQtPlayer player;
+            if(!player.setVeyraSetting("veyra_fg",0) ||
+               !player.setVeyraSetting("veyra_sr_quality",4) ||
+               player.setVeyraSetting("veyra_hdr",9))return 22;
+        }
+        NovaQtPlayer reopened;
+        const auto saved=reopened.veyraDefaults();
+        if(saved.value("veyra_fg").toBool() || !saved.value("veyra_sr").toBool() ||
+           saved.value("veyra_sr_quality").toInt()!=4 || saved.value("veyra_hdr").toBool())
+            return 23;
+        checkpoint("veyra_defaults_restored");
+    }
     // Deterministic IPC integration test. Uses a fake child engine, never a GPU claim.
     if(argc>1 && std::strcmp(argv[1],"--smoke-veyra")==0){
         app.setQuitOnLastWindowClosed(false);

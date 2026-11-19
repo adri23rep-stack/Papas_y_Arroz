@@ -32,7 +32,25 @@
 #include <utility>
 #include <vector>
 
-NovaQtPlayer::NovaQtPlayer(QObject* parent):QObject(parent){}
+namespace {
+bool validDefault(const QString& key,int value){
+    if(key=="veyra_sr_quality")
+        return (value>=0 && value<=5)||(value>=16 && value<=19)||value==21||value==23;
+    if(key=="veyra_multiplier")return value==2;
+    return (key=="veyra_fg"||key=="veyra_sr"||key=="veyra_nr"||key=="veyra_hdr") &&
+        (value==0||value==1);
+}
+}
+
+NovaQtPlayer::NovaQtPlayer(QObject* parent):QObject(parent){
+    defaults_={{"veyra_fg",1},{"veyra_nr",0},{"veyra_hdr",0},{"veyra_sr",0},
+               {"veyra_multiplier",2},{"veyra_sr_quality",2}};
+    for(auto it=defaults_.begin();it!=defaults_.end();++it){
+        bool ok=false;
+        int saved=preferences_.value(it.key(),it.value()).toInt(&ok);
+        if(ok && validDefault(it.key(),saved))it.value()=saved;
+    }
+}
 NovaQtPlayer::~NovaQtPlayer(){
     veyraWatchdog_.stop();
     nativeVeyraPoll_.stop();
@@ -84,7 +102,20 @@ void NovaQtPlayer::scheduleVeyraFallback(){
 }
 
 bool NovaQtPlayer::setVeyraSetting(const QString& key,int value){
-    if(nativeVeyra_ && nativeVeyra_->ready() && veyraActive()){
+    if((!veyraActive() || nativeVeyra_) && validDefault(key,value)){
+        defaults_[key]=value;
+        preferences_.setValue(key,value);
+        if(key=="veyra_sr_quality"){
+            defaults_["veyra_sr"]=1;
+            preferences_.setValue("veyra_sr",1);
+        }
+        if(!nativeVeyra_){
+            emit changed();
+            return true;
+        }
+        if(key=="veyra_fg")nativeVeyraAutoFgRequested_=true;
+    }
+    if(nativeVeyra_ && nativeVeyra_->ready()){
         bool accepted=false;
         if(key=="veyra_multiplier" && value>=2 && value<=6)
             accepted=nativeVeyra_->multiplier(unsigned(value));
@@ -125,7 +156,7 @@ bool NovaQtPlayer::setVeyraSetting(const QString& key,int value){
 }
 
 void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool live,
-                        double resumeSeconds,bool publicLiveNativeCandidate){
+                        double resumeSeconds,bool catalogLiveCandidate){
     if(playing_.load()||!result.ok||!xs::valid_source(result.source))return;
     // NEW: link Veyra's real EngineController into this process. This is the
     // original D3D12/NGX/NVOF/shader pipeline, not MPV/RIFE or an IPC QML shim.
@@ -133,9 +164,9 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
     // Never allow a network URL with arbitrary auth headers into this test.
     const QString nativeDll=qEnvironmentVariable("NOVA_VEYRA_NATIVE_DLL");
     // Live experimental failure must never leave the user without television.
-    // Only public IPTV-org entries are tagged for this opt-in. Never send
+    // Resolved channels also participate in the opt-in. Never send
     // privileged XuperTV streams, signed URLs, or custom auth headers.
-    const bool publicLiveBeta=live && publicLiveNativeCandidate &&
+    const bool catalogLiveBeta=live && catalogLiveCandidate &&
         qEnvironmentVariableIntValue("NOVA_VEYRA_NATIVE_LIVE_BETA")==1;
     const QString nativeSource=QString::fromStdString(result.source);
     const QUrl nativeUrl(nativeSource);
@@ -144,7 +175,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
         qEnvironmentVariableIntValue("NOVA_VEYRA_NATIVE_ALLOW_NETWORK")==1 &&
         nativeUrl.userInfo().isEmpty()&&!nativeUrl.hasFragment()&&!nativeUrl.hasQuery();
     const xs::NovaNativeSourcePolicy nativePolicy{QFileInfo(nativeSource).isFile(),safeHttp,
-        live,publicLiveBeta,!result.headers.empty(),!result.subtitles.empty()};
+        live,catalogLiveBeta,!result.headers.empty(),!result.subtitles.empty()};
     const bool nativeStrict=!nativeDll.isEmpty()&&nativePolicy.strict(
         qEnvironmentVariableIntValue("NOVA_VEYRA_NATIVE_STRICT")==1);
     QString nativeLoadFailure;
@@ -173,8 +204,10 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                 options.size=sizeof(options);
                 options.fg_backend=NOVA_VEYRA_FG_VFG; // Original NVIDIA-VFG backend for RTX 30-series; DLSS FG needs newer hardware.
                 options.fg_multiplier=2;
-                options.sr_quality=2;
-                options.features=0; // First decode real frames, then request VFG.
+                options.sr_quality=defaults_.value("veyra_sr_quality").toUInt();
+                options.features=(defaults_.value("veyra_sr").toBool()?NOVA_VEYRA_FEATURE_SR:0u) |
+                    (defaults_.value("veyra_nr").toBool()?NOVA_VEYRA_FEATURE_NR:0u) |
+                    (defaults_.value("veyra_hdr").toBool()?NOVA_VEYRA_FEATURE_HDR:0u);
                 if(candidate->open(reinterpret_cast<void*>(videoWindow_->winId()),source,options)){
                     nativeVeyra_=std::move(candidate);
                     nativeVeyraStarted_=false;
@@ -185,8 +218,8 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                     veyraBridgeReady_=false;
                     veyraClock_.start();
                     title_=title;
-                    notice_=publicLiveBeta
-                        ?QStringLiteral("TV pública · Veyra preparando canal y NVIDIA-VFG 2x")
+                    notice_=catalogLiveBeta
+                        ?QStringLiteral("Veyra preparando canal")
                         :QStringLiteral("Motor Veyra nativo · inicializando DirectX 12");
                     diagnostics_=QStringLiteral("Veyra EngineController original (sin MPV)");
                     playing_.store(true);
@@ -194,22 +227,21 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                     emit changed();
                     nativeVeyraPoll_.disconnect(this);
                     connect(&nativeVeyraPoll_,&QTimer::timeout,this,
-                            [this,result,title,live,resumeSeconds,publicLiveNativeCandidate,publicLiveBeta]{
+                            [this,result,title,live,resumeSeconds,catalogLiveCandidate,catalogLiveBeta,nativeStrict]{
                         if(!nativeVeyra_)return;
                         NovaVeyraSnapshot snap{};
                         const bool readable=nativeVeyra_->snapshot(snap);
                         const bool broken=!readable||snap.failed||
                             snap.transport==NOVA_VEYRA_FAILED||
-                            (publicLiveBeta && snap.transport==NOVA_VEYRA_ENDED)||
+                            (catalogLiveBeta && snap.transport==NOVA_VEYRA_ENDED)||
                             (!nativeVeyraStarted_ && veyraClock_.elapsed()>25000);
                         if(broken){
-                            const bool strict=!live &&
-                                qEnvironmentVariableIntValue("NOVA_VEYRA_NATIVE_STRICT")==1;
+                            const bool strict=nativeStrict;
                             const QString reason=!readable
                                 ?QStringLiteral("No responde la API de estado de Veyra.")
                                 :snap.failed||snap.transport==NOVA_VEYRA_FAILED
                                     ?QStringLiteral("El motor Veyra informó un fallo GPU/decodificación.")
-                                    :publicLiveBeta && snap.transport==NOVA_VEYRA_ENDED
+                                    :catalogLiveBeta && snap.transport==NOVA_VEYRA_ENDED
                                         ?QStringLiteral("Veyra cerró el directo; recuperando TV con MPV.")
                                         :QStringLiteral("Veyra no mostró fotogramas en 25 segundos.");
                             nativeVeyraPoll_.stop();
@@ -226,7 +258,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                                 return;
                             }
                             skipVeyraOnce_=true; // the failed native path is never retried
-                            play(result,title,live,resumeSeconds,publicLiveNativeCandidate);
+                            play(result,title,live,resumeSeconds,catalogLiveCandidate);
                             notice_=QStringLiteral("Veyra nativo falló; recuperado con MPV.");
                             emit changed();
                             return;
@@ -248,16 +280,18 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                         if(!snap.running)return;
                         // Mirror the hardware smoke: enable GPU FG only after
                         // real frames have been decoded. Never loop on rejection.
-                        if(publicLiveBeta && !nativeVeyraAutoFgRequested_ &&
+                        if(defaults_.value("veyra_fg").toBool() && !nativeVeyraAutoFgRequested_ &&
                            snap.transport==NOVA_VEYRA_PLAYING &&
                            snap.source_frames>=10){
                             nativeVeyraAutoFgRequested_=true;
                             const bool accepted=nativeVeyra_->change(
                                 NOVA_VEYRA_FEATURE_FG,true);
                             notice_=accepted
-                                ?QStringLiteral("TV pública · NVIDIA-VFG 2x solicitado; verificando salida real")
-                                :QStringLiteral("TV pública · VFG rechazado; video original sin interpolar");
+                                ?QStringLiteral("NVIDIA-VFG 2x solicitado; verificando salida real")
+                                :QStringLiteral("VFG rechazado; video original sin interpolar");
                         }
+                        if(!nativeVeyraStarted_ && !live && resumeSeconds>0)
+                            nativeVeyra_->seek(resumeSeconds);
                         nativeVeyraStarted_=true;
                         veyraBridgeReady_=true;
                         nativeVeyraPaused_=snap.transport==NOVA_VEYRA_PAUSED;
@@ -326,7 +360,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
                             diagnostics_+=QStringLiteral(" · generados enviados DXGI: %1 · DXGI %2 FPS")
                                 .arg(QString::number(flow.generated_submitted))
                                 .arg(flow.present_submit_fps,0,'f',1);
-                        if(publicLiveBeta && !snap.fg_active)
+                        if(catalogLiveBeta && !snap.fg_active)
                             diagnostics_+=QStringLiteral(" · VFG no activo (todavía)");
                         xs::RemotePlaybackSnapshot remoteState;
                         remoteState.title=title_.toStdString();
@@ -613,7 +647,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
     veyraState_.clear();
     diagnostics_.clear();
     if(live)
-        diagnostics_=publicLiveBeta
+        diagnostics_=catalogLiveBeta
             ?QStringLiteral("TV: Veyra no pudo abrir esta fuente; usando MPV sin NVIDIA-VFG.")
             :QStringLiteral("TV: MPV (NVIDIA-VFG nativo requiere canal público simple y modo beta).");
     if(thread_.joinable())thread_.join();

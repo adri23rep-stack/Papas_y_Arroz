@@ -894,7 +894,8 @@ void NovaQtHome::playEntry(const xs::Entry& e){
             player_.play(source,QString::fromStdString(e.title),
                 e.kind==xs::EntryKind::Channel,
                 e.kind==xs::EntryKind::Episode
-                    ?playback_history_.position(e.content_id):0.0);
+                    ?playback_history_.position(e.content_id):0.0,
+                e.kind==xs::EntryKind::Channel);
             // Previously we kept displaying "Solicitando fuente..." even when
             // the request had already returned successfully or MPV failed.
             status_=player_.notice();

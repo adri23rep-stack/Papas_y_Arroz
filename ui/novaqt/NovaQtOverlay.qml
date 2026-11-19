@@ -152,6 +152,9 @@ Item {
         }
         Rectangle {
             id: qualityPanel
+            property bool editDefaults: false
+            readonly property bool showVeyra: novaHome.veyraActive || editDefaults
+            readonly property bool nativeDefaults: !novaHome.veyraActive || !!novaHome.veyraState.nativeEngine
             anchors.centerIn: parent
             width: Math.min(520,overlay.width - 70)
             height: Math.min(600,overlay.height - 24)
@@ -178,9 +181,28 @@ Item {
                     onClicked: overlay.qualityVisible = false
                 }
             }
+            Rectangle {
+                visible: !novaHome.veyraActive
+                anchors.right: parent.right
+                anchors.rightMargin: 58
+                y: 18; width: 136; height: 34; radius: 8
+                color: "#463366"
+                Accessible.role: Accessible.Button
+                Accessible.name: switchLabel.text
+                Accessible.onPressAction: qualityPanel.editDefaults = !qualityPanel.editDefaults
+                Text {
+                    id: switchLabel
+                    anchors.centerIn: parent; color: "white"
+                    text: qualityPanel.editDefaults ? "Ver ajustes MPV" : "Ajustes Veyra"
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: qualityPanel.editDefaults = !qualityPanel.editDefaults
+                }
+            }
             Item {
                 anchors.fill: parent
-                visible: !novaHome.veyraActive
+                visible: !qualityPanel.showVeyra
             Repeater {
                 model: ["Compatible (CPU)", "Equilibrado", "Nitidez alta (Lanczos)",
                         "Detalle extra (CAS)", "GPU FSRCNNX"]
@@ -295,10 +317,10 @@ Item {
                 x: 24; y: 70
                 width: parent.width - 48
                 spacing: 12
-                visible: novaHome.veyraActive
+                visible: qualityPanel.showVeyra
                 Text {
                     width: parent.width
-                    text: "Veyra · " + (novaHome.veyraState.fgBackend || "motor conectado")
+                    text: novaHome.veyraActive ? "Veyra · " + (novaHome.veyraState.fgBackend || "motor conectado") : "Veyra · Predeterminados"
                     color: "#C4B4F8"; font.pixelSize: 18
                 }
                 Repeater {
@@ -311,7 +333,13 @@ Item {
                     delegate: Rectangle {
                         required property var modelData
                         width: qualityPanel.width - 48; height: 44; radius: 10
-                        property bool selected: !!novaHome.veyraState[modelData.field]
+                        property bool applied: !!novaHome.veyraState[modelData.field]
+                        property bool selected: qualityPanel.nativeDefaults ? !!novaHome.veyraDefaults[modelData.key] : applied
+                        property string statusText: {
+                            if (!novaHome.veyraActive) return selected ? "Sí" : "No"
+                            if (selected === applied) return applied ? "Activado" : "Desactivado"
+                            return selected ? "Solicitado · sin confirmar" : "Apagado solicitado · sigue activo"
+                        }
                         color: selected ? "#463366" : "#24222D"
                         border.color: selected ? "#A78BFA" : "#403A4D"
                         Accessible.role: Accessible.CheckBox
@@ -320,7 +348,7 @@ Item {
                         Accessible.onPressAction: novaHome.setVeyraSetting(modelData.key, selected ? 0 : 1)
                         Text {
                             x: 14; anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.label + (parent.selected ? " · Activado" : " · Desactivado")
+                            text: modelData.label + " · " + parent.statusText
                             color: "white"; font.pixelSize: 15
                         }
                         MouseArea {
@@ -333,7 +361,7 @@ Item {
                 Flow {
                     width: parent.width; spacing: 8
                     Repeater {
-                        model: novaHome.veyraState.fgMultiplierChoices || []
+                        model: novaHome.veyraActive ? (novaHome.veyraState.fgMultiplierChoices || []) : [{id:2,label:"2x"}]
                         delegate: Rectangle {
                             required property var modelData
                             width: 57; height: 37; radius: 8
@@ -352,7 +380,7 @@ Item {
                 }
                 Rectangle {
                     id: srPicker
-                    visible: !!novaHome.veyraState.nativeEngine
+                    visible: qualityPanel.nativeDefaults
                     width: qualityPanel.width - 48
                     height: visible ? 42 : 0
                     radius: 10
@@ -372,8 +400,7 @@ Item {
                         {id:21, label:"RTX streaming · Medio"},
                         {id:23, label:"RTX streaming · Ultra"}
                     ]
-                    property int currentQuality: novaHome.veyraState.requestedSrQuality === undefined
-                        ? 2 : Number(novaHome.veyraState.requestedSrQuality)
+                    property int currentQuality: Number(novaHome.veyraDefaults.veyra_sr_quality)
                     function currentLabel() {
                         for (var i = 0; i < choices.length; i++)
                             if (choices[i].id === currentQuality) return choices[i].label
@@ -406,16 +433,18 @@ Item {
                 Text {
                     width: parent.width; wrapMode: Text.WordWrap
                     text: novaHome.playbackDiagnostics
+                    visible: novaHome.veyraActive
                     color: "#C4B4F8"; font.pixelSize: 14
                 }
                 Text {
                     width: parent.width; wrapMode: Text.WordWrap
                     text: novaHome.playbackNotice
+                    visible: novaHome.veyraActive
                     color: "#E9BC89"; font.pixelSize: 13
                 }
                 Text {
                     width: parent.width; wrapMode: Text.WordWrap
-                    text: "El estado lo confirma Veyra. Activar una mejora no garantiza más FPS; depende del video y la GPU."
+                    text: !novaHome.veyraActive ? "Se guardan para los videos compatibles con Veyra. Los demás usan MPV." : "El estado lo confirma Veyra. Activar una mejora no garantiza más FPS; depende del video y la GPU."
                     color: "#B9B4C5"; font.pixelSize: 12
                 }
             }
@@ -423,7 +452,7 @@ Item {
             // Catalog URL validation remains unchanged; this one
             // fixed local test.mp4 is already allowed by catalog.cpp.
             Rectangle {
-                visible: novaHome.veyraPilotTestAvailable
+                visible: novaHome.veyraPilotTestAvailable && !novaHome.playing
                 x: 24
                 y: qualityPanel.height - 58
                 width: qualityPanel.width - 48

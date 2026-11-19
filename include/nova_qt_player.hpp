@@ -2,6 +2,7 @@
 #include "service.hpp"
 #include "nova_veyra_native_loader.hpp"
 #include <QObject>
+#include <QSettings>
 #include <QWindow>
 #include <QProcess>
 #include <QByteArray>
@@ -33,10 +34,11 @@ public:
     QString diagnostics() const {return diagnostics_;}
     bool veyraActive() const {return (veyraBridgeReady_ || (nativeVeyra_ && nativeVeyra_->ready())) && !veyraState_.isEmpty();}
     QVariantMap veyraState() const {return veyraState_;}
+    QVariantMap veyraDefaults() const {return defaults_;}
     bool setVeyraSetting(const QString& key,int value);
-    // Experimental native VFG may run only for explicitly tagged public-live media.
+    // Network playback requires the native launcher and a compatible resolved source.
     void play(const xs::SourceResult& result,const QString& title,bool live,
-              double resumeSeconds=0,bool publicLiveNativeCandidate=false);
+              double resumeSeconds=0,bool catalogLiveCandidate=false);
     Q_INVOKABLE void stop();
     Q_INVOKABLE void togglePause();
     Q_INVOKABLE void setVolume(int value);
@@ -61,6 +63,8 @@ private:
     // Optional original GPLv3 Veyra engine in Nova's OWN process. No subprocess.
     // When absent/not compatible Nova uses its normal working MPV player.
     std::unique_ptr<NovaVeyraNativeLoader> nativeVeyra_;
+    QSettings preferences_{QSettings::IniFormat,QSettings::UserScope,"Nova","Veyra"};
+    QVariantMap defaults_;
     QTimer nativeVeyraPoll_;
     bool nativeVeyraStarted_=false;
     bool nativeVeyraPaused_=false;

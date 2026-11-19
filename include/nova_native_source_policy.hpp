@@ -8,6 +8,6 @@ struct NovaNativeSourcePolicy {
     }
     // Strict mode applies only to a source supported by the native pilot.
     // Protected provider content must retain the MPV path even in the Alpha.
-    bool strict(bool requested) const {return requested&&!live&&eligible();}
+    bool strict(bool requested) const {return requested&&local&&!live&&eligible();}
 };
 }
