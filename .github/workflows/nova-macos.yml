@@ -1,0 +1,84 @@
+name: Nova macOS Intel (experimental)
+
+on:
+  push:
+    branches: [feature/nova-macos-tahoe]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nova-macos-intel:
+    runs-on: macos-26-intel
+    timeout-minutes: 90
+    steps:
+      - name: Get Nova source
+        uses: actions/checkout@v4
+
+      - name: Install macOS build libraries
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: |
+          brew install cmake ninja pkgconf qt sdl2 sdl2_ttf mpv curl libwebp mbedtls qrencode libpng jpeg-turbo
+          packages=(qt sdl2 sdl2_ttf mpv curl libwebp mbedtls qrencode libpng jpeg-turbo)
+          cmake_prefixes=()
+          pkg_paths=()
+          for package in "${packages[@]}"; do
+            prefix="$(brew --prefix "$package")"
+            cmake_prefixes+=("$prefix")
+            pkg_paths+=("$prefix/lib/pkgconfig" "$prefix/share/pkgconfig")
+          done
+          IFS=';'
+          echo "CMAKE_PREFIX_PATH=${cmake_prefixes[*]}" >> "$GITHUB_ENV"
+          IFS=':'
+          echo "PKG_CONFIG_PATH=${pkg_paths[*]}" >> "$GITHUB_ENV"
+
+      - name: Configure Nova Qt x86_64
+        run: |
+          cmake -S . -B build/nova-macos -G Ninja \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
+
+      - name: Build Nova Qt for macOS
+        run: cmake --build build/nova-macos --target XuperTVNovaQt --parallel 3
+
+      - name: Bundle local Nova data
+        run: |
+          APP="build/nova-macos/XuperTVNovaQt.app"
+          BIN="$APP/Contents/MacOS"
+          test -x "$BIN/XuperTVNovaQt"
+          for name in cacert.pem service.template.json test.mp4; do
+            cp "packaging/runtime/switch/xuperswitch/$name" "$BIN/$name"
+          done
+          cp catalog.m3u "$BIN/"
+          mkdir -p "$BIN/shaders"
+          cp shaders/FSRCNNX_x2_8-0-4-1.glsl "$BIN/shaders/"
+          sed -i '' 's#sdmc:/switch/xuperswitch/cacert.pem#cacert.pem#g' "$BIN/service.template.json"
+
+      - name: Smoke test Nova interface
+        run: |
+          APP="build/nova-macos/XuperTVNovaQt.app"
+          QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
+            "$APP/Contents/MacOS/XuperTVNovaQt" --smoke
+          cat "$APP/Contents/MacOS/nova-qt-smoke.log"
+          grep -q NOVA_QT_SMOKE_OK "$APP/Contents/MacOS/nova-qt-smoke.log" || exit 1
+
+      - name: Deploy Qt libraries and make Mac package
+        run: |
+          APP="build/nova-macos/XuperTVNovaQt.app"
+          "$(brew --prefix qt)/bin/macdeployqt" "$APP" -qmldir=ui/novaqt -verbose=1
+          mkdir -p dist/Nova-macOS-Tahoe-Intel
+          cp -R "$APP" dist/Nova-macOS-Tahoe-Intel/Nova.app
+          cp README_MACOS.md dist/Nova-macOS-Tahoe-Intel/
+          otool -L "$APP/Contents/MacOS/XuperTVNovaQt"
+          (cd dist && ditto -c -k --sequesterRsrc --keepParent Nova-macOS-Tahoe-Intel Nova-macOS-Tahoe-Intel.zip)
+
+      - name: Upload Nova macOS .app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nova-macOS-Tahoe-Intel
+          path: dist/Nova-macOS-Tahoe-Intel.zip
+          retention-days: 14
