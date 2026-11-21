@@ -5,7 +5,10 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#ifdef _WIN32
 #include <windows.h>
+#endif
+#include <QScreen>
 #include <cwchar>
 #include <qrencode.h>
 #include <QBuffer>
@@ -36,6 +39,7 @@
 #include <vector>
 
 namespace {
+#ifdef _WIN32
 BOOL CALLBACK collectMonitor(HMONITOR monitor,HDC,LPRECT,LPARAM output){
     reinterpret_cast<std::vector<HMONITOR>*>(output)->push_back(monitor);
     return TRUE;
@@ -67,6 +71,25 @@ void nextMonitor(QQuickWindow* home,QWindow* player){
     moveToMonitor(catalog,target);
     if(video)moveToMonitor(video,target);
 }
+#else
+void nextMonitor(QQuickWindow* home,QWindow* player){
+    if(!home)return;
+    const auto screens=QGuiApplication::screens();
+    if(screens.size()<2)return;
+    QScreen* current=(player&&player->isVisible())?player->screen():home->screen();
+    const int old=screens.indexOf(current);
+    QScreen* target=screens[(old<0?0:(old+1)%screens.size())];
+    auto move=[target](QWindow* window){
+        if(!window||!window->isVisible())return;
+        window->setScreen(target);
+        const QRect area=target->availableGeometry();
+        const QSize size=window->size().boundedTo(area.size());
+        window->setPosition(area.center()-QPoint(size.width()/2,size.height()/2));
+    };
+    move(home);
+    move(player);
+}
+#endif
 struct HomeSnapshot {
     QVariantList channels,series,movies,demo_items;
     std::vector<xs::Entry> tv_entries,series_entries,movie_entries,demo_entries;
