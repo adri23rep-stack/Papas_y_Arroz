@@ -11,10 +11,10 @@ La accion de GitHub llamada **Nova macOS Intel (experimental)** genera
 Tambien puedes construir desde la fuente:
 
 ```bash
-brew install cmake ninja pkgconf qt sdl2 sdl2_ttf mpv curl webp mbedtls qrencode libpng jpeg-turbo
+brew install cmake ninja pkgconf qtbase qtdeclarative sdl2 sdl2_ttf mpv curl webp mbedtls qrencode libpng jpeg-turbo
 cmake -S . -B build/nova-macos -G Ninja -DBUILD_TESTING=OFF \
   -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64 \
-  -DCMAKE_PREFIX_PATH="$(brew --prefix qt);$(brew --prefix sdl2);$(brew --prefix mbedtls)"
+  -DCMAKE_PREFIX_PATH="$(brew --prefix qtbase);$(brew --prefix qtdeclarative);$(brew --prefix sdl2);$(brew --prefix mbedtls)"
 cmake --build build/nova-macos --target XuperTVNovaQt
 ```
 
