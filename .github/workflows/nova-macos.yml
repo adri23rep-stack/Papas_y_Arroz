@@ -74,7 +74,7 @@ jobs:
           APP="build/nova-macos/XuperTVNovaQt.app"
           MACDEPLOY="$(brew --prefix qtbase)/bin/macdeployqt"
           if [[ -x "$MACDEPLOY" ]]; then
-            "$MACDEPLOY" "$APP" -qmldir=ui/novaqt -verbose=1
+            perl -e 'alarm 90; exec @ARGV' "$MACDEPLOY" "$APP" -qmldir=ui/novaqt -verbose=1 || echo "WARNING: macdeployqt timed out; Homebrew Qt may be required on target."
           else
             echo "WARNING: macdeployqt unavailable; macOS app requires Homebrew Qt libraries."
           fi
