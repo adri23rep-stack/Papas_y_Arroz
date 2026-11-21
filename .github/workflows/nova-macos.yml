@@ -20,8 +20,8 @@ jobs:
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
         run: |
-          brew install cmake ninja pkgconf qtbase qtdeclarative sdl2 sdl2_ttf mpv curl webp mbedtls qrencode libpng jpeg-turbo
-          packages=(qtbase qtdeclarative sdl2 sdl2_ttf mpv curl webp mbedtls qrencode libpng jpeg-turbo)
+          brew install cmake ninja pkgconf qtbase qtdeclarative sdl2 sdl2_ttf mpv curl webp mbedtls@3 qrencode libpng jpeg-turbo
+          packages=(qtbase qtdeclarative sdl2 sdl2_ttf mpv curl webp mbedtls@3 qrencode libpng jpeg-turbo)
           cmake_prefixes=()
           pkg_paths=()
           for package in "${packages[@]}"; do
@@ -40,7 +40,9 @@ jobs:
             -DBUILD_TESTING=OFF \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_OSX_ARCHITECTURES=x86_64 \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            -DMBEDCRYPTO_LIBRARY="$(brew --prefix mbedtls@3)/lib/libmbedcrypto.dylib" \
+            -DMBEDTLS_INCLUDE_DIR="$(brew --prefix mbedtls@3)/include"
 
       - name: Build Nova Qt for macOS
         run: cmake --build build/nova-macos --target XuperTVNovaQt --parallel 3
