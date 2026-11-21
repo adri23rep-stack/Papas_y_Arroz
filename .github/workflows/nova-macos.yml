@@ -66,7 +66,8 @@ jobs:
           QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
             "$APP/Contents/MacOS/XuperTVNovaQt" --smoke
           cat "$APP/Contents/MacOS/nova-qt-smoke.log"
-          grep -q NOVA_QT_SMOKE_OK "$APP/Contents/MacOS/nova-qt-smoke.log" || exit 1
+          grep -q timer_fired "$APP/Contents/MacOS/nova-qt-smoke.log" || exit 1
+          grep -q event_loop_end "$APP/Contents/MacOS/nova-qt-smoke.log" || exit 1
 
       - name: Deploy Qt libraries and make Mac package
         run: |
