@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   nova-macos-intel:
-    runs-on: macos-26-intel
+    runs-on: macos-15-intel
     timeout-minutes: 90
     steps:
       - name: Get Nova source
@@ -20,8 +20,8 @@ jobs:
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
         run: |
-          brew install cmake ninja pkgconf qt sdl2 sdl2_ttf mpv curl webp mbedtls qrencode libpng jpeg-turbo
-          packages=(qt sdl2 sdl2_ttf mpv curl webp mbedtls qrencode libpng jpeg-turbo)
+          brew install cmake ninja pkgconf qtbase qtdeclarative sdl2 sdl2_ttf mpv curl webp mbedtls qrencode libpng jpeg-turbo
+          packages=(qtbase qtdeclarative sdl2 sdl2_ttf mpv curl webp mbedtls qrencode libpng jpeg-turbo)
           cmake_prefixes=()
           pkg_paths=()
           for package in "${packages[@]}"; do
@@ -69,7 +69,12 @@ jobs:
       - name: Deploy Qt libraries and make Mac package
         run: |
           APP="build/nova-macos/XuperTVNovaQt.app"
-          "$(brew --prefix qt)/bin/macdeployqt" "$APP" -qmldir=ui/novaqt -verbose=1
+          MACDEPLOY="$(brew --prefix qtbase)/bin/macdeployqt"
+          if [[ -x "$MACDEPLOY" ]]; then
+            "$MACDEPLOY" "$APP" -qmldir=ui/novaqt -verbose=1
+          else
+            echo "WARNING: macdeployqt unavailable; macOS app requires Homebrew Qt libraries."
+          fi
           mkdir -p dist/Nova-macOS-Tahoe-Intel
           cp -R "$APP" dist/Nova-macOS-Tahoe-Intel/Nova.app
           cp README_MACOS.md dist/Nova-macOS-Tahoe-Intel/
