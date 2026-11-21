@@ -19,6 +19,9 @@ if(WIN32)
   pkg_check_modules(SWRESAMPLE REQUIRED IMPORTED_TARGET libswresample)
   pkg_check_modules(QRENCODE REQUIRED IMPORTED_TARGET libqrencode)
 endif()
+if(APPLE)
+  pkg_check_modules(QRENCODE REQUIRED IMPORTED_TARGET libqrencode)
+endif()
 pkg_check_modules(CURL REQUIRED IMPORTED_TARGET libcurl)
 pkg_check_modules(WEBP REQUIRED IMPORTED_TARGET libwebp)
 find_package(PNG REQUIRED)
@@ -284,26 +287,36 @@ if(BUILD_TESTING)
   endforeach()
 endif()
 
-# Qt Quick now owns the new Windows interface, catalog and pairing UI.
-# The classic SDL desktop and Switch builds remain separate, untouched.
-if(WIN32)
+# Native Nova Qt on Windows; experimental port of the same UI on macOS.
+if(WIN32 OR APPLE)
   find_package(Qt6 6.5 REQUIRED COMPONENTS Quick Concurrent)
-  add_executable(XuperTVNovaQt WIN32
+  set(NOVA_QT_SOURCES
     source/nova_qt_main.cpp
     source/nova_qt_home.cpp
     source/nova_qt_player.cpp
     include/nova_qt_home.hpp
     include/nova_qt_player.hpp
-    source/remote_server.cpp
-    source/remote_catalog.cpp
-    source/remote_browse.cpp
-    source/youtube_remote.cpp
     source/catalog.cpp
     source/service.cpp
     source/codec.cpp
     source/ranger_codec.cpp
     source/trace.cpp
   )
+  if(WIN32)
+    add_executable(XuperTVNovaQt WIN32
+      ${NOVA_QT_SOURCES}
+      source/remote_server.cpp
+      source/remote_catalog.cpp
+      source/remote_browse.cpp
+      source/youtube_remote.cpp)
+  else()
+    add_executable(XuperTVNovaQt MACOSX_BUNDLE ${NOVA_QT_SOURCES})
+    set_target_properties(XuperTVNovaQt PROPERTIES
+      MACOSX_BUNDLE_BUNDLE_NAME "Nova"
+      MACOSX_BUNDLE_GUI_IDENTIFIER "app.nova.tahoe"
+      MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1.0"
+      MACOSX_BUNDLE_BUNDLE_VERSION "1")
+  endif()
   set_target_properties(XuperTVNovaQt PROPERTIES AUTOMOC ON)
   qt_add_resources(XuperTVNovaQt "nova_qt_qml"
     PREFIX "/"
@@ -320,6 +333,9 @@ if(WIN32)
     Qt6::Quick Qt6::Concurrent SDL2::SDL2
     PkgConfig::CURL PkgConfig::MPV PkgConfig::QRENCODE
     ${MBEDCRYPTO_LIBRARY}
-    ws2_32 bcrypt crypt32 shell32 ole32 user32
   )
+  if(WIN32)
+    target_link_libraries(XuperTVNovaQt PRIVATE
+      ws2_32 bcrypt crypt32 shell32 ole32 user32)
+  endif()
 endif()
