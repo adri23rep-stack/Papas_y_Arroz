@@ -20,8 +20,8 @@ jobs:
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
         run: |
-          brew install cmake ninja pkgconf qt sdl2 sdl2_ttf mpv curl libwebp mbedtls qrencode libpng jpeg-turbo
-          packages=(qt sdl2 sdl2_ttf mpv curl libwebp mbedtls qrencode libpng jpeg-turbo)
+          brew install cmake ninja pkgconf qt sdl2 sdl2_ttf mpv curl webp mbedtls qrencode libpng jpeg-turbo
+          packages=(qt sdl2 sdl2_ttf mpv curl webp mbedtls qrencode libpng jpeg-turbo)
           cmake_prefixes=()
           pkg_paths=()
           for package in "${packages[@]}"; do
