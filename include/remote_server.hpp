@@ -128,3 +128,68 @@ constexpr int REMOTE_OPEN_BROWSE=0x585507;
 constexpr int REMOTE_SETTING=0x585508;
 }
 #endif
+
+#ifdef __APPLE__
+// macOS preview: keep persisted local playback settings and catalog UI.
+// Windows-only LAN pairing has not been ported; never advertise a fake PIN.
+#include "catalog.hpp"
+#include "service.hpp"
+#include "remote_settings.hpp"
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
+#include <utility>
+namespace xs {
+struct RemotePlaybackChoice {
+    int id=0;
+    std::string kind,label;
+    bool selected=false;
+};
+struct RemotePlaybackSnapshot {
+    bool active=false;
+    uint32_t generation=0;
+    std::string title;
+    std::vector<RemotePlaybackChoice> audio,subtitles,sources;
+};
+struct RemoteInfo {
+    std::string address;
+    std::string pin;
+    bool running=false;
+    bool connected=false;
+};
+class RemoteServer {
+public:
+    static RemoteServer& shared(){static RemoteServer instance;return instance;}
+    bool start(){return false;}
+    void stop(){}
+    RemoteInfo info() const {return {};}
+    std::string take_text(){return {};}
+    void set_session(std::shared_ptr<ServiceSession>,const Catalog&){}
+    void index_assets(const std::vector<Entry>&){}
+    bool selected_result(uint32_t,size_t,Catalog&)const{return false;}
+    bool selected_browse_result(uint32_t,size_t,Catalog&)const{return false;}
+    void begin_playback(const std::string&){}
+    void publish_playback_options(RemotePlaybackSnapshot){}
+    void end_playback(){}
+    RemotePlaybackSnapshot playback_options()const{return {};}
+    int setting_value(int id)const{return settings_.get(id);}
+    bool set_setting_value(int id,int value){return settings_.put(id,value,true);}
+    void publish_setting(int id,int value){settings_.put(id,value,false);}
+    int cursor_x()const{return 640;}
+    int cursor_y()const{return 360;}
+private:
+    RemoteServer(){settings_.load();}
+    RemoteSettingsStore settings_;
+};
+constexpr int REMOTE_PLAYBACK_SELECT=0x585509;
+constexpr int REMOTE_VOLUME=0x585501;
+constexpr int REMOTE_BRIGHTNESS=0x585502;
+constexpr int REMOTE_OPEN_CATALOG=0x585503;
+constexpr int REMOTE_YOUTUBE_START=0x585504;
+constexpr int REMOTE_YOUTUBE_RETURN=0x585505;
+constexpr int REMOTE_WHEEL=0x585506;
+constexpr int REMOTE_OPEN_BROWSE=0x585507;
+constexpr int REMOTE_SETTING=0x585508;
+}
+#endif
