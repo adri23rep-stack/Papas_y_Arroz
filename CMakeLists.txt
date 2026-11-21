@@ -31,6 +31,9 @@ pkg_check_modules(WEBP REQUIRED IMPORTED_TARGET libwebp)
 find_package(PNG REQUIRED)
 find_package(JPEG REQUIRED)
 find_library(MBEDCRYPTO_LIBRARY NAMES mbedcrypto REQUIRED)
+if(APPLE)
+  find_path(MBEDTLS_INCLUDE_DIR NAMES mbedtls/md5.h REQUIRED)
+endif()
 
 # The MSYS2 UCRT64 pkg-config files expose POSIX paths (e.g. /ucrt64/include).
 # Native MinGW CMake needs their Windows equivalents (D:/.../ucrt64/include).
@@ -333,6 +336,9 @@ if(WIN32 OR APPLE)
       ui/novaqt/NovaTopNav.qml
   )
   target_include_directories(XuperTVNovaQt PRIVATE include include/vendor)
+  if(APPLE)
+    target_include_directories(XuperTVNovaQt PRIVATE "${MBEDTLS_INCLUDE_DIR}")
+  endif()
   target_link_libraries(XuperTVNovaQt PRIVATE
     Qt6::Quick Qt6::Concurrent SDL2::SDL2
     PkgConfig::CURL PkgConfig::MPV PkgConfig::QRENCODE
