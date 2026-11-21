@@ -47,6 +47,7 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
     if(playing_.load()||!result.ok||!xs::valid_source(result.source))return;
     if(thread_.joinable())thread_.join();
     stop_.store(false);
+#ifndef Q_OS_MACOS
     if(!videoWindow_){
         videoWindow_=std::make_unique<QWindow>();
         videoWindow_->installEventFilter(this);
@@ -61,6 +62,10 @@ void NovaQtPlayer::play(const xs::SourceResult& result,const QString& title,bool
     videoWindow_->setGeometry(bounds);
     videoWindow_->requestActivate();
     videoWindowId_=static_cast<std::int64_t>(videoWindow_->winId());
+#else
+    // On macOS mpv creates its own Cocoa window (mpv --wid is Windows-only).
+    videoWindowId_=0;
+#endif
     title_=title;
     notice_=QStringLiteral("Abriendo reproductor...");
     playing_.store(true);
@@ -103,6 +108,16 @@ void NovaQtPlayer::setSpeed(int percent){
     mpv_set_property_async(handle_,0,"speed",MPV_FORMAT_DOUBLE,&speed);
 }
 void NovaQtPlayer::toggleFullscreen(){
+#ifdef Q_OS_MACOS
+    QMutexLocker lock(&mutex_);
+    if(!handle_)return;
+    int fullscreen=0;
+    if(mpv_get_property(handle_,"fullscreen",MPV_FORMAT_FLAG,&fullscreen)>=0){
+        fullscreen=!fullscreen;
+        mpv_set_property_async(handle_,0,"fullscreen",MPV_FORMAT_FLAG,&fullscreen);
+    }
+    return;
+#else
     if(!videoWindow_ || !videoWindow_->isVisible())return;
     if(videoWindow_->visibility()==QWindow::FullScreen){
         if(restoreMaximized_)videoWindow_->showMaximized();
@@ -111,6 +126,7 @@ void NovaQtPlayer::toggleFullscreen(){
         restoreMaximized_=videoWindow_->visibility()==QWindow::Maximized;
         videoWindow_->showFullScreen();
     }
+#endif
 }
 
 bool NovaQtPlayer::eventFilter(QObject* object,QEvent* event){
@@ -189,9 +205,13 @@ void NovaQtPlayer::requestQuality(int value){
     restart_revision_.fetch_add(1);
 }
 bool NovaQtPlayer::gpuRifeReady(){
+#ifdef Q_OS_MACOS
+    return false; // Windows/Vulkan RIFE redistributable cannot run on macOS.
+#else
     const auto exeDir=QCoreApplication::applicationDirPath();
     return xs::nova_rife_files_present(
         std::filesystem::path(QDir::toNativeSeparators(exeDir).toStdWString()));
+#endif
 }
 bool NovaQtPlayer::requestMotion(int value){
     if(value<0||value>2)return false;
@@ -383,8 +403,12 @@ void NovaQtPlayer::playWorker(xs::SourceResult result,QString title,bool live,do
                      opt("force-window","yes") &&
                      opt("keep-open","no") &&
                      opt("title",title.toUtf8().constData()) &&
+#ifdef Q_OS_MACOS
+                     opt("vo","gpu-next") &&
+#else
                      opt("vo","gpu") &&
                      opt("wid",std::to_string(videoWindowId_).c_str()) &&
+#endif
 #ifdef Q_OS_WIN
                      // Keep presentation composed by Windows during monitor-sized resizes.
                      opt("d3d11-exclusive-fs","no") &&
