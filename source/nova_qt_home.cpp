@@ -96,19 +96,6 @@ void appendPublicSources(HomeSnapshot& out,const xs::nova_sources::Result& sourc
     merge(out.movie_entries,sources.movies,1800);
     merge(out.series_entries,sources.series,2400);
 }
-void addEntry(std::vector<xs::Entry>& out,const xs::Entry& e,int maxItems);
-QVariantList listFor(const std::vector<xs::Entry>& entries);
-void appendPublicChannels(HomeSnapshot& out,const xs::Catalog& playlist){
-    std::unordered_set<std::string> seen;
-    for(const auto& item:out.tv_entries)
-        if(!item.source.empty())seen.insert(item.source);
-    for(const auto& item:playlist.entries){
-        if(out.tv_entries.size()>=5000)break;
-        if(item.kind==xs::EntryKind::Media && xs::valid_source(item.source) &&
-           seen.insert(item.source).second)
-            out.tv_entries.push_back(item);
-    }
-}
 QVariantList tvPreview(const std::vector<xs::Entry>& entries){
     const size_t count=std::min(entries.size(),size_t{80});
     return listFor(std::vector<xs::Entry>(entries.begin(),entries.begin()+count));
