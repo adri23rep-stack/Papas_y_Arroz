@@ -225,14 +225,15 @@ HomeSnapshot loadHome(){
     if(!out.session){
         appendPublicChannels(out,public_tv.catalog);
         out.channels=tvPreview(out.tv_entries);
+        // Always show the original provider failure, even when public IPTV
+        // succeeds. Previously the fallback overwrote the useful error.
+        const auto provider_error=QString::fromStdString(login.status);
+        out.status=provider_error.isEmpty()?QStringLiteral("XuperTV: sin sesión.")
+                                           :QStringLiteral("XuperTV: %1").arg(provider_error);
         if(!out.channels.isEmpty()){
-            out.status=QStringLiteral("TV pública en español: %1 canales de IPTV-org%2. "
-                "El servicio anterior sigue desconectado; algunos enlaces pueden no funcionar.")
+            out.status+=QStringLiteral(" | Respaldo IPTV público: %1 canales%2.")
                 .arg(static_cast<qulonglong>(out.tv_entries.size()))
                 .arg(public_tv.from_cache?QStringLiteral(" (caché)"):QString());
-        }else{
-            out.status=QString::fromStdString(login.status);
-            if(out.status.isEmpty())out.status=QStringLiteral("Sin conexión al servicio.");
         }
         return out;
     }
@@ -262,7 +263,10 @@ HomeSnapshot loadHome(){
             });
         if(section==out.root.entries.end())continue;
         const auto response=xs::service_browse(out.session,*section);
-        if(!response.ok)continue;
+        if(!response.ok){
+            if(out.status.isEmpty())out.status=QString::fromStdString(response.status);
+            continue;
+        }
         addAssets(response.catalog,type,dest,60);
         int visited=0;
         for(const auto& e:response.catalog.entries){
@@ -271,18 +275,24 @@ HomeSnapshot loadHome(){
             ++visited;
             const auto page=xs::service_browse(out.session,e);
             if(page.ok)addAssets(page.catalog,type,dest,60);
+            else if(out.status.isEmpty())out.status=QString::fromStdString(page.status);
         }
     }
     appendPublicChannels(out,public_tv.catalog);
     out.channels=tvPreview(out.tv_entries);
     out.series=listFor(out.series_entries);
     out.movies=listFor(out.movie_entries);
-    if(out.channels.empty()&&out.series.empty()&&out.movies.empty()){
-        if(out.status.isEmpty())out.status=QString::fromStdString(login.status);
-        if(out.status.isEmpty())out.status=QStringLiteral("Conectado, pero Inicio todavía no tiene contenido. Prueba las categorías de TV, Series o Películas.");
-    }else if(!public_tv.catalog.entries.empty())
-        out.status=QStringLiteral("TV pública de IPTV-org disponible; reproducción según cada canal.");
-    else out.status=QStringLiteral("Catálogo conectado.");
+    if(out.status.isEmpty()){
+        if(out.channels.empty()&&out.series.empty()&&out.movies.empty()){
+            out.status=QStringLiteral("XuperTV: sesión activa pero Inicio está vacío. Revisa TV, Series o Películas.");
+        }else if(out.root.entries.empty()){
+            out.status=QStringLiteral("XuperTV: sesión activa, catálogo raíz vacío; canales públicos de respaldo disponibles.");
+        }else if(out.series.empty()&&out.movies.empty()){
+            out.status=QStringLiteral("XuperTV: sesión activa, sin películas ni series cargadas; revisa las categorías.");
+        }else{
+            out.status=QStringLiteral("Catálogo de XuperTV conectado.");
+        }
+    }
     return out;
 }
 
