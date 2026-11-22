@@ -379,7 +379,15 @@ LoginAttempt service_bootstrap(const std::string& path) {
 #endif
         return true;
     };
-    if(!load_installation(path,config,out.status,entropy))return out;
+    // Enable only for an isolated fresh installation. Existing service.json
+    // remains authoritative regardless of the environment setting.
+#ifdef _WIN32
+    const char* requested_scheme=std::getenv("NOVA_IDENTITY_SCHEME");
+    const bool derived_identity=requested_scheme&&std::string(requested_scheme)=="derived-v1";
+#else
+    const bool derived_identity=false;
+#endif
+    if(!load_installation(path,config,out.status,entropy,derived_identity))return out;
 #ifdef _WIN32
     // The public Switch template used sdmc:/switch/.../cacert.pem.
     // The Windows portable layout bundles cacert.pem beside the executable.
@@ -425,7 +433,12 @@ LoginAttempt service_bootstrap(const std::string& path) {
     auto post=[&](const char* route,Json payload,Json& data){
         return api_post(config,common,route,std::move(payload),data,out.status);
     };
-    Json device={{"androidId",(android_test||android_tv_test)?local_test_android_id(text(config,"installation_serial")):std::string{}},
+    // Preserve old behavior for legacy installations; use the own stable
+    // Android identifier only when a fresh experimental identity was saved.
+    const std::string android_id=text(config,"identity_scheme")=="derived-v1"
+        ?text(config,"android_id")
+        :(android_test||android_tv_test)?local_test_android_id(text(config,"installation_serial")):std::string{};
+    Json device={{"androidId",android_id},
         {"wifiMac",text(config,"device_id")},{"etheMac",""},
         {"serialNumber",text(config,"installation_serial")},{"diskInfo",""},{"ramSize",""},
         {"romSize",""},{"gatewayMac",""},{"cpuId",""},{"display",device_profile.display},
