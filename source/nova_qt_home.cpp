@@ -1,4 +1,5 @@
 #include "nova_qt_home.hpp"
+#include "nova_catalog_sources.hpp"
 #include "remote_server.hpp"
 #include "remote_pairing_qr.hpp"
 #include <SDL.h>
@@ -74,81 +75,26 @@ struct HomeSnapshot {
     xs::Catalog root;
     QString status;
 };
-constexpr const char* kPublicSpanishPlaylist =
-    "https://iptv-org.github.io/iptv/languages/spa.m3u";
-constexpr const char* kPublicPlaylistCache = "iptv_es_cache.m3u";
-constexpr size_t kPublicPlaylistMaxBytes=8u*1024u*1024u;
-
-size_t appendPublicPlaylist(char* p,size_t size,size_t count,void* context){
-    if(size && count>kPublicPlaylistMaxBytes/size)return 0;
-    const size_t bytes=size*count;
-    auto& buffer=*static_cast<std::string*>(context);
-    if(bytes>kPublicPlaylistMaxBytes-buffer.size())return 0;
-    buffer.append(p,bytes);
-    return bytes;
-}
-xs::Catalog parsePublicPlaylist(const std::string& contents){
-    if(contents.size()>kPublicPlaylistMaxBytes)return {};
-    std::istringstream input(contents);
-    xs::Catalog found=xs::read_m3u(input);
-    // A failed CDN response is not a playlist, even if the server returns 200.
-    if(found.entries.empty()||found.entries.size()>5000)return {};
-    for(auto& item:found.entries){
-        item.description="Canal público de IPTV-org · Lista en español";
-        item.program_type="public-live";
-    }
-    found.title="TV en vivo · IPTV-org";
-    return found;
-}
-struct PublicPlaylistResult {xs::Catalog catalog;bool from_cache=false;};
-PublicPlaylistResult publicSpanishPlaylist(){
-    PublicPlaylistResult result;
-    // This runs in the background home-loading worker, never on Qt's UI thread.
-    CURL* curl=curl_easy_init();
-    if(curl){
-        std::string data;
-        curl_easy_setopt(curl,CURLOPT_URL,kPublicSpanishPlaylist);
-        curl_easy_setopt(curl,CURLOPT_WRITEFUNCTION,appendPublicPlaylist);
-        curl_easy_setopt(curl,CURLOPT_WRITEDATA,&data);
-        curl_easy_setopt(curl,CURLOPT_CONNECTTIMEOUT,6L);
-        curl_easy_setopt(curl,CURLOPT_TIMEOUT,16L);
-        curl_easy_setopt(curl,CURLOPT_FOLLOWLOCATION,1L);
-        curl_easy_setopt(curl,CURLOPT_MAXREDIRS,3L);
-        curl_easy_setopt(curl,CURLOPT_USERAGENT,"NovaQt/1.0 (public IPTV playlist)");
-        curl_easy_setopt(curl,CURLOPT_SSL_VERIFYPEER,1L);
-        curl_easy_setopt(curl,CURLOPT_SSL_VERIFYHOST,2L);
-#if LIBCURL_VERSION_NUM >= 0x075500
-        curl_easy_setopt(curl,CURLOPT_PROTOCOLS_STR,"https");
-        curl_easy_setopt(curl,CURLOPT_REDIR_PROTOCOLS_STR,"https");
-#else
-        curl_easy_setopt(curl,CURLOPT_PROTOCOLS,CURLPROTO_HTTPS);
-        curl_easy_setopt(curl,CURLOPT_REDIR_PROTOCOLS,CURLPROTO_HTTPS);
-#endif
-        std::ifstream ca("cacert.pem",std::ios::binary);
-        if(ca.good())curl_easy_setopt(curl,CURLOPT_CAINFO,"cacert.pem");
-        const CURLcode rc=curl_easy_perform(curl);
-        long code=0;curl_easy_getinfo(curl,CURLINFO_RESPONSE_CODE,&code);
-        curl_easy_cleanup(curl);
-        if(rc==CURLE_OK&&code==200){
-            result.catalog=parsePublicPlaylist(data);
-            if(!result.catalog.entries.empty()){
-                std::ofstream cache(kPublicPlaylistCache,std::ios::binary|std::ios::trunc);
-                if(cache)cache.write(data.data(),static_cast<std::streamsize>(data.size()));
-                return result;
-            }
+void addEntry(std::vector<xs::Entry>& out,const xs::Entry& e,int maxItems);
+QVariantList listFor(const std::vector<xs::Entry>& entries);
+void appendPublicSources(HomeSnapshot& out,const xs::nova_sources::Result& sources){
+    auto merge=[](std::vector<xs::Entry>& dest,const std::vector<xs::Entry>& input,size_t limit){
+        std::unordered_set<std::string> titles,urls;
+        for(const auto& e:dest){
+            titles.insert(xs::search_key(e.title));
+            if(!e.source.empty())urls.insert(e.source);
         }
-    }
-    // No network? Preserve the last successfully parsed playlist.
-    std::ifstream cache(kPublicPlaylistCache,std::ios::binary|std::ios::ate);
-    if(cache&&cache.tellg()>0&&cache.tellg()<=static_cast<std::streamoff>(kPublicPlaylistMaxBytes)){
-        std::string content(static_cast<size_t>(cache.tellg()),'\0');
-        cache.seekg(0);
-        if(cache.read(content.data(),static_cast<std::streamsize>(content.size()))){
-            result.catalog=parsePublicPlaylist(content);
-            result.from_cache=!result.catalog.entries.empty();
+        for(const auto& e:input){
+            if(dest.size()>=limit)break;
+            if(e.kind!=xs::EntryKind::Media||!xs::valid_source(e.source))continue;
+            const auto key=xs::search_key(e.title);
+            if(key.empty()||titles.count(key)||urls.count(e.source))continue;
+            dest.push_back(e);titles.insert(key);urls.insert(e.source);
         }
-    }
-    return result;
+    };
+    merge(out.tv_entries,sources.channels,5000);
+    merge(out.movie_entries,sources.movies,1800);
+    merge(out.series_entries,sources.series,2400);
 }
 void addEntry(std::vector<xs::Entry>& out,const xs::Entry& e,int maxItems);
 QVariantList listFor(const std::vector<xs::Entry>& entries);
@@ -213,7 +159,7 @@ HomeSnapshot loadHome(){
         }
         out.demo_items=listFor(out.demo_entries);
     }
-    const auto public_tv=publicSpanishPlaylist();
+    const auto public_tv=xs::nova_sources::load();
     auto login=xs::service_bootstrap("service.json");
     out.session=login.session;
     out.root=std::move(login.catalog);
@@ -223,13 +169,16 @@ HomeSnapshot loadHome(){
         else out.status=QString::fromStdString(response.status);
     }
     if(!out.session){
-        appendPublicChannels(out,public_tv.catalog);
+        appendPublicSources(out,public_tv);
         out.channels=tvPreview(out.tv_entries);
-        if(!out.channels.isEmpty()){
-            out.status=QStringLiteral("TV pública en español: %1 canales de IPTV-org%2. "
-                "El servicio anterior sigue desconectado; algunos enlaces pueden no funcionar.")
+        out.series=listFor(out.series_entries);
+        out.movies=listFor(out.movie_entries);
+        if(!out.channels.isEmpty()||!out.movies.isEmpty()||!out.series.isEmpty()){
+            out.status=QStringLiteral("Catálogo alternativo: %1 canales, %2 películas, %3 episodios. %4 fuentes desde caché; Xuper desconectado.")
                 .arg(static_cast<qulonglong>(out.tv_entries.size()))
-                .arg(public_tv.from_cache?QStringLiteral(" (caché)"):QString());
+                .arg(static_cast<qulonglong>(out.movie_entries.size()))
+                .arg(static_cast<qulonglong>(out.series_entries.size()))
+                .arg(static_cast<qulonglong>(public_tv.cached));
         }else{
             out.status=QString::fromStdString(login.status);
             if(out.status.isEmpty())out.status=QStringLiteral("Sin conexión al servicio.");
@@ -273,15 +222,15 @@ HomeSnapshot loadHome(){
             if(page.ok)addAssets(page.catalog,type,dest,60);
         }
     }
-    appendPublicChannels(out,public_tv.catalog);
+    appendPublicSources(out,public_tv);
     out.channels=tvPreview(out.tv_entries);
     out.series=listFor(out.series_entries);
     out.movies=listFor(out.movie_entries);
     if(out.channels.empty()&&out.series.empty()&&out.movies.empty()){
         if(out.status.isEmpty())out.status=QString::fromStdString(login.status);
         if(out.status.isEmpty())out.status=QStringLiteral("Conectado, pero Inicio todavía no tiene contenido. Prueba las categorías de TV, Series o Películas.");
-    }else if(!public_tv.catalog.entries.empty())
-        out.status=QStringLiteral("TV pública de IPTV-org disponible; reproducción según cada canal.");
+    }else if(!public_tv.channels.empty()||!public_tv.movies.empty()||!public_tv.series.empty())
+        out.status=QStringLiteral("Catálogo unificado: Xuper + fuentes públicas disponibles.");
     else out.status=QStringLiteral("Catálogo conectado.");
     return out;
 }
@@ -515,6 +464,7 @@ void NovaQtHome::refresh(){
         channels_=snap.channels;series_=snap.series;movies_=snap.movies;
         demo_items_=snap.demo_items;demo_entries_=snap.demo_entries;
         catalog_connected_=!snap.channels.isEmpty() ||
+            !snap.movies.isEmpty() || !snap.series.isEmpty() ||
             (snap.session!=nullptr && (!snap.root.entries.empty() ||
              !snap.series.isEmpty() || !snap.movies.isEmpty()));
         channel_entries_=snap.tv_entries;
