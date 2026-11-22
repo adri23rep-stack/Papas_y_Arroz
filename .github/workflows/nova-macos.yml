@@ -20,8 +20,8 @@ jobs:
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
         run: |
-          brew install cmake ninja pkgconf qtbase qtdeclarative sdl2 sdl2_ttf mpv curl webp mbedtls@3 qrencode libpng jpeg-turbo
-          packages=(qtbase qtdeclarative sdl2 sdl2_ttf mpv curl webp mbedtls@3 qrencode libpng jpeg-turbo)
+          brew install cmake ninja pkgconf qtbase qtdeclarative sdl2 sdl3 sdl2_ttf mpv curl webp mbedtls@3 qrencode libpng jpeg-turbo
+          packages=(qtbase qtdeclarative sdl2 sdl3 sdl2_ttf mpv curl webp mbedtls@3 qrencode libpng jpeg-turbo)
           cmake_prefixes=()
           pkg_paths=()
           for package in "${packages[@]}"; do
@@ -74,10 +74,44 @@ jobs:
           APP="build/nova-macos/XuperTVNovaQt.app"
           MACDEPLOY="$(brew --prefix qtbase)/bin/macdeployqt"
           if [[ -x "$MACDEPLOY" ]]; then
-            perl -e 'alarm 90; exec @ARGV' "$MACDEPLOY" "$APP" -qmldir=ui/novaqt -verbose=1 || echo "WARNING: macdeployqt timed out; Homebrew Qt may be required on target."
+            perl -e 'alarm 240; exec @ARGV' "$MACDEPLOY" "$APP" -qmldir=ui/novaqt -verbose=1 || echo "WARNING: macdeployqt timed out; check packaged Qt modules."
           else
             echo "WARNING: macdeployqt unavailable; macOS app requires Homebrew Qt libraries."
           fi
+          # Homebrew SDL2 now resolves to sdl2-compat (SDL 2 API backed by SDL3).
+          # SDL3 is opened with dlopen, so macdeployqt/otool do not see it.
+          FRAMEWORKS="$APP/Contents/Frameworks"
+          SDL3_SOURCE="$(brew --prefix sdl3)/lib/libSDL3.0.dylib"
+          test -f "$FRAMEWORKS/libSDL2-2.0.0.dylib"
+          test -f "$SDL3_SOURCE"
+          cp -L "$SDL3_SOURCE" "$FRAMEWORKS/libSDL3.0.dylib"
+          ln -sfn libSDL3.0.dylib "$FRAMEWORKS/libSDL3.dylib"
+          install_name_tool -id "@loader_path/libSDL3.0.dylib" "$FRAMEWORKS/libSDL3.0.dylib"
+          test -f "$FRAMEWORKS/libSDL3.dylib"
+
+          # Exercise SDL2 -> SDL3 from a binary INSIDE the actual app bundle.
+          # SDL_Init(0) forces the wrapper to load SDL3; -smoke alone skips it.
+          cat > /tmp/nova_sdl_probe.c <<'NOVASDL'
+          #include <dlfcn.h>
+          #include <stdio.h>
+          int main(void) {
+            void *sdl = dlopen("@executable_path/../Frameworks/libSDL2-2.0.0.dylib", RTLD_NOW);
+            if (!sdl) { fprintf(stderr, "SDL2 load: %s\\n", dlerror()); return 1; }
+            int (*SDL_Init)(unsigned int) = (int (*)(unsigned int)) dlsym(sdl, "SDL_Init");
+            if (!SDL_Init) { fprintf(stderr, "SDL_Init missing\\n"); return 2; }
+            if (SDL_Init(0) != 0) { fprintf(stderr, "SDL_Init failed\\n"); return 3; }
+            puts("NOVA_SDL2_SDL3_BUNDLE_OK");
+            dlclose(sdl);
+            return 0;
+          }
+          NOVASDL
+          clang /tmp/nova_sdl_probe.c -o "$APP/Contents/MacOS/NovaSDLProbe"
+          "$APP/Contents/MacOS/NovaSDLProbe"
+          rm "$APP/Contents/MacOS/NovaSDLProbe"
+          # Ad-hoc sign after modifying the binaries; Gatekeeper is still
+          # expected to request user approval because this is not notarized.
+          codesign --force --deep --sign - "$APP"
+          otool -L "$FRAMEWORKS/libSDL3.0.dylib"
           mkdir -p dist/Nova-macOS-Tahoe-Intel
           cp -R "$APP" dist/Nova-macOS-Tahoe-Intel/Nova.app
           cp README_MACOS.md dist/Nova-macOS-Tahoe-Intel/
