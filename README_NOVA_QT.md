@@ -155,6 +155,45 @@ sea el hardware: tambien pueden influir version, autorizacion, requisitos del
 proveedor y la secuencia completa de registro. Evita reenviar identificadores
 y no uses ni imites la rotacion de sesiones de prueba.
 
+## Laboratorio: identidad de instalacion derivada (Windows)
+
+Rama experimental: `experiment/stable-derived-device-identity`.
+
+Por defecto, Nova conserva su comportamiento de siempre. Para estudiar si
+la coherencia entre los identificadores afecta el registro, esta rama permite
+que una instalacion NUEVA derive la MAC y un Android ID de una unica semilla
+local de 16 bytes. Se utiliza SHA-256 con separacion de dominios para que
+MAC y Android ID no sean intercambiables. El serial, MAC y Android ID permanecen
+guardados en `service.json` despues del primer inicio.
+
+**Seguridad y compatibilidad:**
+- El modo solo se activa para una instalacion sin `service.json` existente,
+  poniendo `NOVA_IDENTITY_SCHEME=derived-v1` en el entorno de Windows.
+- No cambia una instalacion antigua ni sobrescribe un `service.json`.
+- Si falta `service.json` pero hay cualquier estado de activacion conocido,
+  se bloquea la creacion de una identidad nueva para evitar perder el registro.
+- No copia identificadores de Focuz, credenciales, sesiones ni tokens del
+  emulador. No rota identidades ni intenta eludir la autorizacion del servidor.
+- Solo demuestra una construccion coherente de identidad local; **no garantiza**
+  acceso al catalogo ni corrige por si mismo `portal200001`.
+
+Para probarlo, usar una **copia portable limpia** compilada de esta rama,
+en una carpeta diferente a tu Nova actual. Debe llevar su plantilla
+`service.template.json` legitima y los archivos del programa, pero ningun
+`service.json` ni `device_state*.json` de otra instalacion. No borres ni
+modifiques esos archivos en la carpeta de tu Nova en uso.
+
+```powershell
+$env:NOVA_IDENTITY_SCHEME = "derived-v1"
+.\XuperTVNovaQt.exe
+Remove-Item Env:\NOVA_IDENTITY_SCHEME -ErrorAction SilentlyContinue
+```
+
+La variable afecta solo la primera creacion de `service.json`. El ID derivado
+se reutiliza en futuros arranques de esa misma copia, incluso sin la variable.
+La prueba offline es `ctest -R installation_test --output-on-failure`.
+No compartas tu `service.json` ni archivos de activacion para diagnosticar.
+
 ## Televisión pública española (IPTV-org)
 
 Nova Qt incluye ahora, por defecto, la lista pública actualizable:
