@@ -83,7 +83,10 @@ inline std::vector<Feed> feeds() {
         for(auto& value:fields)
             if(!std::getline(in,value,'|')){ok=false;break;}
             else value=trim(value);
-        if(!ok||fields[0].empty()||fields[0].size()>60||fields[1].empty()||
+        if(!ok||fields[0].empty()||fields[0].size()>60||
+           !std::all_of(fields[0].begin(),fields[0].end(),[](unsigned char c){
+               return std::isalnum(c)!=0||c=='-'||c=='_';
+           })||fields[1].empty()||
            fields[1].size()>80||!safe_https(fields[2])||
            (fields[3]!="live"&&fields[3]!="vod"&&fields[3]!="mixed"&&fields[3]!="movie"&&fields[3]!="series"))continue;
         if(std::any_of(out.begin(),out.end(),[&](const Feed& f){return f.id==fields[0];}))continue;
@@ -214,6 +217,9 @@ inline void dedupe(std::vector<Entry>& group,size_t limit) {
 }
 inline Result load() {
     Result result;
+    // Explicitly initialize once before concurrent curl_easy_init() calls.
+    static const bool curl_ready=curl_global_init(CURL_GLOBAL_DEFAULT)==CURLE_OK;
+    if(!curl_ready)return result;
     std::vector<std::future<Download>> jobs;
     for(const auto& feed:feeds())
         jobs.emplace_back(std::async(std::launch::async,[feed]{return download(feed);}));
