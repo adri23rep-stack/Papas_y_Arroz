@@ -663,25 +663,49 @@ void NovaQtHome::home(){
 void NovaQtHome::search(const QString& query){
     const QString text=query.trimmed();
     if(text.size()<2||loading_)return;
+    const auto appendLocal=[this,&text](xs::Catalog& catalog){
+        std::unordered_set<std::string> seen;
+        for(const auto& e:catalog.entries)
+            seen.insert(xs::search_key(e.title));
+        for(const auto* group:{&channel_entries_,&movie_entries_,&series_entries_}){
+            for(const auto& e:*group){
+                if(e.kind!=xs::EntryKind::Media ||
+                   !QString::fromStdString(e.title).contains(text,Qt::CaseInsensitive))continue;
+                if(!seen.insert(xs::search_key(e.title)).second)continue;
+                catalog.entries.push_back(e);
+                if(catalog.entries.size()>=160)return;
+            }
+        }
+    };
     if(!session_){
         xs::Catalog results;
         results.title="Resultados: "+text.toStdString();
-        for(const auto& e:channel_entries_)
-            if(QString::fromStdString(e.title).contains(text,Qt::CaseInsensitive))
-                results.entries.push_back(e);
+        appendLocal(results);
         history_.clear();
         showCatalog(std::move(results),false);
         return;
     }
-    loading_=true;status_=QStringLiteral("Buscando en el catálogo...");
+    loading_=true;status_=QStringLiteral("Buscando en todos los catálogos...");
     emit changed();
     auto* watcher=new QFutureWatcher<xs::BrowseResult>(this);
     const auto session=session_;
-    connect(watcher,&QFutureWatcher<xs::BrowseResult>::finished,this,[this,watcher,text](){
+    connect(watcher,&QFutureWatcher<xs::BrowseResult>::finished,this,
+            [this,watcher,text](){
         const auto result=watcher->result();
         loading_=false;
-        if(result.ok){
-            xs::Catalog page=result.catalog;
+        xs::Catalog page=result.catalog;
+        std::unordered_set<std::string> seen;
+        for(const auto& e:page.entries)seen.insert(xs::search_key(e.title));
+        for(const auto* group:{&channel_entries_,&movie_entries_,&series_entries_}){
+            for(const auto& e:*group){
+                if(e.kind!=xs::EntryKind::Media ||
+                   !QString::fromStdString(e.title).contains(text,Qt::CaseInsensitive))continue;
+                if(!seen.insert(xs::search_key(e.title)).second)continue;
+                page.entries.push_back(e);
+                if(page.entries.size()>=160)break;
+            }
+        }
+        if(result.ok||!page.entries.empty()){
             page.title="Resultados: "+text.toStdString();
             history_.clear();
             showCatalog(std::move(page),false);
