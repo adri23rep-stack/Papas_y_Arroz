@@ -66,10 +66,12 @@ inline std::vector<Feed> feeds() {
         {"nexus-es","IPTV Nexus español","https://dearbulut.github.io/iptv/playlists/language/spa.m3u","live"},
         {"nexus-mx","IPTV Nexus México","https://dearbulut.github.io/iptv/playlists/country/mx.m3u","live"},
         {"legal-live","LegalFreeIPTV","https://biskyt.github.io/legalFreeIPTVplaylist/live.m3u","live"},
-        {"legal-vod","LegalFreeIPTV VOD","https://biskyt.github.io/legalFreeIPTVplaylist/vod.m3u","vod"}
+        {"legal-vod","LegalFreeIPTV VOD","https://biskyt.github.io/legalFreeIPTVplaylist/vod.m3u","vod"},
+        {"nexus-movies","IPTV Nexus películas libres","https://dearbulut.github.io/iptv/playlists/vod/movies.m3u","movie"},
+        {"nexus-series","IPTV Nexus series libres","https://dearbulut.github.io/iptv/playlists/vod/series.m3u","series"}
     };
     // Additional compatible feeds can be installed without releasing another
-    // Nova binary. Format: unique-id|Display name|https://host/playlist.m3u|live/vod/mixed
+    // Nova binary. Format: unique-id|Display name|https://host/playlist.m3u|live/vod/mixed/movie/series
     std::ifstream extra("nova_sources.txt");
     std::string line;
     while(out.size()<16 && std::getline(extra,line)){
@@ -83,7 +85,7 @@ inline std::vector<Feed> feeds() {
             else value=trim(value);
         if(!ok||fields[0].empty()||fields[0].size()>60||fields[1].empty()||
            fields[1].size()>80||!safe_https(fields[2])||
-           (fields[3]!="live"&&fields[3]!="vod"&&fields[3]!="mixed"))continue;
+           (fields[3]!="live"&&fields[3]!="vod"&&fields[3]!="mixed"&&fields[3]!="movie"&&fields[3]!="series"))continue;
         if(std::any_of(out.begin(),out.end(),[&](const Feed& f){return f.id==fields[0];}))continue;
         out.push_back({fields[0],fields[1],fields[2],fields[3]});
     }
@@ -118,12 +120,16 @@ inline void append_m3u(const std::string& data,const Feed& feed,Result& result) 
         entry.artwork=attribute(ext,"tvg-logo");
         if(entry.artwork.size()>1800||!valid_source(entry.artwork))entry.artwork.clear();
         auto type=attribute(ext,"tvg-type");
+        if(feed.kind=="movie")type="movie";
+        if(feed.kind=="series")type="series";
         auto& target=type=="movie" && feed.kind!="live"?result.movies:
-                     type=="series" && feed.kind!="live" && !attribute(ext,"series-name").empty()
+                     type=="series" && feed.kind!="live" &&
+                     (feed.kind=="series"||!attribute(ext,"series-name").empty())
                      ?result.series:result.channels;
         if(type=="movie" && feed.kind!="live")
             entry.program_type="public-movie";
-        else if(type=="series" && feed.kind!="live" && !attribute(ext,"series-name").empty())
+        else if(type=="series" && feed.kind!="live" &&
+                     (feed.kind=="series"||!attribute(ext,"series-name").empty()))
             entry.program_type="public-series";
         else entry.program_type="public-live";
         entry.description="Fuente: "+feed.name;
