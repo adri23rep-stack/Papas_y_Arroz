@@ -1,0 +1,11 @@
+# NOVA: sources adicionales (solo M3U publicos/autorizados)
+# Copia este archivo como nova_sources.txt al lado del ejecutable Nova Qt.
+# Una fuente por linea: identificador|Nombre visible|URL HTTPS|tipo
+# tipo: live, movie, series, vod o mixed
+#
+# Puedes agregar hasta 8 fuentes extras (16 fuentes en total).
+# No necesitas compilar Nova ni crear una version por proveedor.
+# Los feeds incorporados son IPTV-org (es/mx), IPTV Nexus (es/mx + VOD)
+# y LegalFreeIPTV (live + VOD). No los repitas aqui.
+#
+# ejemplo-ficticio|Mi lista pública|https://example.com/lista.m3u|mixed
